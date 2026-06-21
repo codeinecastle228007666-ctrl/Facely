@@ -23,13 +23,33 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
   const fileRef = useRef<HTMLInputElement>(null);
   const { impact } = useTelegram();
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const compressImage = (dataUrl: string, maxDim = 1080, quality = 0.85): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          const ratio = Math.min(maxDim / w, maxDim / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        const ctx = c.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL("image/jpeg", quality).split(",")[1]);
+      };
+      img.src = dataUrl;
+    });
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(",")[1];
-      setPhoto(base64);
+    reader.onload = async () => {
+      const compressed = await compressImage(reader.result as string);
+      setPhoto(compressed);
     };
     reader.readAsDataURL(file);
   };

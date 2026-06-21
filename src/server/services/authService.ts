@@ -10,10 +10,15 @@ export const authService = {
   async findOrCreate(input: CreateUserInput) {
     let user = await prisma.user.findUnique({
       where: { telegramId: input.telegramId },
+      include: {
+        subscription: true,
+        rituals: true,
+        _count: { select: { analyses: true } },
+      },
     });
 
     if (!user) {
-      user = await prisma.user.create({
+      const created = await prisma.user.create({
         data: {
           telegramId: input.telegramId,
           name: input.name || null,
@@ -22,7 +27,7 @@ export const authService = {
       });
 
       await prisma.ritual.create({
-        data: { userId: user.id },
+        data: { userId: created.id },
       });
 
       if (input.referrerId) {
@@ -34,15 +39,24 @@ export const authService = {
           await prisma.referral.create({
             data: {
               referrerId: referrer.id,
-              refereeId: user.id,
+              refereeId: created.id,
               bonusGiven: false,
             },
           });
         }
       }
+
+      user = await prisma.user.findUnique({
+        where: { id: created.id },
+        include: {
+          subscription: true,
+          rituals: true,
+          _count: { select: { analyses: true } },
+        },
+      });
     }
 
-    return user;
+    return user!;
   },
 
   async getProfile(telegramId: string) {
