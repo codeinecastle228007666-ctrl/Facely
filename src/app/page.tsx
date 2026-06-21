@@ -132,6 +132,20 @@ export default function Dashboard() {
           maxStreak={user?.rituals?.maxStreak || 0}
           nextAnalysisDate={user?.rituals?.nextAnalysisDate || null}
         />
+        <a
+          href="/privacy"
+          style={{
+            display: "block",
+            textAlign: "center",
+            fontSize: 11,
+            color: "var(--text-muted)",
+            marginTop: 24,
+            paddingBottom: 8,
+            textDecoration: "none",
+          }}
+        >
+          Политика конфиденциальности
+        </a>
       </div>
 
       <AnalysisInput
