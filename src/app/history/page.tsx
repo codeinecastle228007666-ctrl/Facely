@@ -18,6 +18,7 @@ export default function HistoryPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<AnalysisHistoryItem | null>(null);
+  const [fullImage, setFullImage] = useState<string | null>(null);
 
   useEffect(() => {
     api.analysis
@@ -97,6 +98,33 @@ export default function HistoryPage() {
         )}
       </div>
 
+      {fullImage && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.9)",
+            zIndex: 400,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+          }}
+          onClick={() => setFullImage(null)}
+        >
+          <img
+            src={`data:image/jpeg;base64,${fullImage}`}
+            alt=""
+            style={{ maxWidth: "95%", maxHeight: "90%", borderRadius: 12, objectFit: "contain" }}
+          />
+          <div style={{ position: "absolute", top: 20, right: 20, color: "white", fontSize: 24, cursor: "pointer" }}>
+            ✕
+          </div>
+        </motion.div>
+      )}
+
       <AnimatePresence>
         {selected && result && (
           <motion.div
@@ -141,6 +169,7 @@ export default function HistoryPage() {
 
               {(selected as any).photoBase64 && (
                 <div
+                  onClick={() => setFullImage((selected as any).photoBase64)}
                   style={{
                     width: "100%",
                     height: 160,
@@ -148,6 +177,7 @@ export default function HistoryPage() {
                     overflow: "hidden",
                     marginBottom: 16,
                     background: "var(--bg)",
+                    cursor: "pointer",
                   }}
                 >
                   <img

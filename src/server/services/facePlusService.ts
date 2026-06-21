@@ -271,13 +271,16 @@ export async function analyzeSkinWithFacePlus(
   console.log(`[Face++] Full response:`, JSON.stringify(data));
 
   if (data.error_message) {
+    console.log(`[Face++] API error: ${data.error_message}`);
     const knownErrors: Record<string, string> = {
-      "FACE_NO_FACE": "На фото не обнаружено лицо. Сделайте снимок анфас при хорошем освещении.",
-      "INVALID_IMAGE_SIZE": "Фото слишком большое. Сделайте новый снимок.",
-      "INVALID_IMAGE_FORMAT": "Неподдерживаемый формат фото. Используйте JPEG или PNG.",
-      "IMAGE_SIZE_TOO_SMALL": "Фото слишком маленькое. Сделайте снимк крупнее.",
+      "FACE_NO_FACE": "Не видно лица. Сфотографируйтесь анфас при хорошем освещении, без макияжа, уберите волосы с лица.",
+      "FACE_MULTIPLE_FACES": "На фото несколько лиц. Сделайте снимок только своего лица.",
+      "FACE_OCCLUDED": "Лицо частично закрыто. Уберите волосы, руки, маску — лицо должно быть полностью видно.",
+      "INVALID_IMAGE_SIZE": "Фото слишком большого размера. Сделайте новый снимок.",
+      "INVALID_IMAGE_FORMAT": "Формат фото не поддерживается. Используйте JPEG или PNG.",
+      "IMAGE_SIZE_TOO_SMALL": "Фото слишком маленькое. Сделайте снимок крупнее, лицо должно занимать большую часть кадра.",
     };
-    const userMessage = knownErrors[data.error_message] || `Ошибка анализа: ${data.error_message}. Попробуйте другое фото.`;
+    const userMessage = knownErrors[data.error_message] || `Не удалось проанализировать фото. Пожалуйста, сделайте новый снимок с хорошим освещением.\n(Код ошибки: ${data.error_message})`;
     throw new Error(userMessage);
   }
 
