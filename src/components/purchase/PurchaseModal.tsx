@@ -29,9 +29,8 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
       const { url } = await api.subscription.createStarsInvoice({ quantity: 1 });
       tg.openInvoice(url, async (status: string) => {
         if (status === "paid") {
-          await api.subscription.confirmStarsPayment({ payload: "analysis_1" });
-          onSuccess?.();
-          onClose();
+          alert("Оплата прошла! Анализы будут зачислены в течение минуты.");
+          setTimeout(() => { onSuccess?.(); onClose(); }, 1000);
         }
         setLoading(null);
       });

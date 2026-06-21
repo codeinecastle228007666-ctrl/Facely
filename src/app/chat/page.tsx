@@ -68,7 +68,8 @@ export default function ChatPage() {
               const { url } = await api.subscription.createChatStarsInvoice();
               tg.openInvoice(url, (status: string) => {
                 if (status === "paid") {
-                  setRemaining(10);
+                  alert("Оплата прошла! Вопросы будут зачислены в течение минуты.");
+                  setTimeout(() => window.location.reload(), 1500);
                 }
               });
             } catch { alert("Ошибка оплаты"); }
