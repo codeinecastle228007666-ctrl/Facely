@@ -7,6 +7,7 @@ export const leaderboardRouter = router({
     if (!user) throw new Error("User not found");
 
     const users = await prisma.user.findMany({
+      where: { referralCount: { gt: 0 } },
       orderBy: { referralCount: "desc" },
       take: 50,
       select: { id: true, name: true, referralCount: true },

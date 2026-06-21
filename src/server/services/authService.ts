@@ -1,4 +1,16 @@
 import { prisma } from "../db";
+import { calculateLevel } from "../utils/levelSystem";
+
+async function ensureCorrectLevel(user: { id: string; xp: number; level: number }) {
+  const correctLevel = calculateLevel(user.xp);
+  if (user.level !== correctLevel) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { level: correctLevel },
+    });
+    user.level = correctLevel;
+  }
+}
 
 export interface CreateUserInput {
   telegramId: string;
@@ -16,6 +28,10 @@ export const authService = {
         _count: { select: { analyses: true } },
       },
     });
+
+    if (user) {
+      await ensureCorrectLevel(user);
+    }
 
     if (!user) {
       const created = await prisma.user.create({
@@ -72,6 +88,8 @@ export const authService = {
     });
 
     if (!user) throw new Error("User not found");
+
+    await ensureCorrectLevel(user);
 
     return user;
   },

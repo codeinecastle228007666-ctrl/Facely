@@ -27,11 +27,11 @@ export default function ReferralPage() {
     const refCode = tgUser?.id || localStorage.getItem("__tid") || "";
     const refLink = `https://t.me/${botUsername}?start=${refCode}`;
     const text = `✨ Присоединяйся к Facely — AI-анализ кожи и персональный уход!\n${refLink}`;
-    if (navigator.clipboard) {
+    if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
-      });
+      }).catch(() => prompt("Скопируйте ссылку:", text));
     } else {
       prompt("Скопируйте ссылку:", text);
     }
