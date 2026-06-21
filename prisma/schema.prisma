@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                       String   @id @default(cuid())
+  telegramId               String   @unique
+  name                     String?
+  level                    Int      @default(1)
+  xp                       Int      @default(0)
+  subscriptionEnd          DateTime?
+  freeAnalyses             Int      @default(3)
+  paidAnalyses             Int      @default(0)
+  lastSubscriptionOfferSent DateTime?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  analyses       SkinAnalysis[]
+  subscription   Subscription?
+  rituals        Ritual[]
+  reports        Report[]
+  referralsGiven Referral[]   @relation("Referrer")
+  referralsUsed  Referral[]   @relation("Referee")
+}
+
+model SkinAnalysis {
+  id              String   @id @default(cuid())
+  userId          String
+  photoUrl        String?
+  photoBase64     String?
+  userDescription String?
+  result          Json?
+  skinType        String?
+  isFree          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  status    String   @default("active")
+  type      String   @default("trial")
+  startDate DateTime @default(now())
+  endDate   DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Ritual {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  lastDate  DateTime @default(now())
+  streak    Int      @default(0)
+  maxStreak Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Report {
+  id          String   @id @default(cuid())
+  userId      String
+  generatedAt DateTime @default(now())
+  dynamics    Json?
+  summary     String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([generatedAt])
+}
+
+model Referral {
+  id         String   @id @default(cuid())
+  referrerId String
+  refereeId  String   @unique
+  bonusGiven Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  referrer User @relation("Referrer", fields: [referrerId], references: [id])
+  referee  User @relation("Referee", fields: [refereeId], references: [id])
+
+  @@index([referrerId])
+}

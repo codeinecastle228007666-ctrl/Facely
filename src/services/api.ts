@@ -1,0 +1,160 @@
+import superjson from "superjson";
+
+const BASE = "/api/trpc";
+
+function getTelegramId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const user = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
+  return user ? String(user.id) : undefined;
+}
+
+function headers(): Record<string, string> {
+  const h: Record<string, string> = {};
+  const tid = getTelegramId();
+  if (tid) h["x-telegram-id"] = tid;
+  return h;
+}
+
+async function query<T>(path: string, input?: unknown): Promise<T> {
+  const serialized = input !== undefined ? superjson.serialize(input) : undefined;
+
+  let url = `${BASE}/${path}`;
+  if (serialized) {
+    url += `?input=${encodeURIComponent(JSON.stringify({ json: serialized.json, meta: serialized.meta }))}`;
+  }
+
+  const res = await fetch(url, { method: "GET", headers: headers() });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(
+      err?.error?.json?.message || err?.error?.message || `Request failed: ${res.status}`,
+    );
+  }
+
+  const json = await res.json();
+  const data = json?.result?.data;
+  if (data && typeof data === "object" && "json" in data) {
+    return superjson.deserialize(data) as T;
+  }
+  return (data ?? json) as T;
+}
+
+async function mutation<T>(path: string, input?: unknown): Promise<T> {
+  const serialized = input !== undefined ? superjson.serialize(input) : undefined;
+
+  const body = serialized
+    ? JSON.stringify({ json: serialized.json, meta: serialized.meta })
+    : undefined;
+
+  const res = await fetch(`${BASE}/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers() },
+    body,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(
+      err?.error?.json?.message || err?.error?.message || `Request failed: ${res.status}`,
+    );
+  }
+
+  const json = await res.json();
+  const data = json?.result?.data;
+  if (data && typeof data === "object" && "json" in data) {
+    return superjson.deserialize(data) as T;
+  }
+  return (data ?? json) as T;
+}
+
+export const api = {
+  auth: {
+    register: (data: { telegramId: string; name?: string; referrerId?: string }) =>
+      mutation<UserProfile>("auth.register", data),
+    me: () => query<UserProfile>("auth.me"),
+  },
+  analysis: {
+    analyze: (data: { photoBase64: string; description?: string }) =>
+      mutation<AnalyzeResponse>("analysis.analyze", data),
+    history: (data?: { limit?: number; offset?: number }) =>
+      query<{ analyses: AnalysisHistoryItem[]; total: number }>("analysis.history", data),
+  },
+  ritual: {
+    getStreak: () =>
+      query<{ streak: number; maxStreak: number; lastDate: string | null }>("ritual.getStreak"),
+  },
+  subscription: {
+    status: () => query<SubscriptionStatus>("subscription.status"),
+    activate: (data: { type: "trial" | "paid" }) =>
+      mutation<unknown>("subscription.activate", data),
+  },
+  referral: {
+    claimBonus: () => mutation<boolean>("referral.claimBonus"),
+  },
+  report: {
+    list: () => query<ReportItem[]>("report.list"),
+  },
+};
+
+export interface ProductLink {
+  name: string;
+  url: string;
+  image: string;
+  reason: string;
+}
+
+export interface AnalysisResult {
+  skin_type: string;
+  problems: string[];
+  recommendations: string[];
+  daily_routine: string;
+  mood: "позитивный" | "нейтральный" | "тревожный";
+  product_links: ProductLink[];
+}
+
+export interface AnalyzeResponse {
+  analysis: AnalysisResult;
+  xpGained: number;
+  totalXp: number;
+  level: number;
+  streak: number;
+  maxStreak: number;
+}
+
+export interface AnalysisHistoryItem {
+  id: string;
+  photoUrl: string | null;
+  skinType: string | null;
+  result: AnalysisResult | null;
+  isFree: boolean;
+  createdAt: string;
+}
+
+export interface SubscriptionStatus {
+  active: boolean;
+  type: string | null;
+  endDate: string | null;
+  daysLeft: number;
+}
+
+export interface ReportItem {
+  id: string;
+  dynamics: { dynamics: string; summary: string } | null;
+  summary: string | null;
+  generatedAt: string;
+}
+
+export interface UserProfile {
+  id: string;
+  telegramId: string;
+  name: string | null;
+  level: number;
+  xp: number;
+  freeAnalyses: number;
+  paidAnalyses: number;
+  subscriptionEnd: string | null;
+  subscription: { status: string; type: string; endDate: string | null } | null;
+  rituals: { streak: number; maxStreak: number } | null;
+  _count: { analyses: number };
+}
