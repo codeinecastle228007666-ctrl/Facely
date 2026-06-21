@@ -2,9 +2,8 @@
 
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CloseIcon, FireIcon } from "@/components/ui/Icons";
+import { CloseIcon } from "@/components/ui/Icons";
 import type { AnalysisResult } from "@/services/api";
-import { ProgressBar } from "@/components/ui/ProgressBar";
 
 interface ResultModalProps {
   open: boolean;
@@ -23,16 +22,30 @@ const MOOD_COLORS: Record<string, string> = {
 };
 
 const MOOD_DESC: Record<string, string> = {
-  позитивный: "Состояние кожи в норме",
+  позитивный: "Кожа в хорошем состоянии",
   нейтральный: "Есть незначительные проблемы",
-  тревожный: "Требуется внимание к коже",
+  тревожный: "Требуется внимание",
 };
 
 const SKIN_TYPE_DESC: Record<string, string> = {
-  сухая: "Коже не хватает влаги, возможны шелушения и стянутость. Требуется интенсивное увлажнение и питание.",
-  жирная: "Повышенная активность сальных желёз. Рекомендуется матирующий уход и контроль себума.",
-  комбинированная: "Жирная Т-зона (лоб, нос, подбородок) и сухие щёки. Нужен сбалансированный уход для разных зон.",
-  нормальная: "Сбалансированное состояние кожи. Достаточно поддерживающего ухода и защиты.",
+  сухая: "Коже не хватает влаги. Требуется интенсивное увлажнение и питание, избегайте агрессивного очищения.",
+  жирная: "Повышенная активность сальных желёз. Рекомендуется матирующий уход, лёгкие текстуры и контроль себума.",
+  комбинированная: "Жирная Т-зона (лоб, нос, подбородок) и сухие или нормальные щёки. Нужен сбалансированный уход для разных зон.",
+  нормальная: "Сбалансированное состояние кожи. Достаточно поддерживающего ухода, увлажнения и SPF-защиты.",
+};
+
+const SEVERITY_COLORS: Record<string, string> = {
+  лёгкое: "#A8D8EA",
+  умеренное: "#FFB4A2",
+  выраженное: "#E8A0B4",
+};
+
+const PROBLEM_DESC: Record<string, string> = {
+  акне: "Воспалительные элементы — следствие избыточной работы сальных желёз и закупорки пор.",
+  "темные круги": "Потемнение кожи под глазами. Часто связано с усталостью, нарушением микроциркуляции или генетикой.",
+  поры: "Расширенные поры — результат избытка себума и снижения упругости стенок пор.",
+  пигментация: "Участки гиперпигментации — следствие избыточной выработки меланина под воздействием УФ или постакне.",
+  морщины: "Снижение упругости кожи из-за уменьшения выработки коллагена и эластина.",
 };
 
 export const ResultModal: React.FC<ResultModalProps> = ({
@@ -49,6 +62,20 @@ export const ResultModal: React.FC<ResultModalProps> = ({
   const problems = result.problems || [];
   const recommendations = result.recommendations || [];
   const productLinks = result.product_links || [];
+
+  const parseSeverity = (p: string): string | null => {
+    const m = p.match(/\((.+?)\)/);
+    return m ? m[1] : null;
+  };
+
+  const cleanName = (p: string): string => p.replace(/\s*\(.+?\)/, "");
+
+  let recIndex = 0;
+  const problemGroups = problems.map((p) => {
+    const recs = recommendations.slice(recIndex, recIndex + 3).filter(Boolean);
+    recIndex += 3;
+    return { name: p, recs };
+  });
 
   return (
     <AnimatePresence>
@@ -135,36 +162,64 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </div>
             </div>
 
-            {problems.length > 0 && (
+            {problemGroups.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                   Проблемы ({problems.length})
                 </div>
-                <div className="flex flex-col gap-2">
-                  {problems.map((p, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 12,
-                        background: "rgba(232, 160, 180, 0.08)",
-                        fontSize: 13,
-                        color: "var(--text)",
-                      }}
-                    >
-                      <div style={{ fontWeight: 500, marginBottom: 2 }}>{p}</div>
-                      {recommendations[i] && (
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                          {recommendations[i]}
+                <div className="flex flex-col gap-3">
+                  {problemGroups.map((group, gi) => {
+                    const sev = parseSeverity(group.name);
+                    const clean = cleanName(group.name);
+                    return (
+                      <div
+                        key={gi}
+                        style={{
+                          padding: "12px 14px",
+                          borderRadius: 12,
+                          background: "rgba(232, 160, 180, 0.06)",
+                        }}
+                      >
+                        <div className="flex items-center gap-2" style={{ marginBottom: 4 }}>
+                          <span style={{ fontWeight: 600, fontSize: 14 }}>{clean}</span>
+                          {sev && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                padding: "2px 8px",
+                                borderRadius: 10,
+                                background: `${SEVERITY_COLORS[sev] || "#eee"}33`,
+                                color: SEVERITY_COLORS[sev] || "#999",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {sev}
+                            </span>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        {PROBLEM_DESC[clean] && (
+                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6, lineHeight: 1.5 }}>
+                            {PROBLEM_DESC[clean]}
+                          </div>
+                        )}
+                        {group.recs.length > 0 && (
+                          <div className="flex flex-col gap-1">
+                            {group.recs.map((r, ri) => (
+                              <div key={ri} className="flex items-start gap-2">
+                                <span style={{ color: "var(--primary)", fontSize: 12, marginTop: 1 }}>•</span>
+                                <span style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4 }}>{r}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {problems.length === 0 && (
+            {problemGroups.length === 0 && (
               <div
                 style={{
                   padding: "14px 16px",

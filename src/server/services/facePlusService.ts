@@ -49,6 +49,19 @@ const PROBLEM_MAP: Record<string, string> = {
   wrinkle: "морщины",
 };
 
+const SEVERITY_LABELS: Record<number, string> = {
+  60: "лёгкое",
+  100: "выраженное",
+};
+
+const PROBLEM_DESC: Record<string, string> = {
+  acne: "Воспалительные элементы на коже: чёрные точки, папулы, пустулы. Могут быть вызваны гормональными изменениями, неправильным уходом или питанием.",
+  dark_circle: "Потемнение кожи под глазами. Причины: нарушение микроциркуляции, недостаток сна, генетическая предрасположенность, истончение кожи.",
+  pore: "Расширенные поры — результат избыточной выработки себума и снижения упругости стенок пор. Чаще встречаются в Т-зоне.",
+  spot: "Участки гиперпигментации: постакне, солнечные пятна, мелазма. Возникают из-за избыточной выработки меланина под воздействием УФ.",
+  wrinkle: "Мимические и возрастные морщины. Появляются из-за снижения выработки коллагена и эластина, обезвоженности, воздействия УФ.",
+};
+
 const RECOMMENDATIONS_MAP: Record<string, string[]> = {
   acne: [
     "Сыворотка с салициловой кислотой 2% для проблемной кожи",
@@ -330,12 +343,13 @@ export async function analyzeSkinWithFacePlus(
 
   for (const [key, score] of Object.entries(scores)) {
     if (score > 50) {
-      const problem = PROBLEM_MAP[key];
-      if (problem) {
-        problems.push(problem);
+      const problemName = PROBLEM_MAP[key];
+      const severity = score === 100 ? "выраженное" : "умеренное";
+      if (problemName) {
+        problems.push(`${problemName} (${severity})`);
         const recs = RECOMMENDATIONS_MAP[key];
         if (recs) {
-          recommendations.push(recs[0]);
+          recommendations.push(...recs);
         }
       }
     }

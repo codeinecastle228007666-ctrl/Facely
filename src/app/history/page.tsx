@@ -13,6 +13,42 @@ const MOOD_COLORS: Record<string, string> = {
   тревожный: "#E8A0B4",
 };
 
+const MOOD_DESC: Record<string, string> = {
+  позитивный: "Кожа в хорошем состоянии",
+  нейтральный: "Есть незначительные проблемы",
+  тревожный: "Требуется внимание",
+};
+
+const SKIN_TYPE_DESC: Record<string, string> = {
+  сухая: "Коже не хватает влаги. Требуется интенсивное увлажнение и питание.",
+  жирная: "Повышенная активность сальных желёз. Рекомендуется матирующий уход.",
+  комбинированная: "Жирная Т-зона и сухие щёки. Нужен сбалансированный уход.",
+  нормальная: "Сбалансированное состояние кожи. Достаточно поддерживающего ухода.",
+};
+
+const SEVERITY_COLORS: Record<string, string> = {
+  лёгкое: "#A8D8EA",
+  умеренное: "#FFB4A2",
+  выраженное: "#E8A0B4",
+};
+
+const PROBLEM_DESC: Record<string, string> = {
+  акне: "Воспалительные элементы на коже. Могут быть вызваны гормональными изменениями, неправильным уходом или питанием.",
+  "темные круги": "Потемнение кожи под глазами. Связано с усталостью, нарушением микроциркуляции или генетикой.",
+  поры: "Расширенные поры — результат избытка себума и снижения упругости стенок пор.",
+  пигментация: "Участки гиперпигментации — следствие избыточной выработки меланина под воздействием УФ.",
+  морщины: "Снижение упругости кожи из-за уменьшения выработки коллагена и эластина.",
+};
+
+function parseSeverity(p: string): string | null {
+  const m = p.match(/\((.+?)\)/);
+  return m ? m[1] : null;
+}
+
+function cleanName(p: string): string {
+  return p.replace(/\s*\(.+?\)/, "");
+}
+
 export default function HistoryPage() {
   const [items, setItems] = useState<AnalysisHistoryItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -215,49 +251,101 @@ export default function HistoryPage() {
                 </div>
               </div>
 
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: 14,
+                  background: "var(--bg)",
+                  fontSize: 13,
+                  lineHeight: 1.6,
+                  color: "var(--text-secondary)",
+                  marginBottom: 16,
+                }}
+              >
+                {SKIN_TYPE_DESC[result.skin_type] || `Тип кожи: ${result.skin_type}`}
+                <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>
+                  {MOOD_DESC[result.mood] || ""}
+                </div>
+              </div>
+
               {result.problems.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-                    Выявленные проблемы
+                    Проблемы ({result.problems.length})
                   </div>
-                  <div className="flex gap-2 flex-wrap">
-                    {result.problems.map((p, i) => (
-                      <span
-                        key={i}
-                        style={{
-                          padding: "6px 14px",
-                          borderRadius: 20,
-                          background: "rgba(232, 160, 180, 0.1)",
-                          fontSize: 12,
-                          color: "var(--primary-dark)",
-                        }}
-                      >
-                        {p}
-                      </span>
-                    ))}
+                  <div className="flex flex-col gap-3">
+                    {result.problems.map((p, gi) => {
+                      const sev = parseSeverity(p);
+                      const clean = cleanName(p);
+                      return (
+                        <div
+                          key={gi}
+                          style={{
+                            padding: "12px 14px",
+                            borderRadius: 12,
+                            background: "rgba(232, 160, 180, 0.06)",
+                          }}
+                        >
+                          <div className="flex items-center gap-2" style={{ marginBottom: 4 }}>
+                            <span style={{ fontWeight: 600, fontSize: 14 }}>{clean}</span>
+                            {sev && (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  padding: "2px 8px",
+                                  borderRadius: 10,
+                                  background: `${SEVERITY_COLORS[sev] || "#eee"}33`,
+                                  color: SEVERITY_COLORS[sev] || "#999",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {sev}
+                              </span>
+                            )}
+                          </div>
+                          {PROBLEM_DESC[clean] && (
+                            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6, lineHeight: 1.5 }}>
+                              {PROBLEM_DESC[clean]}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-                  Рекомендации
+              {result.problems.length === 0 && (
+                <div
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: 14,
+                    background: "rgba(168, 216, 234, 0.1)",
+                    fontSize: 13,
+                    color: "#7EC4D8",
+                    marginBottom: 16,
+                    textAlign: "center",
+                  }}
+                >
+                  Значимых проблем не выявлено. Продолжайте поддерживающий уход.
                 </div>
-                {result.recommendations.map((r, i) => (
-                  <div className="flex items-center gap-2" style={{ marginBottom: 6 }} key={i}>
-                    <div
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        background: "var(--primary)",
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{r}</span>
+              )}
+
+              {result.recommendations.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+                    Рекомендации
                   </div>
-                ))}
-              </div>
+                  <div className="flex flex-col gap-1">
+                    {result.recommendations.map((r, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span style={{ color: "var(--primary)", fontSize: 12, marginTop: 1 }}>•</span>
+                        <span style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.4 }}>{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
