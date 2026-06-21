@@ -11,7 +11,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessageResult[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [remaining, setRemaining] = useState(user?.freeChatQuestions ?? 3);
+  const [remaining, setRemaining] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,7 +38,8 @@ export default function ChatPage() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (msg === "no_chat_questions_left") {
-        alert("Закончились бесплатные вопросы. Оформите подписку для безлимитного чата.");
+        setRemaining(0);
+        alert("Бесплатные вопросы закончились. Купите пакет вопросов за 10 ⭐.");
       }
     } finally {
       setSending(false);
@@ -46,13 +47,48 @@ export default function ChatPage() {
   };
 
   const hasSubscription = user?.subscription?.status === "active";
-  const canSend = hasSubscription || remaining > 0;
+  const canSend = hasSubscription || (remaining ?? user?.freeChatQuestions ?? 3) > 0;
+  const displayRemaining = remaining ?? user?.freeChatQuestions ?? 3;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 100px)", paddingTop: 8 }}>
       <div style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "center", marginBottom: 12 }}>
-        {hasSubscription ? "Безлимитный чат" : `Осталось вопросов: ${remaining}`}
+        {hasSubscription ? "Безлимитный чат" : `Осталось вопросов: ${displayRemaining}`}
       </div>
+
+      {!hasSubscription && displayRemaining <= 0 && (
+        <motion.button
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={async () => {
+            const tg = (window as any).Telegram?.WebApp;
+            if (!tg) { alert("Доступно только в Telegram"); return; }
+            try {
+              const { url } = await api.subscription.createChatStarsInvoice();
+              tg.openInvoice(url, (status: string) => {
+                if (status === "paid") {
+                  setRemaining(10);
+                }
+              });
+            } catch { alert("Ошибка оплаты"); }
+          }}
+          style={{
+            width: "100%",
+            padding: "10px",
+            borderRadius: 14,
+            background: "linear-gradient(135deg, #FFD700, #FFC107)",
+            color: "white",
+            fontSize: 13,
+            fontWeight: 600,
+            border: "none",
+            cursor: "pointer",
+            marginBottom: 8,
+          }}
+        >
+          Купить 10 вопросов за 10 ⭐
+        </motion.button>
+      )}
 
       <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingBottom: 8 }}>
         {messages.length === 0 && (

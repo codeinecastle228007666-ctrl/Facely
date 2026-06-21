@@ -139,6 +139,25 @@ export default function HistoryPage() {
                 </button>
               </div>
 
+              {(selected as any).photoBase64 && (
+                <div
+                  style={{
+                    width: "100%",
+                    height: 160,
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    marginBottom: 16,
+                    background: "var(--bg)",
+                  }}
+                >
+                  <img
+                    src={`data:image/jpeg;base64,${(selected as any).photoBase64}`}
+                    alt="фото анализа"
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </div>
+              )}
+
               <div className="flex items-center gap-3" style={{ marginBottom: 16 }}>
                 <div
                   style={{

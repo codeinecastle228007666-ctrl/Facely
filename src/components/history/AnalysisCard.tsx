@@ -12,6 +12,7 @@ interface AnalysisCardProps {
 
 export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index, onClick }) => {
   const problems = (item.result as any)?.problems || [];
+  const photoBase64 = (item as any).photoBase64;
 
   return (
     <motion.div
@@ -23,25 +24,45 @@ export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index, onClick
       onClick={onClick}
       style={{ marginBottom: 10, cursor: "pointer" }}
     >
-      <div
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: 14,
-          background: "var(--bg)",
-          flexShrink: 0,
-          overflow: "hidden",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-          <rect x="2" y="5" width="20" height="14" rx="3" fill="#F5D0DC" stroke="#E8A0B4" strokeWidth="1.2"/>
-          <circle cx="12" cy="12" r="4" fill="white" stroke="#E8A0B4" strokeWidth="1"/>
-          <path d="M17 5l-2-3H9L7 5" stroke="#E8A0B4" strokeWidth="1.2" strokeLinecap="round"/>
-        </svg>
-      </div>
+      {photoBase64 && (
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 14,
+            flexShrink: 0,
+            overflow: "hidden",
+            background: "var(--bg)",
+          }}
+        >
+          <img
+            src={`data:image/jpeg;base64,${photoBase64}`}
+            alt="фото"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        </div>
+      )}
+      {!photoBase64 && (
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 14,
+            background: "var(--bg)",
+            flexShrink: 0,
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="5" width="20" height="14" rx="3" fill="#F5D0DC" stroke="#E8A0B4" strokeWidth="1.2"/>
+            <circle cx="12" cy="12" r="4" fill="white" stroke="#E8A0B4" strokeWidth="1"/>
+            <path d="M17 5l-2-3H9L7 5" stroke="#E8A0B4" strokeWidth="1.2" strokeLinecap="round"/>
+          </svg>
+        </div>
+      )}
 
       <div style={{ flex: 1 }}>
         <div className="flex justify-between" style={{ marginBottom: 4 }}>

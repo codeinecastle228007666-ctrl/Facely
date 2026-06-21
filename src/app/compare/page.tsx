@@ -31,12 +31,20 @@ export default function ComparePage() {
     try {
       const res = await api.analysis.getComparison({ analysis1Id: selected1, analysis2Id: selected2 });
       setComparison(res);
-    } catch (e) {
+    } catch {
       alert("Ошибка сравнения");
     } finally {
       setLoading(false);
     }
   };
+
+  const getPhoto = (id: string) => {
+    const a = analyses.find((x) => x.id === id);
+    return (a as any)?.photoBase64 || null;
+  };
+
+  const sel1 = analyses.find((a) => a.id === selected1);
+  const sel2 = analyses.find((a) => a.id === selected2);
 
   return (
     <div style={{ paddingTop: 8, paddingBottom: 80 }}>
@@ -45,10 +53,10 @@ export default function ComparePage() {
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <select
           value={selected1}
-          onChange={(e) => setSelected1(e.target.value)}
+          onChange={(e) => { setSelected1(e.target.value); setComparison(null); }}
           style={{ flex: 1, padding: "12px", borderRadius: 14, border: "1px solid var(--border)", fontSize: 13, background: "white" }}
         >
-          <option value="">Выберите анализ 1</option>
+          <option value="">Анализ 1</option>
           {analyses.map((a) => (
             <option key={a.id} value={a.id}>
               {new Date(a.createdAt).toLocaleDateString("ru-RU")} - {a.skinType || "Анализ"}
@@ -57,10 +65,10 @@ export default function ComparePage() {
         </select>
         <select
           value={selected2}
-          onChange={(e) => setSelected2(e.target.value)}
+          onChange={(e) => { setSelected2(e.target.value); setComparison(null); }}
           style={{ flex: 1, padding: "12px", borderRadius: 14, border: "1px solid var(--border)", fontSize: 13, background: "white" }}
         >
-          <option value="">Выберите анализ 2</option>
+          <option value="">Анализ 2</option>
           {analyses.map((a) => (
             <option key={a.id} value={a.id}>
               {new Date(a.createdAt).toLocaleDateString("ru-RU")} - {a.skinType || "Анализ"}
@@ -69,24 +77,41 @@ export default function ComparePage() {
         </select>
       </div>
 
-      <button
+      {sel1 && sel2 && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {[sel1, sel2].map((s, i) => (
+            <div key={i} style={{ flex: 1, height: 100, borderRadius: 14, overflow: "hidden", background: "var(--bg)" }}>
+              {(s as any).photoBase64 ? (
+                <img src={`data:image/jpeg;base64,${(s as any).photoBase64}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: 12, color: "var(--text-muted)" }}>
+                  Нет фото
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <motion.button
         onClick={handleCompare}
-        disabled={!selected1 || !selected2 || loading}
+        disabled={!selected1 || !selected2 || loading || selected1 === selected2}
+        whileTap={{ scale: 0.97 }}
         style={{
           width: "100%",
           padding: "14px",
           borderRadius: 16,
-          background: !selected1 || !selected2 ? "var(--border)" : "linear-gradient(135deg, var(--primary), var(--secondary))",
+          background: !selected1 || !selected2 || selected1 === selected2 ? "var(--border)" : "linear-gradient(135deg, var(--primary), var(--secondary))",
           color: "white",
           fontSize: 15,
           fontWeight: 600,
           border: "none",
           marginBottom: 20,
-          cursor: !selected1 || !selected2 ? "default" : "pointer",
+          cursor: !selected1 || !selected2 || selected1 === selected2 ? "default" : "pointer",
         }}
       >
         {loading ? "Сравниваем..." : "Сравнить"}
-      </button>
+      </motion.button>
 
       <AnimatePresence>
         {comparison && (
@@ -97,7 +122,13 @@ export default function ComparePage() {
           >
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, fontSize: 12, color: "var(--text-secondary)" }}>
               <span>{new Date(comparison.analysis1.date).toLocaleDateString("ru-RU")}</span>
+              <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>→</span>
               <span>{new Date(comparison.analysis2.date).toLocaleDateString("ru-RU")}</span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, fontSize: 13, color: "var(--text)" }}>
+              <span>{comparison.analysis1.skinType || "—"}</span>
+              <span>{comparison.analysis2.skinType || "—"}</span>
             </div>
 
             {Object.entries(comparison.differences).map(([key, diff]) => (
@@ -134,31 +165,16 @@ export default function ComparePage() {
                   minWidth: 36,
                   textAlign: "center",
                 }}>
-                  {diff.improved ? `-${diff.diff}` : `+${Math.abs(diff.diff)}`}
+                  {diff.diff === 0 ? "0" : diff.improved ? `-${diff.diff}` : `+${Math.abs(diff.diff)}`}
                 </div>
               </div>
             ))}
 
-            <button
-              onClick={() => {
-                const text = `Мой прогресс кожи в Facely! Проверь и ты: https://t.me/skin_ritual_bot`;
-                (window as any).Telegram?.WebApp?.shareToStory?.(text);
-              }}
-              style={{
-                width: "100%",
-                padding: "12px",
-                borderRadius: 14,
-                background: "var(--bg)",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--primary-dark)",
-                border: "none",
-                marginTop: 16,
-                cursor: "pointer",
-              }}
-            >
-              Поделиться в Stories
-            </button>
+            {comparison.analysis1.skinType !== comparison.analysis2.skinType && (
+              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 12, background: "var(--bg)", fontSize: 12, color: "var(--text-secondary)", textAlign: "center" }}>
+                Тип кожи изменился с &laquo;{comparison.analysis1.skinType}&raquo; на &laquo;{comparison.analysis2.skinType}&raquo;
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

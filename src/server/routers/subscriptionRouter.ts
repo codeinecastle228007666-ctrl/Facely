@@ -47,4 +47,40 @@ export const subscriptionRouter = router({
     if (!user) throw new Error("User not found");
     return subscriptionService.purchaseSubscription(user.id);
   }),
+
+  createStarsInvoice: protectedProcedure
+    .input(
+      z.object({
+        quantity: z.number().min(1).max(100).default(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await prisma.user.findUnique({
+        where: { telegramId: ctx.telegramId },
+      });
+      if (!user) throw new Error("User not found");
+      return subscriptionService.createStarsInvoice(user.id, input.quantity);
+    }),
+
+  confirmStarsPayment: protectedProcedure
+    .input(
+      z.object({
+        payload: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx }) => {
+      const user = await prisma.user.findUnique({
+        where: { telegramId: ctx.telegramId },
+      });
+      if (!user) throw new Error("User not found");
+      return subscriptionService.confirmStarsPayment(user.id);
+    }),
+
+  createChatStarsInvoice: protectedProcedure.mutation(async ({ ctx }) => {
+    const user = await prisma.user.findUnique({
+      where: { telegramId: ctx.telegramId },
+    });
+    if (!user) throw new Error("User not found");
+    return subscriptionService.createChatStarsInvoice(user.id);
+  }),
 });

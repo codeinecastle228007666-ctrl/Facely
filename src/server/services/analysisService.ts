@@ -116,6 +116,7 @@ export const analysisService = {
         select: {
           id: true,
           photoUrl: true,
+          photoBase64: true,
           skinType: true,
           result: true,
           isFree: true,

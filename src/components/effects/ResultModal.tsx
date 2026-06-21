@@ -22,6 +22,19 @@ const MOOD_COLORS: Record<string, string> = {
   тревожный: "#E8A0B4",
 };
 
+const MOOD_DESC: Record<string, string> = {
+  позитивный: "Состояние кожи в норме",
+  нейтральный: "Есть незначительные проблемы",
+  тревожный: "Требуется внимание к коже",
+};
+
+const SKIN_TYPE_DESC: Record<string, string> = {
+  сухая: "Коже не хватает влаги, возможны шелушения и стянутость. Требуется интенсивное увлажнение и питание.",
+  жирная: "Повышенная активность сальных желёз. Рекомендуется матирующий уход и контроль себума.",
+  комбинированная: "Жирная Т-зона (лоб, нос, подбородок) и сухие щёки. Нужен сбалансированный уход для разных зон.",
+  нормальная: "Сбалансированное состояние кожи. Достаточно поддерживающего ухода и защиты.",
+};
+
 export const ResultModal: React.FC<ResultModalProps> = ({
   open,
   onClose,
@@ -32,6 +45,10 @@ export const ResultModal: React.FC<ResultModalProps> = ({
   streak,
 }) => {
   if (!result) return null;
+
+  const problems = result.problems || [];
+  const recommendations = result.recommendations || [];
+  const productLinks = result.product_links || [];
 
   return (
     <AnimatePresence>
@@ -101,55 +118,67 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </div>
             </div>
 
-            {result.problems.length > 0 && (
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 14,
+                background: "var(--bg)",
+                fontSize: 13,
+                lineHeight: 1.6,
+                color: "var(--text-secondary)",
+                marginBottom: 16,
+              }}
+            >
+              {SKIN_TYPE_DESC[result.skin_type] || `Тип кожи: ${result.skin_type}`}
+              <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>
+                {MOOD_DESC[result.mood] || ""}
+              </div>
+            </div>
+
+            {problems.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-                  Выявленные проблемы
+                  Проблемы ({problems.length})
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  {result.problems.map((p, i) => (
-                    <span
+                <div className="flex flex-col gap-2">
+                  {problems.map((p, i) => (
+                    <div
                       key={i}
                       style={{
-                        padding: "6px 14px",
-                        borderRadius: 20,
-                        background: "rgba(232, 160, 180, 0.1)",
-                        fontSize: 12,
-                        color: "var(--primary-dark)",
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        background: "rgba(232, 160, 180, 0.08)",
+                        fontSize: 13,
+                        color: "var(--text)",
                       }}
                     >
-                      {p}
-                    </span>
+                      <div style={{ fontWeight: 500, marginBottom: 2 }}>{p}</div>
+                      {recommendations[i] && (
+                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                          {recommendations[i]}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
             )}
 
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-                Рекомендации
+            {problems.length === 0 && (
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: 14,
+                  background: "rgba(168, 216, 234, 0.1)",
+                  fontSize: 13,
+                  color: "#7EC4D8",
+                  marginBottom: 16,
+                  textAlign: "center",
+                }}
+              >
+                Значимых проблем не выявлено. Продолжайте поддерживающий уход.
               </div>
-              {result.recommendations.map((r, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2"
-                  style={{ marginBottom: 6 }}
-                >
-                  <div
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
-                      background: "var(--primary)",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                    {r}
-                  </span>
-                </div>
-              ))}
-            </div>
+            )}
 
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
@@ -170,13 +199,13 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </div>
             </div>
 
-            {result.product_links && result.product_links.length > 0 && (
+            {productLinks.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                   Рекомендуемые продукты
                 </div>
                 <div className="flex flex-col gap-2">
-                  {result.product_links.map((p, i) => (
+                  {productLinks.map((p, i) => (
                     <a
                       key={i}
                       href={p.url}

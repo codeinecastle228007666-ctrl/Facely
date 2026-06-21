@@ -271,7 +271,14 @@ export async function analyzeSkinWithFacePlus(
   console.log(`[Face++] Full response:`, JSON.stringify(data));
 
   if (data.error_message) {
-    throw new Error(`Face++: ${data.error_message}`);
+    const knownErrors: Record<string, string> = {
+      "FACE_NO_FACE": "На фото не обнаружено лицо. Сделайте снимок анфас при хорошем освещении.",
+      "INVALID_IMAGE_SIZE": "Фото слишком большое. Сделайте новый снимок.",
+      "INVALID_IMAGE_FORMAT": "Неподдерживаемый формат фото. Используйте JPEG или PNG.",
+      "IMAGE_SIZE_TOO_SMALL": "Фото слишком маленькое. Сделайте снимк крупнее.",
+    };
+    const userMessage = knownErrors[data.error_message] || `Ошибка анализа: ${data.error_message}. Попробуйте другое фото.`;
+    throw new Error(userMessage);
   }
 
   if (!data.result) {

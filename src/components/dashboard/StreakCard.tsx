@@ -70,15 +70,15 @@ export const StreakCard: React.FC<StreakCardProps> = ({ streak, maxStreak, nextA
             {streak > 0 ? (
               <>Вы на пути {streak} дней подряд!</>
             ) : (
-              <>Начните свой ритуал ухода</>
+              <>Регулярность — ключ к здоровой коже</>
             )}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
-            {streak > 0 && nearestMilestone
+            {streak === 0
+              ? "Делайте анализы регулярно для отслеживания прогресса"
+              : nearestMilestone
               ? `До цели "${nearestMilestone.label}": ${nearestMilestone.days - streak} дней`
-              : streak > 0
-              ? "Цель достигнута!"
-              : "Сделайте первый анализ"}
+              : "Цель достигнута!"}
           </div>
           {countdown && (
             <div style={{ fontSize: 11, color: "var(--primary-dark)", marginTop: 2 }}>

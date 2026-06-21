@@ -3,6 +3,8 @@ import { XP_PER_PURCHASE, calculateLevel } from "../utils/levelSystem";
 
 const SUBSCRIPTION_PRICE = 500;
 const SUBSCRIPTION_DAYS = 30;
+const STARS_PRICE_PER_ANALYSIS = 50;
+const BOT_TOKEN = process.env.BOT_TOKEN || "";
 
 export const subscriptionService = {
   async getStatus(userId: string) {
@@ -97,6 +99,72 @@ export const subscriptionService = {
     });
 
     return { quantity, xpGained: xpGain, totalXp: newXp, level: newLevel };
+  },
+
+  async createStarsInvoice(userId: string, quantity: number) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error("User not found");
+
+    const totalStars = STARS_PRICE_PER_ANALYSIS * quantity;
+
+    const res = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `${quantity} анализ кожи`,
+          description: `AI-анализ кожи в Facely — ${quantity} шт.`,
+          payload: `analysis_${quantity}_${user.id}`,
+          provider_token: "",
+          currency: "XTR",
+          prices: [{ label: `${quantity} анализ(ов)`, amount: totalStars }],
+        }),
+      },
+    );
+
+    const data = await res.json();
+    if (!data.ok) {
+      throw new Error(data.description || "Ошибка создания счёта");
+    }
+
+    return { url: data.result };
+  },
+
+  async confirmStarsPayment(userId: string) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { paidAnalyses: { increment: 1 } },
+    });
+    return { success: true };
+  },
+
+  async createChatStarsInvoice(userId: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error("User not found");
+
+    const res = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "10 вопросов косметологу",
+          description: "Пакет из 10 вопросов AI-косметологу в Facely",
+          payload: `chat_10_${user.id}`,
+          provider_token: "",
+          currency: "XTR",
+          prices: [{ label: "10 вопросов", amount: 10 }],
+        }),
+      },
+    );
+
+    const data = await res.json();
+    if (!data.ok) {
+      throw new Error(data.description || "Ошибка создания счёта");
+    }
+
+    return { url: data.result };
   },
 
   async purchaseSubscription(userId: string) {

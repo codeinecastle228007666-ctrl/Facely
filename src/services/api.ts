@@ -102,6 +102,12 @@ export const api = {
       mutation<PurchaseResult>("subscription.purchaseAnalysis", data),
     purchaseSubscription: () =>
       mutation<PurchaseResult>("subscription.purchaseSubscription"),
+    createStarsInvoice: (data: { quantity: number }) =>
+      mutation<{ url: string }>("subscription.createStarsInvoice", data),
+    confirmStarsPayment: (data: { payload: string }) =>
+      mutation<{ success: boolean }>("subscription.confirmStarsPayment", data),
+    createChatStarsInvoice: () =>
+      mutation<{ url: string }>("subscription.createChatStarsInvoice"),
   },
   referral: {
     claimBonus: () => mutation<boolean>("referral.claimBonus"),
