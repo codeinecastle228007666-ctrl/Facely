@@ -1,89 +1,89 @@
-# Facely — AI Skin Analysis Telegram Mini App
+# Facely — AI-анализ кожи в Telegram
 
-Facely is a Telegram Mini App for AI-powered skin analysis, personalized care routines, and gamified skincare tracking. Built with Next.js, tRPC, Prisma, and Supabase PostgreSQL.
+Facely — это Telegram Mini App для AI-анализа кожи, персональных рекомендаций по уходу и геймифицированного трекинга. Работает на Next.js, tRPC, Prisma и Supabase PostgreSQL.
 
-## Features
+## Возможности
 
-- **AI Skin Analysis** — Upload a photo, get AI analysis via Face++ API (skin type, problems, recommendations, daily routine, product picks)
-- **50-Level Gamification** — Earn XP for analyses, streaks, referrals, and purchases. Unlock frame/badge perks per tier
-- **Weekly Streak System** — 7-day window with 3-day grace period. Reset after 10+ days of inactivity
-- **Referral Program** — Share your link, both you (+2 analyses, +20 XP) and your friend (+1 analysis, +10 XP) get bonuses
-- **AI Cosmetologist Chat** — Ask skincare questions via DeepSeek API (3 free questions, paid after)
-- **Before/After Comparison** — Compare two analyses side by side
-- **Leaderboard** — Top referrers, streaks, and levels
-- **Achievements** — 9 achievements with automatic unlock checks
-- **Purchase Modal** — 1 analysis (100₽), 5 analyses (400₽), subscription (500₽/month)
-- **Push Reminders** — Telegram Bot API reminders every 6 hours (streak expiring, time for analysis, Monday product picks)
+- **AI-анализ кожи** — загрузите фото, получите анализ через Face++ API (тип кожи, проблемы, рекомендации, ежедневная рутина, подбор продуктов)
+- **50 уровней** — зарабатывайте XP за анализы, стрики, рефералов и покупки. Каждый тир открывает новые рамки и бейджи
+- **Еженедельный стрик** — окно 7 дней, льготный период 3 дня. Сброс после 10+ дней без активности
+- **Реферальная программа** — поделитесь ссылкой: вы получаете +2 анализа и +20 XP, друг +1 анализ и +10 XP
+- **Чат с AI-косметологом** — задавайте вопросы по уходу через DeepSeek API (3 бесплатных вопроса, далее платно)
+- **Сравнение «до/после»** — сравните два анализа бок о бок
+- **Таблица лидеров** — топ рефералов, стриков и уровней
+- **Достижения** — 9 достижений с автоматической проверкой
+- **Покупки** — 1 анализ (100₽), 5 анализов (400₽), подписка (500₽/мес)
+- **Push-уведомления** — напоминания каждые 6 часов (стрик скоро сбросится, пора сделать анализ, подборка продуктов в понедельник)
 
-## Stack
+## Стек
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 15 (App Router) |
-| API Layer | tRPC (server/client) |
+| Слой | Технология |
+|------|------------|
+| Фреймворк | Next.js 15 (App Router) |
+| API | tRPC (сервер/клиент) |
 | ORM | Prisma |
-| Database | Supabase PostgreSQL |
-| AI Vision | Face++ Skin Analysis API |
-| AI Chat | DeepSeek API |
-| Animations | Framer Motion |
-| Serialization | Superjson |
-| Deployment | Vercel + Supabase |
+| База данных | Supabase PostgreSQL |
+| AI-зрение | Face++ Skin Analysis API |
+| AI-чат | DeepSeek API |
+| Анимации | Framer Motion |
+| Сериализация | Superjson |
+| Хостинг | Vercel + Supabase |
 
-## Getting Started
+## Быстрый старт
 
-### Prerequisites
+### Требования
 
 - Node.js 18+
-- PostgreSQL (local or Supabase)
-- Face++ API key
-- Telegram Bot token (from BotFather)
-- DeepSeek API key
+- PostgreSQL (локально или Supabase)
+- Ключ Face++ API
+- Токен Telegram-бота (от BotFather)
+- Ключ DeepSeek API
 
-### Setup
+### Установка
 
-1. Clone the repo
-2. Install dependencies:
+1. Клонируйте репозиторий
+2. Установите зависимости:
    ```bash
    npm install
    ```
-3. Copy `.env.example` to `.env` and fill in:
+3. Скопируйте `.env.example` в `.env` и заполните:
    ```
    DATABASE_URL=postgresql://...
-   FACE_PLUS_KEY=your_key
-   FACE_PLUS_SECRET=your_secret
-   BOT_TOKEN=your_bot_token
-   DEEPSEEK_API_KEY=your_key
+   FACE_PLUS_KEY=ваш_ключ
+   FACE_PLUS_SECRET=ваш_секрет
+   BOT_TOKEN=токен_бота
+   DEEPSEEK_API_KEY=ваш_ключ
    ```
-4. Apply the database schema:
+4. Примените схему базы данных:
    ```bash
    npx prisma db push
    npx prisma db seed
    ```
-5. Run the dev server:
+5. Запустите dev-сервер:
    ```bash
    npm run dev
    ```
 
-### Telegram Mini App Setup
+### Настройка Telegram Mini App
 
-1. Create a bot via [@BotFather](https://t.me/BotFather)
-2. Set the Mini App URL to your Vercel deployment
-3. Set the bot webhook to `https://your-app.vercel.app/api/webhook`
+1. Создайте бота через [@BotFather](https://t.me/BotFather)
+2. Укажите URL Mini App — ссылку на ваш Vercel-деплой
+3. Установите webhook бота на `https://ваш-сайт.vercel.app/api/webhook`
 
-## Project Structure
+## Структура проекта
 
 ```
 src/
-├── app/                    # Next.js App Router pages
-│   ├── page.tsx            # Dashboard (main)
-│   ├── chat/               # AI cosmetologist chat
-│   ├── compare/            # Before/after comparison
-│   ├── history/            # Analysis history
-│   ├── leaderboard/        # Rankings
-│   ├── referral/           # Referral program
-│   └── report/             # Weekly report
+├── app/                    # Страницы Next.js App Router
+│   ├── page.tsx            # Главная (дашборд)
+│   ├── chat/               # Чат с AI-косметологом
+│   ├── compare/            # Сравнение до/после
+│   ├── history/            # История анализов
+│   ├── leaderboard/        # Таблица лидеров
+│   ├── referral/           # Реферальная программа
+│   └── report/             # Еженедельный отчёт
 ├── components/
-│   ├── dashboard/          # UserProfile, BalanceCard, StreakCard, etc.
+│   ├── dashboard/          # UserProfile, BalanceCard, StreakCard и др.
 │   ├── effects/            # ResultModal, ConfettiEffect
 │   ├── history/            # AnalysisCard
 │   ├── purchase/           # PurchaseModal
@@ -91,31 +91,31 @@ src/
 │   └── ui/                 # TabBar, Icons, ProgressBar
 ├── hooks/                  # useUser, useTelegram
 ├── server/
-│   ├── routers/            # tRPC routers (auth, analysis, ritual, etc.)
-│   ├── services/           # Business logic (auth, analysis, referral, etc.)
-│   ├── scheduler/          # Push notification cron
-│   ├── utils/              # Level system, helpers
-│   └── trpc.ts             # tRPC setup
-└── services/               # Client API wrapper (api.ts)
+│   ├── routers/            # tRPC-роутеры (auth, analysis, ritual и др.)
+│   ├── services/           # Бизнес-логика (auth, analysis, referral и др.)
+│   ├── scheduler/          # Cron push-уведомлений
+│   ├── utils/              # Система уровней, хелперы
+│   └── trpc.ts             # Настройка tRPC
+└── services/               # Клиентская обёртка API (api.ts)
 ```
 
-## Environment Variables
+## Переменные окружения
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | Supabase PostgreSQL connection string |
-| `FACE_PLUS_KEY` | Face++ API key |
-| `FACE_PLUS_SECRET` | Face++ API secret |
-| `BOT_TOKEN` | Telegram Bot token |
-| `DEEPSEEK_API_KEY` | DeepSeek API key |
-| `DEEPSEEK_BASE_URL` | DeepSeek API base URL |
+| Переменная | Описание |
+|------------|----------|
+| `DATABASE_URL` | Строка подключения к Supabase PostgreSQL |
+| `FACE_PLUS_KEY` | Ключ Face++ API |
+| `FACE_PLUS_SECRET` | Секрет Face++ API |
+| `BOT_TOKEN` | Токен Telegram-бота |
+| `DEEPSEEK_API_KEY` | Ключ DeepSeek API |
+| `DEEPSEEK_BASE_URL` | Базовый URL DeepSeek API |
 
-## Deployment
+## Деплой
 
-- Frontend: Vercel (auto-deploys from `main` branch)
-- Database: Supabase PostgreSQL (Session Pooler)
-- Bot: Telegram Bot API (webhook)
+- Фронтенд: Vercel (авто-деплой из ветки `main`)
+- База данных: Supabase PostgreSQL (Session Pooler)
+- Бот: Telegram Bot API (webhook)
 
-## License
+## Лицензия
 
 MIT
