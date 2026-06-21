@@ -1,7 +1,7 @@
 import { prisma } from "../db";
 
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
-const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1";
+const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.DEEPSEEK_API_KEY || "";
+const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
 
 export const chatService = {
   async getMessages(telegramId: string) {
@@ -76,14 +76,14 @@ ${skinPassport}
 
     let aiResponse = "";
     try {
-      const res = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+      const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+          Authorization: `Bearer ${GROQ_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "deepseek-chat",
+          model: "llama-3.3-70b-versatile",
           messages,
           max_tokens: 1000,
           temperature: 0.7,
@@ -91,13 +91,14 @@ ${skinPassport}
       });
 
       if (!res.ok) {
-        throw new Error(`DeepSeek API error: ${res.status}`);
+        const body = await res.text();
+        throw new Error(`Groq API error: ${res.status} - ${body}`);
       }
 
       const data = await res.json();
       aiResponse = data.choices?.[0]?.message?.content || "Извините, не удалось получить ответ.";
     } catch (e: any) {
-      console.error("[ChatService] DeepSeek error:", e.message);
+      console.error("[ChatService] Groq error:", e.message, e.stack);
       aiResponse = "Извините, произошла ошибка. Пожалуйста, попробуйте позже.";
     }
 
