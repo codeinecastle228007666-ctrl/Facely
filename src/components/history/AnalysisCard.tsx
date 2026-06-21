@@ -7,9 +7,10 @@ import type { AnalysisHistoryItem } from "@/services/api";
 interface AnalysisCardProps {
   item: AnalysisHistoryItem;
   index: number;
+  onClick?: () => void;
 }
 
-export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index }) => {
+export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index, onClick }) => {
   const problems = (item.result as any)?.problems || [];
 
   return (
@@ -19,6 +20,7 @@ export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index }) => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index * 0.05 }}
       whileHover={{ scale: 1.01 }}
+      onClick={onClick}
       style={{ marginBottom: 10, cursor: "pointer" }}
     >
       <div

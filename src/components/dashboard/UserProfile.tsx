@@ -119,7 +119,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ name, level, xp, frame
           <div className="flex justify-between text-sm" style={{ marginBottom: 4 }}>
             <span className="text-muted">XP до {Math.min(level + 1, 50)} уровня</span>
             <span style={{ color: "var(--primary-dark)", fontWeight: 600 }}>
-              {xp}/{nextLevelXp}
+              {xpInLevel}/{xpNeeded}
             </span>
           </div>
           <ProgressBar value={progress} color={FRAME_COLORS[frame] || "var(--primary)"} height={6} />

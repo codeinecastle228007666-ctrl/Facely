@@ -4,7 +4,7 @@ export const XP_PER_REFERRAL = 20;
 export const XP_PER_PURCHASE = 15;
 
 export function getXpForLevel(level: number): number {
-  return level * level * 10;
+  return (level - 1) * (level - 1) * 10;
 }
 
 export function calculateLevel(xp: number): number {

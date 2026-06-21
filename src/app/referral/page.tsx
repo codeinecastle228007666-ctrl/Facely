@@ -9,9 +9,10 @@ import { api, type ReferralStatsResult } from "@/services/api";
 import { motion } from "framer-motion";
 
 export default function ReferralPage() {
-  const { impact, share } = useTelegram();
+  const { user: tgUser, impact } = useTelegram();
   const [stats, setStats] = useState<ReferralStatsResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     api.referral.getReferralStats()
@@ -23,8 +24,17 @@ export default function ReferralPage() {
   const handleShare = () => {
     impact("light");
     const botUsername = "skin_ritual_bot";
-    const refLink = `https://t.me/${botUsername}?start=ref_123`;
-    share(`\u{1F31F} \u041F\u0440\u0438\u0441\u043E\u0435\u0434\u0438\u043D\u044F\u0439\u0441\u044F \u043A Facely — AI-\u0430\u043D\u0430\u043B\u0438\u0437 \u043A\u043E\u0436\u0438 \u0438 \u043F\u0435\u0440\u0441\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u0439 \u0443\u0445\u043E\u0434!\n${refLink}`);
+    const refCode = tgUser?.id || localStorage.getItem("__tid") || "";
+    const refLink = `https://t.me/${botUsername}?start=${refCode}`;
+    const text = `✨ Присоединяйся к Facely — AI-анализ кожи и персональный уход!\n${refLink}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    } else {
+      prompt("Скопируйте ссылку:", text);
+    }
   };
 
   return (
@@ -63,11 +73,36 @@ export default function ReferralPage() {
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         ) : (
-          <ReferralStats
-            invitedCount={stats?.count || 0}
-            bonusAnalyses={stats?.bonusEarned || 0}
-            onShare={handleShare}
-          />
+          <>
+            <ReferralStats
+              invitedCount={stats?.count || 0}
+              bonusAnalyses={stats?.bonusEarned || 0}
+              onShare={handleShare}
+            />
+            {copied && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                style={{
+                  position: "fixed",
+                  bottom: 100,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  background: "var(--primary-dark)",
+                  color: "white",
+                  padding: "12px 24px",
+                  borderRadius: 16,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  zIndex: 200,
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+                }}
+              >
+                Ссылка скопирована!
+              </motion.div>
+            )}
+          </>
         )}
       </div>
 
