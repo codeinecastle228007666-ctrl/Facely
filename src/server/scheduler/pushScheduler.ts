@@ -24,9 +24,9 @@ async function checkInactiveUsers() {
     await pushService.sendInactivityReminder(user.telegramId);
   }
 
-  console.log(
-    `[Scheduler] Sent inactivity reminders to ${inactiveUsers.length} users`,
-  );
+  if (inactiveUsers.length > 0) {
+    console.log(`[Scheduler] Sent inactivity reminders to ${inactiveUsers.length} users`);
+  }
 }
 
 async function checkSubscriptionOffer() {
@@ -139,16 +139,87 @@ async function checkWeeklyReports() {
       if (report) {
         await pushService.send(
           user.telegramId,
-          "📊 Еженедельный отчёт",
-          `Твой прогресс кожи готов! Загляни в раздел отчётов.`,
+          "\u{1F4CA} \u0415\u0436\u0435\u043D\u0435\u0434\u0435\u043B\u044C\u043D\u044B\u0439 \u043E\u0442\u0447\u0451\u0442",
+          `\u0422\u0432\u043E\u0439 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u043A\u043E\u0436\u0438 \u0433\u043E\u0442\u043E\u0432! \u0417\u0430\u0433\u043B\u044F\u043D\u0438 \u0432 \u0440\u0430\u0437\u0434\u0435\u043B \u043E\u0442\u0447\u0451\u0442\u043E\u0432.`,
         );
       }
     }
   }
 
-  console.log(
-    `[Scheduler] Weekly reports checked for ${subscribers.length} subscribers`,
-  );
+  console.log(`[Scheduler] Weekly reports checked for ${subscribers.length} subscribers`);
+}
+
+async function checkStreakExpiring() {
+  const now = new Date();
+  const in5Days = new Date(now.getTime() + 5 * 86400000);
+
+  const users = await prisma.ritual.findMany({
+    where: {
+      nextAnalysisDate: {
+        not: null,
+        lte: in5Days,
+        gte: now,
+      },
+      weeklyStreak: { gt: 0 },
+    },
+    include: { user: { select: { telegramId: true } } },
+  });
+
+  for (const ritual of users) {
+    if (!ritual.nextAnalysisDate) continue;
+    const diffDays = Math.ceil((ritual.nextAnalysisDate.getTime() - now.getTime()) / 86400000);
+    if (diffDays <= 2) {
+      await pushService.sendStreakExpiring(ritual.user.telegramId, diffDays);
+      console.log(`[Scheduler] Streak expiring for user ${ritual.userId}: ${diffDays} days`);
+    }
+  }
+}
+
+async function checkTimeForAnalysis() {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const users = await prisma.user.findMany({
+    where: {
+      analyses: {
+        none: {
+          createdAt: { gte: sevenDaysAgo },
+        },
+      },
+      OR: [
+        { freeAnalyses: { gt: 0 } },
+        { paidAnalyses: { gt: 0 } },
+        {
+          subscription: {
+            status: "active",
+            endDate: { gt: new Date() },
+          },
+        },
+      ],
+    },
+    select: { telegramId: true },
+  });
+
+  for (const user of users) {
+    await pushService.sendTimeForAnalysis(user.telegramId);
+  }
+
+  console.log(`[Scheduler] Sent time-for-analysis to ${users.length} users`);
+}
+
+async function checkWeeklyProductPick() {
+  const now = new Date();
+  if (now.getDay() !== 1) return;
+
+  const users = await prisma.user.findMany({
+    select: { telegramId: true },
+  });
+
+  for (const user of users) {
+    await pushService.sendWeeklyProductPick(user.telegramId);
+  }
+
+  console.log(`[Scheduler] Sent weekly product picks to ${users.length} users`);
 }
 
 export function startScheduler() {
@@ -164,6 +235,17 @@ export function startScheduler() {
 
   cron.schedule("0 10 * * 1", () => {
     checkWeeklyReports().catch(console.error);
+  });
+
+  cron.schedule("0 */6 * * *", async () => {
+    await Promise.all([
+      checkStreakExpiring().catch(console.error),
+      checkTimeForAnalysis().catch(console.error),
+    ]);
+  });
+
+  cron.schedule("0 9 * * 1", () => {
+    checkWeeklyProductPick().catch(console.error);
   });
 
   console.log("[Scheduler] Push notification scheduler started");

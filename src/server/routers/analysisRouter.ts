@@ -11,11 +11,19 @@ export const analysisRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      return analysisService.analyze(
-        ctx.telegramId,
-        input.photoBase64,
-        input.description,
-      );
+      try {
+        return await analysisService.analyze(
+          ctx.telegramId,
+          input.photoBase64,
+          input.description,
+        );
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "unknown";
+        if (message === "no_analyses_left" || message === "no_free_analyses") {
+          throw new Error(message);
+        }
+        throw e;
+      }
     }),
 
   history: protectedProcedure
@@ -27,5 +35,16 @@ export const analysisRouter = router({
     )
     .query(async ({ ctx, input }) => {
       return analysisService.getHistory(ctx.telegramId, input.limit, input.offset);
+    }),
+
+  getComparison: protectedProcedure
+    .input(
+      z.object({
+        analysis1Id: z.string(),
+        analysis2Id: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      return analysisService.getComparison(ctx.telegramId, input.analysis1Id, input.analysis2Id);
     }),
 });

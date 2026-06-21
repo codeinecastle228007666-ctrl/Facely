@@ -3,7 +3,7 @@
 import React from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { HistoryIcon, ChartIcon, ShareIcon, StarIcon } from "./Icons";
+import { HistoryIcon, ShareIcon, StarIcon } from "./Icons";
 
 interface Tab {
   key: string;
@@ -12,10 +12,33 @@ interface Tab {
   icon: React.ReactNode;
 }
 
+const HomeIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <path d="M3 12l9-9 9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M5 10v9a1 1 0 001 1h3v-5a1 1 0 011-1h4a1 1 0 011 1v5h3a1 1 0 001-1v-9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const ChatIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <path d="M21 12a9 9 0 11-9-9 9 9 0 019 9z" stroke="currentColor" strokeWidth="1.5"/>
+    <path d="M8 10h8M8 14h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+);
+
+const LeaderboardIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <path d="M6 9l3-3 3 3 3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M4 21h16M6 21V12M12 21V12M18 21V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M4 21h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+);
+
 const TABS: Tab[] = [
-  { key: "home", label: "Главная", path: "/", icon: <StarIcon size={22} /> },
+  { key: "home", label: "Главная", path: "/", icon: <HomeIcon size={22} /> },
   { key: "history", label: "История", path: "/history", icon: <HistoryIcon size={22} /> },
-  { key: "report", label: "Отчёт", path: "/report", icon: <ChartIcon size={22} /> },
+  { key: "chat", label: "Чат", path: "/chat", icon: <ChatIcon size={22} /> },
+  { key: "leaderboard", label: "Топ", path: "/leaderboard", icon: <LeaderboardIcon size={22} /> },
   { key: "referral", label: "Друзья", path: "/referral", icon: <ShareIcon size={22} /> },
 ];
 
@@ -35,7 +58,7 @@ export const TabBar: React.FC = () => {
         background: "white",
         borderRadius: "20px 20px 0 0",
         boxShadow: "0 -4px 24px rgba(200, 140, 150, 0.1)",
-        padding: "8px 12px",
+        padding: "8px 8px",
         paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))",
         zIndex: 50,
         display: "flex",
@@ -54,21 +77,21 @@ export const TabBar: React.FC = () => {
               flexDirection: "column",
               alignItems: "center",
               gap: 2,
-              padding: "6px 12px",
+              padding: "6px 10px",
               borderRadius: 12,
               background: "transparent",
               border: "none",
               cursor: "pointer",
               position: "relative",
-              minWidth: 64,
+              minWidth: 52,
             }}
           >
-            <div style={{ opacity: active ? 1 : 0.45, transition: "opacity 0.2s" }}>
+            <div style={{ opacity: active ? 1 : 0.45, color: active ? "var(--primary-dark)" : "var(--text-muted)", transition: "opacity 0.2s" }}>
               {tab.icon}
             </div>
             <span
               style={{
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: active ? 600 : 400,
                 color: active ? "var(--primary-dark)" : "var(--text-muted)",
               }}

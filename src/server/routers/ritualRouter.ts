@@ -10,4 +10,12 @@ export const ritualRouter = router({
     if (!user) throw new Error("User not found");
     return ritualService.getStreak(user.id);
   }),
+
+  getWeeklyStreak: protectedProcedure.query(async ({ ctx }) => {
+    const user = await prisma.user.findUnique({
+      where: { telegramId: ctx.telegramId },
+    });
+    if (!user) throw new Error("User not found");
+    return ritualService.getWeeklyStreak(user.id);
+  }),
 });

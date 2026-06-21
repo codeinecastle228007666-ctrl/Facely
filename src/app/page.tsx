@@ -9,9 +9,11 @@ import { StreakCard } from "@/components/dashboard/StreakCard";
 import { AnalysisInput } from "@/components/dashboard/AnalysisInput";
 import { ResultModal } from "@/components/effects/ResultModal";
 import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
+import { PurchaseModal } from "@/components/purchase/PurchaseModal";
 import { useUser } from "@/hooks/useUser";
 import { useTelegram } from "@/hooks/useTelegram";
 import { api, type AnalysisResult } from "@/services/api";
+import { getLevelPerks } from "@/server/utils/levelSystem";
 
 export default function Dashboard() {
   const { user, loading, refetch } = useUser();
@@ -25,6 +27,14 @@ export default function Dashboard() {
   const [newLevel, setNewLevel] = useState(0);
   const [streak, setStreak] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+
+  const level = user?.level || 1;
+  const perks = getLevelPerks(level);
+  const freeAnalyses = user?.freeAnalyses ?? 0;
+  const paidAnalyses = user?.paidAnalyses ?? 0;
+  const hasSub = user?.subscription?.status === "active";
+  const canAnalyze = freeAnalyses > 0 || paidAnalyses > 0 || hasSub;
 
   const handleSubmit = useCallback(
     async (photoBase64: string, description?: string) => {
@@ -40,19 +50,24 @@ export default function Dashboard() {
         notify("success");
         refetch();
 
-        if (res.level > (user?.level || 1)) {
+        if (res.level > level) {
           setNewLevel(res.level);
           setShowConfetti(true);
           setTimeout(() => setShowConfetti(false), 2500);
         }
       } catch (e) {
-        notify("error");
-        alert(e instanceof Error ? e.message : "Ошибка анализа");
+        const msg = e instanceof Error ? e.message : "";
+        if (msg === "no_analyses_left" || msg === "no_free_analyses") {
+          setPurchaseOpen(true);
+        } else {
+          notify("error");
+          alert(msg || "Ошибка анализа");
+        }
       } finally {
         setAnalyzing(false);
       }
     },
-    [user, refetch, notify],
+    [user, refetch, notify, level],
   );
 
   if (loading) {
@@ -74,21 +89,48 @@ export default function Dashboard() {
       <div style={{ paddingTop: 8 }}>
         <UserProfile
           name={user?.name || null}
-          level={user?.level || 1}
+          level={level}
           xp={user?.xp || 0}
+          frame={perks.frame}
+          badge={perks.badge}
+          referralCount={user?.referralCount ?? 0}
         />
         <BalanceCard
-          freeAnalyses={user?.freeAnalyses ?? 0}
-          paidAnalyses={user?.paidAnalyses ?? 0}
-          subscriptionActive={user?.subscription?.status === "active"}
+          freeAnalyses={freeAnalyses}
+          paidAnalyses={paidAnalyses}
+          subscriptionActive={hasSub}
         />
-        <AnalysisButton
-          onPress={() => setInputOpen(true)}
-          disabled={user?.freeAnalyses === 0 && user?.paidAnalyses === 0 && user?.subscription?.status !== "active"}
-        />
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <div style={{ flex: 1 }}>
+            <AnalysisButton
+              onPress={() => setInputOpen(true)}
+              disabled={!canAnalyze}
+              label={canAnalyze ? "Сделать анализ кожи" : "Нет анализов"}
+            />
+          </div>
+          {!canAnalyze && (
+            <button
+              onClick={() => setPurchaseOpen(true)}
+              style={{
+                padding: "18px 16px",
+                borderRadius: 24,
+                background: "var(--secondary)",
+                color: "white",
+                fontSize: 14,
+                fontWeight: 600,
+                border: "none",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Купить
+            </button>
+          )}
+        </div>
         <StreakCard
           streak={user?.rituals?.streak || 0}
           maxStreak={user?.rituals?.maxStreak || 0}
+          nextAnalysisDate={user?.rituals?.nextAnalysisDate || null}
         />
       </div>
 
@@ -107,6 +149,12 @@ export default function Dashboard() {
         totalXp={totalXp}
         level={newLevel || undefined}
         streak={streak}
+      />
+
+      <PurchaseModal
+        open={purchaseOpen}
+        onClose={() => setPurchaseOpen(false)}
+        onSuccess={refetch}
       />
 
       <TabBar />

@@ -13,19 +13,23 @@ model User {
   name                     String?
   level                    Int      @default(1)
   xp                       Int      @default(0)
-  subscriptionEnd          DateTime?
   freeAnalyses             Int      @default(3)
   paidAnalyses             Int      @default(0)
+  freeChatQuestions        Int      @default(3)
+  referralCount            Int      @default(0)
+  subscriptionEnd          DateTime?
   lastSubscriptionOfferSent DateTime?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
-  analyses       SkinAnalysis[]
-  subscription   Subscription?
-  rituals        Ritual[]
-  reports        Report[]
-  referralsGiven Referral[]   @relation("Referrer")
-  referralsUsed  Referral[]   @relation("Referee")
+  analyses        SkinAnalysis[]
+  subscription    Subscription?
+  rituals         Ritual[]
+  reports         Report[]
+  referralsGiven  Referral[]        @relation("Referrer")
+  referralsUsed   Referral[]        @relation("Referee")
+  chatMessages    ChatMessage[]
+  userAchievements UserAchievement[]
 }
 
 model SkinAnalysis {
@@ -59,11 +63,13 @@ model Subscription {
 }
 
 model Ritual {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  lastDate  DateTime @default(now())
-  streak    Int      @default(0)
-  maxStreak Int      @default(0)
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  lastDate         DateTime  @default(now())
+  streak           Int       @default(0)
+  maxStreak        Int       @default(0)
+  nextAnalysisDate DateTime?
+  weeklyStreak     Int       @default(0)
 
   user User @relation(fields: [userId], references: [id])
 
@@ -94,4 +100,41 @@ model Referral {
   referee  User @relation("Referee", fields: [refereeId], references: [id])
 
   @@index([referrerId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String   @default("user")
+  content   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Achievement {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  title       String
+  description String
+  icon        String
+  xpReward    Int      @default(0)
+
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id])
+  achievement Achievement @relation(fields: [achievementId], references: [id])
+
+  @@unique([userId, achievementId])
+  @@index([userId])
 }

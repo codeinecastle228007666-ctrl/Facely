@@ -79,21 +79,43 @@ export const api = {
       mutation<AnalyzeResponse>("analysis.analyze", data),
     history: (data?: { limit?: number; offset?: number }) =>
       query<{ analyses: AnalysisHistoryItem[]; total: number }>("analysis.history", data),
+    getComparison: (data: { analysis1Id: string; analysis2Id: string }) =>
+      query<ComparisonResult>("analysis.getComparison", data),
   },
   ritual: {
     getStreak: () =>
       query<{ streak: number; maxStreak: number; lastDate: string | null }>("ritual.getStreak"),
+    getWeeklyStreak: () =>
+      query<WeeklyStreakResult>("ritual.getWeeklyStreak"),
   },
   subscription: {
     status: () => query<SubscriptionStatus>("subscription.status"),
     activate: (data: { type: "trial" | "paid" }) =>
       mutation<unknown>("subscription.activate", data),
+    purchaseAnalysis: (data: { quantity: number }) =>
+      mutation<PurchaseResult>("subscription.purchaseAnalysis", data),
+    purchaseSubscription: () =>
+      mutation<PurchaseResult>("subscription.purchaseSubscription"),
   },
   referral: {
     claimBonus: () => mutation<boolean>("referral.claimBonus"),
+    getReferralStats: () => query<ReferralStatsResult>("referral.getReferralStats"),
   },
   report: {
     list: () => query<ReportItem[]>("report.list"),
+  },
+  chat: {
+    getMessages: () => query<ChatMessageResult[]>("chat.getMessages"),
+    sendMessage: (data: { content: string }) =>
+      mutation<{ response: string; remaining: number }>("chat.sendMessage", data),
+  },
+  achievement: {
+    list: () => query<AchievementListResult>("achievement.list"),
+  },
+  leaderboard: {
+    topReferrers: () => query<LeaderboardEntry[]>("leaderboard.topReferrers"),
+    topStreaks: () => query<LeaderboardEntry[]>("leaderboard.topStreaks"),
+    topLevel: () => query<LeaderboardEntry[]>("leaderboard.topLevel"),
   },
 };
 
@@ -138,6 +160,63 @@ export interface SubscriptionStatus {
   daysLeft: number;
 }
 
+export interface PurchaseResult {
+  quantity?: number;
+  xpGained: number;
+  totalXp: number;
+  level: number;
+}
+
+export interface WeeklyStreakResult {
+  weeklyStreak: number;
+  nextAnalysisDate: string | null;
+  daysUntilNext: number;
+  canAnalyze: boolean;
+}
+
+export interface ComparisonResult {
+  analysis1: { id: string; date: string; result: any; skinType: string | null };
+  analysis2: { id: string; date: string; result: any; skinType: string | null };
+  differences: Record<string, { from: number; to: number; diff: number; improved: boolean }>;
+}
+
+export interface ChatMessageResult {
+  id: string;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface AchievementItem {
+  id: string;
+  key: string;
+  title: string;
+  description: string;
+  icon: string;
+  xpReward: number;
+  unlocked: boolean;
+  unlockedAt: string | null;
+}
+
+export interface AchievementListResult {
+  achievements: AchievementItem[];
+  totalXpFromAchievements: number;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  name: string | null;
+  value: number;
+  rank: number;
+  isMe: boolean;
+}
+
+export interface ReferralStatsResult {
+  count: number;
+  bonusEarned: number;
+  leaderboardPosition: number | null;
+}
+
 export interface ReportItem {
   id: string;
   dynamics: { dynamics: string; summary: string } | null;
@@ -153,8 +232,10 @@ export interface UserProfile {
   xp: number;
   freeAnalyses: number;
   paidAnalyses: number;
+  freeChatQuestions: number;
+  referralCount: number;
   subscriptionEnd: string | null;
   subscription: { status: string; type: string; endDate: string | null } | null;
-  rituals: { streak: number; maxStreak: number } | null;
+  rituals: { streak: number; maxStreak: number; weeklyStreak: number; nextAnalysisDate: string | null } | null;
   _count: { analyses: number };
 }

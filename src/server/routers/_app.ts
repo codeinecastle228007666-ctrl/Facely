@@ -5,6 +5,9 @@ import { ritualRouter } from "./ritualRouter";
 import { subscriptionRouter } from "./subscriptionRouter";
 import { referralRouter } from "./referralRouter";
 import { reportRouter } from "./reportRouter";
+import { chatRouter } from "./chatRouter";
+import { achievementRouter } from "./achievementRouter";
+import { leaderboardRouter } from "./leaderboardRouter";
 
 export const appRouter = router({
   auth: authRouter,
@@ -13,6 +16,9 @@ export const appRouter = router({
   subscription: subscriptionRouter,
   referral: referralRouter,
   report: reportRouter,
+  chat: chatRouter,
+  achievement: achievementRouter,
+  leaderboard: leaderboardRouter,
 });
 
 export type AppRouter = typeof appRouter;

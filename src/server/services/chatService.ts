@@ -1,0 +1,112 @@
+import { prisma } from "../db";
+
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
+const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1";
+
+export const chatService = {
+  async getMessages(telegramId: string) {
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    if (!user) throw new Error("User not found");
+
+    return prisma.chatMessage.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+      take: 50,
+    });
+  },
+
+  async sendMessage(telegramId: string, content: string) {
+    const user = await prisma.user.findUnique({
+      where: { telegramId },
+      include: { subscription: true },
+    });
+    if (!user) throw new Error("User not found");
+
+    const hasSubscription =
+      user.subscription?.status === "active" &&
+      user.subscription.endDate &&
+      user.subscription.endDate > new Date();
+
+    if (user.freeChatQuestions <= 0 && !hasSubscription) {
+      throw new Error("no_chat_questions_left");
+    }
+
+    if (!hasSubscription) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { freeChatQuestions: { decrement: 1 } },
+      });
+    }
+
+    const latestAnalysis = await prisma.skinAnalysis.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      select: { result: true, skinType: true },
+    });
+
+    const skinPassport = latestAnalysis?.result
+      ? JSON.stringify(latestAnalysis.result)
+      : "Нет данных анализа кожи";
+
+    const systemPrompt = `Ты — косметолог-дерматолог в приложении Facely. 
+Твоя задача — отвечать на вопросы пользователя о коже, уходе и косметике.
+
+Информация о коже пользователя (результаты последнего анализа):
+${skinPassport}
+
+Отвечай на русском языке. Будь дружелюбной, профессиональной и давай конкретные советы.
+Если вопрос не касается кожи или косметологии, вежливо возвращай тему к уходу за кожей.`;
+
+    const history = await prisma.chatMessage.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+      take: 20,
+      select: { role: true, content: true },
+    });
+
+    await prisma.chatMessage.create({
+      data: { userId: user.id, role: "user", content },
+    });
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      { role: "user", content },
+    ];
+
+    let aiResponse = "";
+    try {
+      const res = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages,
+          max_tokens: 1000,
+          temperature: 0.7,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`DeepSeek API error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      aiResponse = data.choices?.[0]?.message?.content || "Извините, не удалось получить ответ.";
+    } catch (e: any) {
+      console.error("[ChatService] DeepSeek error:", e.message);
+      aiResponse = "Извините, произошла ошибка. Пожалуйста, попробуйте позже.";
+    }
+
+    await prisma.chatMessage.create({
+      data: { userId: user.id, role: "assistant", content: aiResponse },
+    });
+
+    const remaining = hasSubscription ? 999 : user.freeChatQuestions - 1;
+
+    return { response: aiResponse, remaining: Math.max(0, remaining) };
+  },
+};

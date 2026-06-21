@@ -7,18 +7,20 @@ import { motion } from "framer-motion";
 interface AnalysisButtonProps {
   onPress: () => void;
   disabled?: boolean;
+  label?: string;
 }
 
 export const AnalysisButton: React.FC<AnalysisButtonProps> = ({
   onPress,
   disabled,
+  label = "Сделать анализ кожи",
 }) => {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4, delay: 0.2 }}
-      style={{ marginBottom: 16 }}
+      style={{ marginBottom: 0 }}
     >
       <motion.button
         onClick={onPress}
@@ -55,7 +57,7 @@ export const AnalysisButton: React.FC<AnalysisButtonProps> = ({
         }}
       >
         <CameraIcon size={24} />
-        Сделать анализ кожи
+        {label}
       </motion.button>
     </motion.div>
   );

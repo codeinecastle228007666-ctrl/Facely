@@ -1,23 +1,48 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { StreakIcon } from "@/components/ui/Icons";
 import { motion } from "framer-motion";
 
 interface StreakCardProps {
   streak: number;
   maxStreak: number;
+  nextAnalysisDate?: string | null;
 }
 
-const MILESTONE_EMOJIS: Record<number, string> = {
-  3: "🌟",
-  7: "🔥",
-  14: "💎",
-  30: "👑",
+const MILESTONES: Record<number, string> = {
+  2: "2 дня",
+  4: "4 дня",
+  8: "8 дней",
+  12: "12 дней",
+  24: "24 дня",
 };
 
-export const StreakCard: React.FC<StreakCardProps> = ({ streak, maxStreak }) => {
-  const nearestMilestone = [3, 7, 14, 30].find((m) => streak < m) || 30;
+export const StreakCard: React.FC<StreakCardProps> = ({ streak, maxStreak, nextAnalysisDate }) => {
+  const [countdown, setCountdown] = useState<string>("");
+
+  useEffect(() => {
+    if (!nextAnalysisDate) return;
+    const update = () => {
+      const now = new Date();
+      const target = new Date(nextAnalysisDate);
+      const diff = target.getTime() - now.getTime();
+      if (diff <= 0) {
+        setCountdown("Доступно");
+        return;
+      }
+      const days = Math.floor(diff / 86400000);
+      const hours = Math.floor((diff % 86400000) / 3600000);
+      setCountdown(`${days}д ${hours}ч`);
+    };
+    update();
+    const interval = setInterval(update, 60000);
+    return () => clearInterval(interval);
+  }, [nextAnalysisDate]);
+
+  const nearestMilestone = Object.entries(MILESTONES)
+    .map(([days, label]) => ({ days: parseInt(days), label }))
+    .find((m) => streak < m.days);
 
   return (
     <motion.div
@@ -49,10 +74,17 @@ export const StreakCard: React.FC<StreakCardProps> = ({ streak, maxStreak }) => 
             )}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
-            {streak > 0
-              ? `До следующей цели ${nearestMilestone - streak} дней ${MILESTONE_EMOJIS[nearestMilestone] || ""}`
+            {streak > 0 && nearestMilestone
+              ? `До цели "${nearestMilestone.label}": ${nearestMilestone.days - streak} дней`
+              : streak > 0
+              ? "Цель достигнута!"
               : "Сделайте первый анализ"}
           </div>
+          {countdown && (
+            <div style={{ fontSize: 11, color: "var(--primary-dark)", marginTop: 2 }}>
+              Следующий анализ через: {countdown}
+            </div>
+          )}
         </div>
       </div>
       <div
