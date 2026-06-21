@@ -21,7 +21,18 @@ export function useUser() {
       setUser(data);
       setError(null);
     } catch {
-      const tgUser = getTelegramInfo();
+      // Wait for Telegram WebApp to initialize
+      const waitForTelegram = (): Promise<any> => new Promise((resolve) => {
+        const check = () => {
+          const u = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
+          if (u) resolve(u);
+          else setTimeout(check, 100);
+        };
+        setTimeout(() => resolve(null), 3000);
+        check();
+      });
+
+      const tgUser = getTelegramInfo() || (await waitForTelegram());
       if (tgUser) {
         try {
           const data = await api.auth.register({

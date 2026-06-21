@@ -4,8 +4,14 @@ const BASE = "/api/trpc";
 
 function getTelegramId(): string | undefined {
   if (typeof window === "undefined") return undefined;
+  // Production: Telegram Mini App
   const user = (window as any).Telegram?.WebApp?.initDataUnsafe?.user;
-  return user ? String(user.id) : undefined;
+  if (user) return String(user.id);
+  // Dev fallback: URL param or localStorage
+  const params = new URLSearchParams(window.location.search);
+  const tid = params.get("__tid");
+  if (tid) return tid;
+  return localStorage.getItem("__tid") || undefined;
 }
 
 function headers(): Record<string, string> {
