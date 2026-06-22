@@ -126,7 +126,7 @@ export const api = {
   },
   inventory: {
     list: () => query<InventoryItem[]>("inventory.list"),
-    add: (data: { name?: string; brand?: string; ingredients?: string; source: "manual" | "link" | "photo"; sourceUrl?: string; imageBase64?: string }) =>
+    add: (data: { name?: string; brand?: string; ingredients?: string; source: "manual" | "link" | "photo" | "barcode"; sourceUrl?: string; imageBase64?: string }) =>
       mutation<InventoryItem>("inventory.add", data),
     remove: (data: { id: string }) =>
       mutation<{ success: boolean }>("inventory.remove", data),
