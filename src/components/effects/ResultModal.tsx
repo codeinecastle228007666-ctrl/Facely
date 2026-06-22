@@ -60,6 +60,9 @@ export const ResultModal: React.FC<ResultModalProps> = ({
   totalXp,
   level,
   streak,
+  onCompare,
+  onShare,
+  hasPrevAnalysis,
 }) => {
   if (!result) return null;
 
