@@ -267,9 +267,8 @@ export const inventoryService = {
     let ingredients = input.ingredients || "";
 
     if (input.source === "barcode" && input.sourceUrl) {
-      // Cache: check if another user already added this barcode
       const cached = await prisma.inventoryItem.findFirst({
-        where: { sourceUrl: input.sourceUrl, ingredients: { not: "" } },
+        where: { sourceUrl: input.sourceUrl, name: { not: "Средство" } },
         orderBy: { createdAt: "desc" },
       });
       if (cached) {
@@ -278,11 +277,12 @@ export const inventoryService = {
         ingredients = ingredients || cached.ingredients || "";
       } else {
         const result = await lookupByBarcode(input.sourceUrl);
-        if (result) {
-          name = name || result.name;
-          brand = brand || result.brand;
-          ingredients = ingredients || result.ingredients;
+        if (!result || !result.name) {
+          throw new Error("barcode_not_found");
         }
+        name = name || result.name;
+        brand = brand || result.brand;
+        ingredients = ingredients || result.ingredients || "";
       }
     }
 

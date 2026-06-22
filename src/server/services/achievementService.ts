@@ -15,7 +15,7 @@ export const achievementService = {
     for (const def of ACHIEVEMENT_DEFS) {
       await prisma.achievement.upsert({
         where: { key: def.key },
-        update: {},
+        update: { icon: def.icon, title: def.title, description: def.description, xpReward: def.xpReward },
         create: def,
       });
     }
@@ -71,6 +71,7 @@ export const achievementService = {
   },
 
   async getAchievements(telegramId: string) {
+    await this.ensureDefinitions();
     const user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user) throw new Error("User not found");
 
