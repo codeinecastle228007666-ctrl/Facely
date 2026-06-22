@@ -37,6 +37,7 @@ model SkinAnalysis {
   userId          String
   photoUrl        String?
   photoBase64     String?
+  photoHash       String?
   userDescription String?
   result          Json?
   skinType        String?

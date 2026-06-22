@@ -47,7 +47,11 @@ export default function Dashboard() {
         setStreak(res.streak);
         setResultOpen(true);
         setInputOpen(false);
-        notify("success");
+        if (res.cached) {
+          notify("warning");
+        } else {
+          notify("success");
+        }
         refetch();
 
         if (res.level > level) {

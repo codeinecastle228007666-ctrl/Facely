@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TabBar } from "@/components/ui/TabBar";
 import { AnalysisCard } from "@/components/history/AnalysisCard";
 import { api, type AnalysisHistoryItem, type AnalysisResult } from "@/services/api";
@@ -50,11 +51,16 @@ function cleanName(p: string): string {
 }
 
 export default function HistoryPage() {
+  const router = useRouter();
   const [items, setItems] = useState<AnalysisHistoryItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<AnalysisHistoryItem | null>(null);
   const [fullImage, setFullImage] = useState<string | null>(null);
+
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareStep, setCompareStep] = useState<1 | 2>(1);
+  const [compareIds, setCompareIds] = useState<{ before: string | null; after: string | null }>({ before: null, after: null });
 
   useEffect(() => {
     api.analysis
@@ -68,6 +74,19 @@ export default function HistoryPage() {
   }, []);
 
   const result = selected?.result as AnalysisResult | null;
+
+  const handleCompareClick = (item: AnalysisHistoryItem) => {
+    if (compareStep === 1) {
+      setCompareIds({ before: item.id, after: null });
+      setCompareStep(2);
+    } else {
+      if (item.id === compareIds.before) return;
+      setCompareIds((prev) => ({ ...prev, after: item.id }));
+    }
+  };
+
+  const isSelectedBefore = (id: string) => compareMode && compareIds.before === id;
+  const isSelectedAfter = (id: string) => compareMode && compareIds.after === id;
 
   return (
     <>
@@ -91,13 +110,69 @@ export default function HistoryPage() {
           >
             <HistoryIcon size={20} />
           </div>
-          <div>
+          <div style={{ flex: 1 }}>
             <h1 style={{ fontSize: 18, fontWeight: 600 }}>История анализов</h1>
             <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-              Всего: {total}
+              {compareMode ? `Шаг ${compareStep} из 2` : `Всего: ${total}`}
             </span>
           </div>
+          <button
+            onClick={() => {
+              if (compareMode && compareIds.before && compareIds.after) {
+                router.push(`/compare?id1=${compareIds.before}&id2=${compareIds.after}`);
+              } else {
+                setCompareMode(!compareMode);
+                setCompareStep(1);
+                setCompareIds({ before: null, after: null });
+              }
+            }}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 20,
+              background: compareMode && compareIds.before && compareIds.after ? "var(--primary)" : "var(--bg-card)",
+              border: "1px solid var(--border)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              color: compareMode && compareIds.before && compareIds.after ? "white" : "var(--text)",
+            }}
+          >
+            {compareMode && compareIds.before && compareIds.after ? "Сравнить" : compareMode ? "Отмена" : "Сравнить"}
+          </button>
         </motion.div>
+
+        {compareMode && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 14,
+              background: compareStep === 1 ? "rgba(168, 216, 234, 0.1)" : "rgba(168, 216, 234, 0.05)",
+              fontSize: 13,
+              color: "var(--text-secondary)",
+              marginBottom: 12,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span style={{
+              width: 24, height: 24, borderRadius: "50%",
+              background: compareStep === 1 ? "#A8D8EA" : "#A8D8EA",
+              color: "white", fontSize: 12, fontWeight: 700,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}>
+              {compareStep === 1 ? "1" : "2"}
+            </span>
+            <span>
+              {compareStep === 1
+                ? "Выберите запись «ДО» (синяя подсветка)"
+                : "Выберите запись «ПОСЛЕ» (зелёная подсветка)"}
+            </span>
+          </motion.div>
+        )}
 
         {loading ? (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: 40 }}>
@@ -127,9 +202,53 @@ export default function HistoryPage() {
           </motion.div>
         ) : (
           <div>
-            {items.map((item, i) => (
-              <AnalysisCard key={item.id} item={item} index={i} onClick={() => setSelected(item)} />
-            ))}
+            {items.map((item, i) => {
+              const sb = isSelectedBefore(item.id);
+              const sa = isSelectedAfter(item.id);
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    if (compareMode) {
+                      handleCompareClick(item);
+                    } else {
+                      setSelected(item);
+                    }
+                  }}
+                  style={{
+                    borderRadius: 16,
+                    border: sa
+                      ? "2px solid #7EC4D8"
+                      : sb
+                      ? "2px solid #A8D8EA"
+                      : "2px solid transparent",
+                    marginBottom: 2,
+                    transition: "border 0.2s",
+                    cursor: compareMode ? "pointer" : undefined,
+                  }}
+                >
+                  {sb && (
+                    <div style={{
+                      position: "absolute", marginLeft: 8, marginTop: 8,
+                      fontSize: 10, fontWeight: 700, color: "white",
+                      background: "#A8D8EA", padding: "2px 8px", borderRadius: 8,
+                    }}>
+                      ДО
+                    </div>
+                  )}
+                  {sa && (
+                    <div style={{
+                      position: "absolute", marginLeft: 8, marginTop: 8,
+                      fontSize: 10, fontWeight: 700, color: "white",
+                      background: "#7EC4D8", padding: "2px 8px", borderRadius: 8,
+                    }}>
+                      ПОСЛЕ
+                    </div>
+                  )}
+                  <AnalysisCard item={item} index={i} />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

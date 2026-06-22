@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { prisma } from "../db";
 import { subscriptionService } from "./subscriptionService";
 import { ritualService } from "./ritualService";
@@ -7,6 +8,10 @@ import { XP_PER_ANALYSIS, calculateLevel, didLevelUp } from "../utils/levelSyste
 import { pushService } from "./pushService";
 import { analyzeSkinWithFacePlus } from "./facePlusService";
 import { achievementService } from "./achievementService";
+
+function hashBase64(data: string): string {
+  return crypto.createHash("sha256").update(data).digest("hex");
+}
 
 export const analysisService = {
   async analyze(
@@ -21,12 +26,32 @@ export const analysisService = {
 
     if (!user) throw new Error("User not found");
 
+    const compressedPhoto = await compressImage(photoBase64);
+    const photoHash = hashBase64(compressedPhoto);
+
+    const existing = await prisma.skinAnalysis.findFirst({
+      where: { userId: user.id, photoUrl: photoHash },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existing) {
+      const ritual = await ritualService.getStreak(user.id);
+      return {
+        analysis: existing.result,
+        xpGained: 0,
+        totalXp: user.xp,
+        level: user.level,
+        streak: ritual.streak,
+        maxStreak: ritual.maxStreak,
+        cached: true,
+      };
+    }
+
     const access = await subscriptionService.canAccessAnalysis(user.id);
     if (!access.allowed) {
       throw new Error(access.reason || "no_analyses_left");
     }
 
-    const compressedPhoto = await compressImage(photoBase64);
     const result = await analyzeSkinWithFacePlus(compressedPhoto);
 
     const hasActiveSubscription =
@@ -41,6 +66,7 @@ export const analysisService = {
         data: {
           userId: user.id,
           photoBase64: compressedPhoto,
+          photoUrl: photoHash,
           userDescription: description,
           result: result,
           skinType: result.skin_type,
@@ -97,6 +123,7 @@ export const analysisService = {
       level: newLevel,
       streak: ritual.streak,
       maxStreak: ritual.maxStreak,
+      cached: false,
     };
   },
 
