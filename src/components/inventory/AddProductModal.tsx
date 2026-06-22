@@ -128,8 +128,12 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
                   placeholder="https://www.wildberries.ru/..."
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  style={{ width: "100%", padding: "14px 16px", borderRadius: 14, border: "1px solid var(--border)", fontSize: 14, marginBottom: 12, background: "var(--bg)" }}
+                  style={{ width: "100%", padding: "14px 16px", borderRadius: 14, border: "1px solid var(--border)", fontSize: 14, marginBottom: 10, background: "var(--bg)" }}
                 />
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>Если название не определилось автоматически, заполните вручную:</div>
+                <input placeholder="Название средства" value={name} onChange={(e) => setName(e.target.value)} style={{ width: "100%", padding: "14px 16px", borderRadius: 14, border: "1px solid var(--border)", fontSize: 14, marginBottom: 10, background: "var(--bg)" }} />
+                <input placeholder="Бренд (необязательно)" value={brand} onChange={(e) => setBrand(e.target.value)} style={{ width: "100%", padding: "14px 16px", borderRadius: 14, border: "1px solid var(--border)", fontSize: 14, marginBottom: 10, background: "var(--bg)" }} />
+                <textarea placeholder="Состав (скопируйте INCI-состав со страницы)" value={ingredients} onChange={(e) => setIngredients(e.target.value)} rows={3} style={{ width: "100%", padding: "12px 16px", borderRadius: 14, border: "1px solid var(--border)", fontSize: 13, resize: "none", marginBottom: 12, background: "var(--bg)" }} />
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={handleSubmit}

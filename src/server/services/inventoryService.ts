@@ -3,6 +3,30 @@ import { prisma } from "../db";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.DEEPSEEK_API_KEY || "";
 const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
 
+function extractNameFromUrlPath(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const segments = u.pathname.split("/").filter(Boolean);
+    // Ozon: /product/name-here-123456/
+    // Goldapple: /catalog/name-here/
+    // Yandex Market: /product--name/...
+    for (const seg of segments) {
+      // Skip purely numeric or too short segments
+      if (/^\d+$/.test(seg) || seg.length < 5) continue;
+      // Decode and clean
+      const cleaned = decodeURIComponent(seg)
+        .replace(/[-_]+/g, " ")
+        .replace(/\b\d{5,}\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (cleaned.length > 5) return cleaned;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function analyzeIngredients(
   name: string,
   brand: string | null,
@@ -116,7 +140,11 @@ function flattenJsonLdProduct(data: Record<string, unknown>): { name?: string; b
 async function extractFromUrl(url: string): Promise<{ name: string; brand: string | null; ingredients: string } | null> {
   try {
     const html = await fetchPage(url);
-    if (!html) return null;
+    if (!html) {
+      const name = extractNameFromUrlPath(url);
+      if (!name) return null;
+      return { name, brand: null, ingredients: "" };
+    }
 
     const ld = parseJsonLd(html);
     const productData: { name?: string; brand?: string; description?: string } = {};
@@ -223,39 +251,47 @@ export const inventoryService = {
     }
 
     if (input.source === "photo" && input.imageBase64) {
-      const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "llama-3.2-11b-vision-preview",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: "Ты помогаешь определить косметическое средство и его состав по фото. На фото изображён состав (INCI-список ингредиентов) косметического средства. Верни ТОЛЬКО JSON: {\"name\": \"...\", \"brand\": \"...\", \"ingredients\": \"список ингредиентов из состава\"} Если не видишь состава, верни {\"name\": \"Средство по фото\", \"brand\": null, \"ingredients\": \"\"}",
-                },
-                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${input.imageBase64}` } },
-              ],
-            },
-          ],
-          max_tokens: 500,
-          temperature: 0.3,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.choices?.[0]?.message?.content || "";
+      const visionModels = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"];
+      let photoData: { name?: string; brand?: string; ingredients?: string } | null = null;
+      for (const model of visionModels) {
         try {
-          const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-          name = name || parsed.name || "Средство по фото";
-          brand = brand || parsed.brand || null;
-          ingredients = ingredients || parsed.ingredients || "";
-        } catch {}
+          const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${GROQ_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: "Ты помогаешь определить косметическое средство и его состав по фото. На фото изображён состав (INCI-список ингредиентов) косметического средства. Верни ТОЛЬКО JSON: {\"name\": \"...\", \"brand\": \"...\", \"ingredients\": \"список ингредиентов из состава\"}. Если не видишь состава, ingredients оставь пустой строкой." },
+                    { type: "image_url", image_url: { url: `data:image/jpeg;base64,${input.imageBase64}` } },
+                  ],
+                },
+              ],
+              max_tokens: 500,
+              temperature: 0.3,
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const text = data.choices?.[0]?.message?.content || "";
+            photoData = JSON.parse(text.replace(/```json|```/g, "").trim());
+            break;
+          }
+          const errBody = await res.text().catch(() => "");
+          console.error(`[inventory] vision model ${model} failed:`, res.status, errBody.slice(0, 200));
+        } catch (e) {
+          console.error(`[inventory] vision model ${model} error:`, e);
+        }
+      }
+      if (photoData) {
+        name = name || photoData.name || "";
+        brand = brand || photoData.brand || null;
+        ingredients = ingredients || photoData.ingredients || "";
       }
     }
 
