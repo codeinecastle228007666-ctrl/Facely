@@ -71,57 +71,115 @@ function defaultAnalysis() {
   };
 }
 
+function parseJsonLd(html: string): Record<string, unknown>[] {
+  const blocks: Record<string, unknown>[] = [];
+  const regex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(html)) !== null) {
+    try { blocks.push(JSON.parse(match[1].trim())); } catch {}
+  }
+  return blocks;
+}
+
+function extractMetaTag(html: string, property: string): string | null {
+  const re = new RegExp(`<meta[^>]+(?:property|name)=["']${escapeRegex(property)}["'][^>]+content=["']([^"']*)["']`, "i");
+  const m = html.match(re);
+  return m ? m[1] : null;
+}
+
+function escapeRegex(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function flattenJsonLdProduct(data: Record<string, unknown>): { name?: string; brand?: string; description?: string } {
+  const queue = [data];
+  const result: { name?: string; brand?: string; description?: string } = {};
+  while (queue.length) {
+    const item = queue.shift()!;
+    if (item["@type"] === "Product" || item["@type"] === "ItemPage") {
+      if (!result.name && typeof item.name === "string") result.name = item.name;
+      if (!result.description && typeof item.description === "string") result.description = item.description;
+      if (item.brand && typeof item.brand === "object") {
+        const b = item.brand as Record<string, unknown>;
+        if (typeof b.name === "string") result.brand = b.name;
+      } else if (item.manufacturer && typeof item.manufacturer === "object") {
+        const m = item.manufacturer as Record<string, unknown>;
+        if (typeof m.name === "string") result.brand = m.name;
+      }
+    }
+    if (item.offers && typeof item.offers === "object") queue.push(item.offers as Record<string, unknown>);
+    if (Array.isArray(item["@graph"])) for (const g of item["@graph"]) if (typeof g === "object") queue.push(g);
+  }
+  return result;
+}
+
 async function extractFromUrl(url: string): Promise<{ name: string; brand: string | null; ingredients: string } | null> {
   try {
-    let pageTitle = "";
-    let pageBody = "";
-    try {
-      const pageRes = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-        signal: AbortSignal.timeout(8000),
+    const html = await fetchPage(url);
+    if (!html) return null;
+
+    const ld = parseJsonLd(html);
+    const productData: { name?: string; brand?: string; description?: string } = {};
+    for (const block of ld) {
+      const parsed = flattenJsonLdProduct(block);
+      if (!productData.name) productData.name = parsed.name;
+      if (!productData.brand) productData.brand = parsed.brand;
+      if (!productData.description) productData.description = parsed.description;
+    }
+
+    const ogTitle = extractMetaTag(html, "og:title");
+    const ogDesc = extractMetaTag(html, "og:description");
+    const htmlTitle = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
+
+    const name = productData.name || ogTitle || htmlTitle || "";
+    const brand = productData.brand || null;
+    const description = productData.description || ogDesc || "";
+
+    let ingredients = "";
+    if (description) {
+      const groqRes = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            {
+              role: "system",
+              content: "Извлеки INCI-состав косметического средства из описания товара. Верни ТОЛЬКО JSON: {\"ingredients\": \"ингредиенты через запятую\"}. Если состава нет, верни {\"ingredients\": \"\"}",
+            },
+            { role: "user", content: `Описание товара: ${description}` },
+          ],
+          max_tokens: 300,
+          temperature: 0.1,
+        }),
       });
-      if (pageRes.ok) {
-        const html = await pageRes.text();
-        const m = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-        if (m) pageTitle = m[1].trim();
-        const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        if (body) pageBody = body[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 3000);
+      if (groqRes.ok) {
+        const data = await groqRes.json();
+        const text = data.choices?.[0]?.message?.content || "";
+        try { ingredients = JSON.parse(text.replace(/```json|```/g, "").trim()).ingredients || ""; } catch {}
       }
-    } catch {}
+    }
 
-    const prompt = pageTitle
-      ? `URL: ${url}\nЗаголовок: ${pageTitle}\nТекст страницы: ${pageBody || "нет"}`
-      : `URL: ${url}`;
-
-    const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "system",
-            content: "Ты помогаешь определить название, бренд и состав (ингредиенты INCI) косметического средства по URL и тексту страницы маркетплейса. Верни ТОЛЬКО JSON: {\"name\": \"...\", \"brand\": \"...\", \"ingredients\": \"список ингредиентов через запятую\"}. Если состав не найден, оставь ingredients пустой строкой.",
-          },
-          { role: "user", content: prompt },
-        ],
-        max_tokens: 300,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!res.ok) return null;
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || "";
-    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
     return {
-      name: parsed.name || "Средство с маркетплейса",
-      brand: parsed.brand || null,
-      ingredients: parsed.ingredients || "",
+      name: name || "Средство с маркетплейса",
+      brand,
+      ingredients,
     };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPage(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+      signal: AbortSignal.timeout(10000),
+    });
+    return res.ok ? await res.text() : null;
   } catch {
     return null;
   }
