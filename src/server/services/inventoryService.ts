@@ -373,6 +373,10 @@ export const inventoryService = {
         brand = brand || photoData.brand || null;
         ingredients = ingredients || photoData.ingredients || "";
       }
+
+      if (!ingredients) {
+        throw new Error("photo_ocr_failed");
+      }
     }
 
     if (!name) name = "Средство";

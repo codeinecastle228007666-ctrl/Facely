@@ -55,7 +55,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
         onSuccess();
         reset();
         onClose();
-      } catch { setError("Не удалось распознать текст на фото. Попробуйте сфоткать ровнее или введите вручную."); } finally { setLoading(false); }
+      } catch { setError("ИИ не смог прочитать текст. Попробуйте сфотографировать экран с составом ровнее или введите вручную."); } finally { setLoading(false); }
     };
     reader.readAsDataURL(file);
   };
