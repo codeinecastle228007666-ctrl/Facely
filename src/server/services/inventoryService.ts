@@ -46,6 +46,7 @@ async function analyzeIngredients(
         "Content-Type": "application/json",
         Authorization: `Bearer ${GROQ_API_KEY}`,
       },
+      signal: AbortSignal.timeout(10000),
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         messages: [
@@ -306,6 +307,7 @@ export const inventoryService = {
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
+              signal: AbortSignal.timeout(8000),
               body: JSON.stringify({
                 contents: [{
                   parts: [
@@ -341,6 +343,7 @@ export const inventoryService = {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${GROQ_API_KEY}`,
               },
+              signal: AbortSignal.timeout(8000),
               body: JSON.stringify({
                 model,
                 max_tokens: 1024,
