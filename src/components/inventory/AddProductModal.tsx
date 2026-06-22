@@ -29,7 +29,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
 
   const reset = () => { setStep(null); setName(""); setBrand(""); setIngredients(""); setError(""); };
 
-  const compressImage = useCallback((dataUrl: string, maxDim = 1080, quality = 0.85): Promise<string> => {
+  const compressImage = useCallback((dataUrl: string, maxDim = 1600, quality = 0.92): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {

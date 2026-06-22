@@ -300,35 +300,38 @@ export const inventoryService = {
       let photoData: { name?: string; brand?: string; ingredients?: string } | null = null;
 
       if (GEMINI_API_KEY) {
-        try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{
-                parts: [
-                  { text: "Прочитай текст на фото. Это INCI-состав (список ингредиентов) косметического средства. Верни ТОЛЬКО JSON без пояснений: {\"name\": \"название средства, если видно или пустая строка\", \"brand\": \"бренд или null\", \"ingredients\": \"список ингредиентов через запятую, максимально точно, как написано\"}" },
-                  { inline_data: { mime_type: "image/jpeg", data: input.imageBase64 } },
-                ],
-              }],
-            }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            const m = text.match(/\{[\s\S]*?\}/);
-            if (m) photoData = JSON.parse(m[0]);
-          } else {
-            const errBody = await res.text().catch(() => "");
-            console.error("[inventory] Gemini failed:", res.status, errBody.slice(0, 300));
+        const geminiModels = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"];
+        for (const model of geminiModels) {
+          try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [
+                    { text: "Прочитай текст на фото. Это INCI-состав (список ингредиентов) косметического средства. Верни ТОЛЬКО JSON без пояснений и без markdown: {\"name\": \"название или пустая строка\", \"brand\": \"бренд или null\", \"ingredients\": \"список ингредиентов через запятую\"}" },
+                    { inline_data: { mime_type: "image/jpeg", data: input.imageBase64 } },
+                  ],
+                }],
+              }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+              const m = text.match(/\{[\s\S]*?\}/);
+              if (m) { photoData = JSON.parse(m[0]); break; }
+              console.error(`[inventory] Gemini ${model} ok but no JSON in:`, text.slice(0, 500));
+            } else {
+              const errBody = await res.text().catch(() => "");
+              console.error(`[inventory] Gemini ${model} failed:`, res.status, errBody.slice(0, 300));
+            }
+          } catch (e) {
+            console.error(`[inventory] Gemini ${model} error:`, e);
           }
-        } catch (e) {
-          console.error("[inventory] Gemini error:", e);
         }
       }
 
       if (!photoData || !photoData.ingredients) {
-        console.error("[inventory] Gemini returned no ingredients, trying Groq vision fallback", photoData);
         const visionModels = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"];
         for (const model of visionModels) {
           try {
@@ -358,9 +361,9 @@ export const inventoryService = {
               if (m) { photoData = JSON.parse(m[0]); break; }
             }
             const errBody = await res.text().catch(() => "");
-            console.error(`[inventory] vision model ${model} failed:`, res.status, errBody.slice(0, 300));
+            console.error(`[inventory] Groq vision ${model} failed:`, res.status, errBody.slice(0, 300));
           } catch (e) {
-            console.error(`[inventory] vision model ${model} error:`, e);
+            console.error(`[inventory] Groq vision ${model} error:`, e);
           }
         }
       }
