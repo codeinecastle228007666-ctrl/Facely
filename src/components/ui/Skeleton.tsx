@@ -5,7 +5,7 @@ import React from "react";
 export const Skeleton: React.FC<{
   width?: string | number;
   height?: string | number;
-  borderRadius?: number;
+  borderRadius?: string | number;
   style?: React.CSSProperties;
 }> = ({ width = "100%", height = 16, borderRadius = 12, style }) => (
   <div
