@@ -28,7 +28,8 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
   const [step, setStep] = useState<"tutorial" | "photo">("tutorial");
   const [photo, setPhoto] = useState<string | null>(null);
   const [description, setDescription] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const { impact } = useTelegram();
 
   const compressImage = (dataUrl: string, maxDim = 1080, quality = 0.85): Promise<string> => {
@@ -190,7 +191,6 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
                 </div>
 
                 <div
-                  onClick={() => fileRef.current?.click()}
                   style={{
                     width: "100%",
                     height: 180,
@@ -204,18 +204,13 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
                     background: photo
                       ? `url(data:image/jpeg;base64,${photo}) center/cover`
                       : "var(--bg)",
-                    marginBottom: 16,
-                    cursor: "pointer",
+                    marginBottom: 12,
+                    cursor: photo ? "default" : "pointer",
                     position: "relative",
                   }}
                 >
                   {!photo && (
-                    <>
-                      <CameraIcon size={36} />
-                      <span style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-                        Нажмите, чтобы выбрать фото
-                      </span>
-                    </>
+                    <CameraIcon size={36} />
                   )}
                   {photo && (
                     <div
@@ -239,15 +234,79 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
                       ✕
                     </div>
                   )}
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/*"
-                    capture="user"
-                    onChange={handleFile}
-                    style={{ display: "none" }}
-                  />
                 </div>
+
+                {!photo && (
+                  <div className="flex gap-2" style={{ marginBottom: 16 }}>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => { impact("light"); cameraRef.current?.click(); }}
+                      style={{
+                        flex: 1,
+                        padding: "14px",
+                        borderRadius: 14,
+                        background: "linear-gradient(135deg, var(--primary), var(--secondary))",
+                        color: "white",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        border: "none",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2v11z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        <circle cx="12" cy="13" r="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Камера
+                    </motion.button>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => { impact("light"); galleryRef.current?.click(); }}
+                      style={{
+                        flex: 1,
+                        padding: "14px",
+                        borderRadius: 14,
+                        background: "var(--bg)",
+                        color: "var(--text)",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        border: "1px solid var(--border)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                        <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.5"/>
+                        <path d="M17 5l-2-3H9L7 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                      Галерея
+                    </motion.button>
+                  </div>
+                )}
+
+                <input
+                  ref={cameraRef}
+                  type="file"
+                  accept="image/*"
+                  capture="user"
+                  onChange={handleFile}
+                  style={{ display: "none" }}
+                />
+                <input
+                  ref={galleryRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFile}
+                  style={{ display: "none" }}
+                />
 
                 <textarea
                   placeholder="Опишите свои ощущения (необязательно)"
