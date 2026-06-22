@@ -327,7 +327,8 @@ export const inventoryService = {
         }
       }
 
-      if (!photoData || (!photoData.ingredients && !photoData.name)) {
+      if (!photoData || !photoData.ingredients) {
+        console.error("[inventory] Gemini returned no ingredients, trying Groq vision fallback", photoData);
         const visionModels = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"];
         for (const model of visionModels) {
           try {
