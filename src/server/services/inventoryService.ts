@@ -213,6 +213,31 @@ async function fetchPage(url: string): Promise<string | null> {
   }
 }
 
+interface BarcodeResult {
+  name: string;
+  brand: string | null;
+  ingredients: string;
+}
+
+async function lookupByBarcode(barcode: string): Promise<BarcodeResult | null> {
+  try {
+    const res = await fetch(`https://world.openbeautyfacts.org/api/v2/product/${barcode}.json`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status !== 1) return null;
+    const p = data.product;
+    return {
+      name: p.product_name || "",
+      brand: p.brands || null,
+      ingredients: p.ingredients_text || "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const inventoryService = {
   async list(telegramId: string) {
     const user = await prisma.user.findUnique({ where: { telegramId } });
@@ -229,7 +254,7 @@ export const inventoryService = {
       name?: string;
       brand?: string;
       ingredients?: string;
-      source: "manual" | "link" | "photo";
+      source: "manual" | "link" | "photo" | "barcode";
       sourceUrl?: string;
       imageBase64?: string;
     },
@@ -240,6 +265,26 @@ export const inventoryService = {
     let name = input.name || "";
     let brand = input.brand || null;
     let ingredients = input.ingredients || "";
+
+    if (input.source === "barcode" && input.sourceUrl) {
+      // Cache: check if another user already added this barcode
+      const cached = await prisma.inventoryItem.findFirst({
+        where: { sourceUrl: input.sourceUrl, ingredients: { not: "" } },
+        orderBy: { createdAt: "desc" },
+      });
+      if (cached) {
+        name = name || cached.name;
+        brand = brand || cached.brand;
+        ingredients = ingredients || cached.ingredients;
+      } else {
+        const result = await lookupByBarcode(input.sourceUrl);
+        if (result) {
+          name = name || result.name;
+          brand = brand || result.brand;
+          ingredients = ingredients || result.ingredients;
+        }
+      }
+    }
 
     if (input.source === "link" && input.sourceUrl) {
       const extracted = await extractFromUrl(input.sourceUrl);

@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CloseIcon } from "@/components/ui/Icons";
 import { api } from "@/services/api";
+import { BrowserMultiFormatReader } from "@zxing/library";
 
 interface AddProductModalProps {
   open: boolean;
@@ -11,9 +12,10 @@ interface AddProductModalProps {
   onSuccess: () => void;
 }
 
-type Step = "choose" | "link" | "photo" | "manual";
+type Step = "choose" | "link" | "photo" | "manual" | "barcode";
 
 const STEPS: { key: Step; icon: string; title: string; desc: string }[] = [
+  { key: "barcode", icon: "📱", title: "Штрих-код", desc: "Наведите камеру на штрих-код упаковки" },
   { key: "link", icon: "🔗", title: "Ссылка на товар", desc: "Вставьте ссылку на Wildberries, Ozon или любой маркетплейс" },
   { key: "photo", icon: "📷", title: "Фото состава", desc: "Сфотографируйте состав на упаковке" },
   { key: "manual", icon: "✏️", title: "Ввести вручную", desc: "Введите название и состав средства" },
@@ -27,9 +29,41 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
   const [ingredients, setIngredients] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [barcode, setBarcode] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const scannerRef = useRef<BrowserMultiFormatReader | null>(null);
 
-  const reset = () => { setStep(null); setUrl(""); setName(""); setBrand(""); setIngredients(""); setError(""); };
+  const reset = () => { setStep(null); setUrl(""); setName(""); setBrand(""); setIngredients(""); setError(""); setBarcode(""); };
+
+  useEffect(() => {
+    if (!open) {
+      scannerRef.current?.reset();
+      scannerRef.current = null;
+    }
+  }, [open]);
+
+  const startScanner = useCallback(async () => {
+    try {
+      const reader = new BrowserMultiFormatReader();
+      scannerRef.current = reader;
+      reader.decodeFromVideoDevice(null, videoRef.current!, (result) => {
+        if (result) {
+          const code = result.getText();
+          setBarcode(code);
+          reader.reset();
+          scannerRef.current = null;
+          setLoading(true);
+          api.inventory.add({ source: "barcode", sourceUrl: code })
+            .then(() => { onSuccess(); reset(); onClose(); })
+            .catch(() => { setError("Товар не найден в базе. Введите вручную."); setStep("manual"); setName(""); })
+            .finally(() => setLoading(false));
+        }
+      });
+    } catch {
+      setError("Не удалось открыть камеру");
+    }
+  }, [onSuccess, onClose]);
 
   const compressImage = useCallback((dataUrl: string, maxDim = 1080, quality = 0.85): Promise<string> => {
     return new Promise((resolve) => {
@@ -86,7 +120,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
-          onClick={() => { onClose(); reset(); }}
+          onClick={() => { scannerRef.current?.reset(); scannerRef.current = null; onClose(); reset(); }}
         >
           <motion.div
             initial={{ y: "100%" }}
@@ -97,8 +131,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center" style={{ marginBottom: 20 }}>
-              <h3 style={{ fontSize: 18, fontWeight: 600 }}>{step ? "Добавить средство" : "Добавить в инвентарь"}</h3>
-              <button onClick={() => { onClose(); reset(); }}><CloseIcon size={22} /></button>
+              <h3 style={{ fontSize: 18, fontWeight: 600 }}>{step === "barcode" ? "Сканирование" : step ? "Добавить средство" : "Добавить в инвентарь"}</h3>
+              <button onClick={() => { scannerRef.current?.reset(); scannerRef.current = null; onClose(); reset(); }}><CloseIcon size={22} /></button>
             </div>
 
             {!step && (
@@ -107,7 +141,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
                   <motion.button
                     key={s.key}
                     whileTap={{ scale: 0.97 }}
-                    onClick={() => setStep(s.key)}
+                    onClick={() => { setStep(s.key); if (s.key === "barcode") setTimeout(startScanner, 100); }}
                     className="flex items-center gap-3"
                     style={{ padding: "14px 16px", borderRadius: 16, background: "var(--bg)", border: "none", cursor: "pointer", textAlign: "left", width: "100%" }}
                   >
@@ -119,6 +153,20 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </motion.button>
                 ))}
+              </div>
+            )}
+
+            {step === "barcode" && (
+              <div>
+                <div style={{ width: "100%", aspectRatio: "1", borderRadius: 16, overflow: "hidden", background: "#000", marginBottom: 12, position: "relative" }}>
+                  <video ref={videoRef} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  {loading && (
+                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.6)", color: "white", fontSize: 14 }}>
+                      Ищем товар...
+                    </div>
+                  )}
+                </div>
+                {barcode && <div style={{ textAlign: "center", fontSize: 13, color: "var(--text-secondary)", marginBottom: 8 }}>Штрих-код: {barcode}</div>}
               </div>
             )}
 

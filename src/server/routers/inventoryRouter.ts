@@ -13,7 +13,7 @@ export const inventoryRouter = router({
         name: z.string().optional(),
         brand: z.string().optional(),
         ingredients: z.string().optional(),
-        source: z.enum(["manual", "link", "photo"]),
+        source: z.enum(["manual", "link", "photo", "barcode"]),
         sourceUrl: z.string().optional(),
         imageBase64: z.string().optional(),
       }),
