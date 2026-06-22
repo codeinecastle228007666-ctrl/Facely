@@ -172,20 +172,36 @@ export const analysisService = {
     const r1 = a1.result as Record<string, any> | null;
     const r2 = a2.result as Record<string, any> | null;
 
-    const scores1: Record<string, number> = {};
-    const scores2: Record<string, number> = {};
-    const fields = ["acne", "dark_circle", "pore", "spot", "wrinkle"];
+    const problems1: string[] = r1?.problems ?? [];
+    const problems2: string[] = r2?.problems ?? [];
 
-    for (const f of fields) {
-      scores1[f] = r1?.[f]?.score ?? (r1?.problems?.includes(f) ? 60 : 0);
-      scores2[f] = r2?.[f]?.score ?? (r2?.problems?.includes(f) ? 60 : 0);
+    const severityOrder: Record<string, number> = { "лёгкое": 1, "умеренное": 2, "выраженное": 3 };
+
+    function parseProblem(p: string): { name: string; severity: string | null } {
+      const m = p.match(/^(.+?)\s*\((.+?)\)$/);
+      return m ? { name: m[1].trim(), severity: m[2].trim() } : { name: p.trim(), severity: null };
     }
 
+    const p1map = new Map<string, string | null>();
+    const p2map = new Map<string, string | null>();
+    for (const p of problems1) { const { name, severity } = parseProblem(p); p1map.set(name, severity); }
+    for (const p of problems2) { const { name, severity } = parseProblem(p); p2map.set(name, severity); }
+
+    const allNames = new Set([...p1map.keys(), ...p2map.keys()]);
+
     const differences: Record<string, { from: number; to: number; diff: number; improved: boolean }> = {};
+    const fields = ["acne", "dark_circle", "pore", "spot", "wrinkle"];
+    const FIELD_KEYS: Record<string, string> = {
+      acne: "акне", dark_circle: "темные круги", pore: "поры", spot: "пигментация", wrinkle: "морщины",
+    };
+
     for (const f of fields) {
-      const from = scores1[f];
-      const to = scores2[f];
-      differences[f] = { from, to, diff: to - from, improved: to < from };
+      const name = FIELD_KEYS[f];
+      const s1 = p1map.get(name);
+      const s2 = p2map.get(name);
+      const score1 = s1 ? (severityOrder[s1] || 2) * 30 : 0;
+      const score2 = s2 ? (severityOrder[s2] || 2) * 30 : 0;
+      differences[f] = { from: score1, to: score2, diff: score2 - score1, improved: score2 < score1 };
     }
 
     return {

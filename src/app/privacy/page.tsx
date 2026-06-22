@@ -56,7 +56,7 @@ export default function PrivacyPage() {
         Вы вправе запросить экспорт, блокирование или удаление своих данных в любое время. Реализация права на забвение выполняется в течение 72 часов с момента верифицированного запроса через канал поддержки.</p>
 
         <p><strong style={{ color: "var(--text)" }}>7. Контакты</strong><br/>
-        По вопросам, связанным с обработкой данных: <span style={{ color: "var(--primary-dark)" }}>dpo@facely.app</span></p>
+        По вопросам, связанным с обработкой данных: <span style={{ color: "var(--primary-dark)" }}>support@facely.app</span></p>
 
         <p style={{ fontSize: 11, marginTop: 8 }}>Последнее обновление: июнь 2026</p>
       </div>
