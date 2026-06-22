@@ -73,6 +73,26 @@ function defaultAnalysis() {
 
 async function extractFromUrl(url: string): Promise<{ name: string; brand: string | null; ingredients: string } | null> {
   try {
+    let pageTitle = "";
+    let pageBody = "";
+    try {
+      const pageRes = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (pageRes.ok) {
+        const html = await pageRes.text();
+        const m = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        if (m) pageTitle = m[1].trim();
+        const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        if (body) pageBody = body[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 3000);
+      }
+    } catch {}
+
+    const prompt = pageTitle
+      ? `URL: ${url}\nЗаголовок: ${pageTitle}\nТекст страницы: ${pageBody || "нет"}`
+      : `URL: ${url}`;
+
     const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
@@ -84,11 +104,11 @@ async function extractFromUrl(url: string): Promise<{ name: string; brand: strin
         messages: [
           {
             role: "system",
-            content: "Ты помогаешь определить название, бренд и примерный состав косметического средства по URL с маркетплейса. Верни ТОЛЬКО JSON: {\"name\": \"...\", \"brand\": \"...\"}. Если не можешь определить, верни {\"name\": \"Средство с маркетплейса\", \"brand\": null}",
+            content: "Ты помогаешь определить название, бренд и состав (ингредиенты INCI) косметического средства по URL и тексту страницы маркетплейса. Верни ТОЛЬКО JSON: {\"name\": \"...\", \"brand\": \"...\", \"ingredients\": \"список ингредиентов через запятую\"}. Если состав не найден, оставь ingredients пустой строкой.",
           },
-          { role: "user", content: `URL: ${url}` },
+          { role: "user", content: prompt },
         ],
-        max_tokens: 200,
+        max_tokens: 300,
         temperature: 0.3,
       }),
     });
@@ -97,7 +117,11 @@ async function extractFromUrl(url: string): Promise<{ name: string; brand: strin
     const data = await res.json();
     const text = data.choices?.[0]?.message?.content || "";
     const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-    return { name: parsed.name || "Средство с маркетплейса", brand: parsed.brand || null, ingredients: "Состав не указан на странице" };
+    return {
+      name: parsed.name || "Средство с маркетплейса",
+      brand: parsed.brand || null,
+      ingredients: parsed.ingredients || "",
+    };
   } catch {
     return null;
   }
@@ -148,13 +172,18 @@ export const inventoryService = {
           Authorization: `Bearer ${GROQ_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: "llama-3.2-11b-vision-preview",
           messages: [
             {
-              role: "system",
-              content: "Ты помогаешь определить косметическое средство и его состав по фото. Пользователь отправил base64 изображения состава. Верни ТОЛЬКО JSON: {\"name\": \"...\", \"brand\": \"...\", \"ingredients\": \"список ингредиентов из состава\"}",
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Ты помогаешь определить косметическое средство и его состав по фото. На фото изображён состав (INCI-список ингредиентов) косметического средства. Верни ТОЛЬКО JSON: {\"name\": \"...\", \"brand\": \"...\", \"ingredients\": \"список ингредиентов из состава\"} Если не видишь состава, верни {\"name\": \"Средство по фото\", \"brand\": null, \"ingredients\": \"\"}",
+                },
+                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${input.imageBase64}` } },
+              ],
             },
-            { role: "user", content: `Вот фото состава средства (base64, первые 100 символов): ${input.imageBase64.slice(0, 100)}... Определи название, бренд и ингредиенты.` },
           ],
           max_tokens: 500,
           temperature: 0.3,
@@ -167,7 +196,7 @@ export const inventoryService = {
           const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
           name = name || parsed.name || "Средство по фото";
           brand = brand || parsed.brand || null;
-          ingredients = ingredients || parsed.ingredients || "Не удалось распознать состав";
+          ingredients = ingredients || parsed.ingredients || "";
         } catch {}
       }
     }
