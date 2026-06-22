@@ -124,6 +124,13 @@ export const api = {
   achievement: {
     list: () => query<AchievementListResult>("achievement.list"),
   },
+  inventory: {
+    list: () => query<InventoryItem[]>("inventory.list"),
+    add: (data: { name?: string; brand?: string; ingredients?: string; source: "manual" | "link" | "photo"; sourceUrl?: string; imageBase64?: string }) =>
+      mutation<InventoryItem>("inventory.add", data),
+    remove: (data: { id: string }) =>
+      mutation<{ success: boolean }>("inventory.remove", data),
+  },
   leaderboard: {
     topReferrers: () => query<LeaderboardEntry[]>("leaderboard.topReferrers"),
     topStreaks: () => query<LeaderboardEntry[]>("leaderboard.topStreaks"),
@@ -197,6 +204,24 @@ export interface ChatMessageResult {
   id: string;
   role: string;
   content: string;
+  createdAt: string;
+}
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  brand: string | null;
+  ingredients: string | null;
+  analysis: {
+    key_ingredients: string[];
+    benefits: string[];
+    concerns: string[];
+    safety_rating: "safe" | "caution" | "irritant";
+    suitability: string;
+  } | null;
+  imageUrl: string | null;
+  source: string;
+  sourceUrl: string | null;
   createdAt: string;
 }
 

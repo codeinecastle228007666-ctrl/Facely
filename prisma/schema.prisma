@@ -30,6 +30,7 @@ model User {
   referralsUsed   Referral[]        @relation("Referee")
   chatMessages    ChatMessage[]
   userAchievements UserAchievement[]
+  inventory       InventoryItem[]
 }
 
 model SkinAnalysis {
@@ -114,6 +115,23 @@ model ChatMessage {
 
   @@index([userId])
   @@index([createdAt])
+}
+
+model InventoryItem {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  brand       String?
+  ingredients String?
+  analysis    Json?
+  imageUrl    String?
+  source      String   @default("manual")
+  sourceUrl   String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model Achievement {

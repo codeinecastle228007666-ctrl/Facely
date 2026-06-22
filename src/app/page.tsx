@@ -10,6 +10,7 @@ import { StreakCard } from "@/components/dashboard/StreakCard";
 import { AnalysisInput } from "@/components/dashboard/AnalysisInput";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { SkinDiary } from "@/components/dashboard/SkinDiary";
+import { InventoryPanel } from "@/components/inventory/InventoryPanel";
 import { AchievementsModal } from "@/components/dashboard/AchievementsModal";
 import { ResultModal } from "@/components/effects/ResultModal";
 import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
@@ -139,6 +140,7 @@ export default function Dashboard() {
           onAchievementsClick={() => setAchievementsOpen(true)}
         />
         <SkinDiary />
+        <InventoryPanel />
         <BalanceCard
           freeAnalyses={freeAnalyses}
           paidAnalyses={paidAnalyses}
