@@ -252,7 +252,6 @@ export const inventoryService = {
 
     if (input.source === "photo" && input.imageBase64) {
       const visionModels = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"];
-      let photoData: { name?: string; brand?: string; ingredients?: string } | null = null;
       for (const model of visionModels) {
         try {
           const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
@@ -263,35 +262,36 @@ export const inventoryService = {
             },
             body: JSON.stringify({
               model,
+              max_tokens: 500,
+              temperature: 0.3,
               messages: [
                 {
                   role: "user",
                   content: [
-                    { type: "text", text: "Ты помогаешь определить косметическое средство и его состав по фото. На фото изображён состав (INCI-список ингредиентов) косметического средства. Верни ТОЛЬКО JSON: {\"name\": \"...\", \"brand\": \"...\", \"ingredients\": \"список ингредиентов из состава\"}. Если не видишь состава, ingredients оставь пустой строкой." },
+                    { type: "text", text: "Ты помогаешь определить косметическое средство и его состав по фото. Если на фото видно INCI-состав, верни ТОЛЬКО JSON: {\"name\": \"...\", \"brand\": \"...\", \"ingredients\": \"ингредиенты через запятую\"}. Если состава нет на фото, верни {\"name\": \"\", \"brand\": null, \"ingredients\": \"\"}" },
                     { type: "image_url", image_url: { url: `data:image/jpeg;base64,${input.imageBase64}` } },
                   ],
                 },
               ],
-              max_tokens: 500,
-              temperature: 0.3,
             }),
           });
           if (res.ok) {
             const data = await res.json();
-            const text = data.choices?.[0]?.message?.content || "";
-            photoData = JSON.parse(text.replace(/```json|```/g, "").trim());
-            break;
+            const raw = data.choices?.[0]?.message?.content || "";
+            const m = raw.match(/\{[\s\S]*?\}/);
+            if (m) {
+              const parsed = JSON.parse(m[0]);
+              name = name || parsed.name || "";
+              brand = brand || parsed.brand || null;
+              ingredients = ingredients || parsed.ingredients || "";
+              break;
+            }
           }
           const errBody = await res.text().catch(() => "");
-          console.error(`[inventory] vision model ${model} failed:`, res.status, errBody.slice(0, 200));
+          console.error(`[inventory] vision model ${model} failed:`, res.status, errBody.slice(0, 300));
         } catch (e) {
           console.error(`[inventory] vision model ${model} error:`, e);
         }
-      }
-      if (photoData) {
-        name = name || photoData.name || "";
-        brand = brand || photoData.brand || null;
-        ingredients = ingredients || photoData.ingredients || "";
       }
     }
 

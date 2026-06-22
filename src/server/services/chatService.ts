@@ -48,14 +48,31 @@ export const chatService = {
       ? JSON.stringify(latestAnalysis.result)
       : "Нет данных анализа кожи";
 
+    const inventory = await prisma.inventoryItem.findMany({
+      where: { userId: user.id },
+      select: { name: true, brand: true, ingredients: true, analysis: true },
+      take: 20,
+      orderBy: { createdAt: "desc" },
+    });
+
+    const inventoryContext = inventory.length > 0
+      ? "Средства пользователя в инвентаре:\n" + inventory.map((item) => {
+          const a = item.analysis as Record<string, unknown> | null;
+          return `- ${item.name}${item.brand ? ` (${item.brand})` : ""}${item.ingredients ? `\n  Состав: ${item.ingredients}` : ""}${a?.suitability ? `\n  Анализ: ${a.suitability}` : ""}`;
+        }).join("\n")
+      : "Инвентарь пуст";
+
     const systemPrompt = `Ты — косметолог-дерматолог в приложении Facely. 
 Твоя задача — отвечать на вопросы пользователя о коже, уходе и косметике.
 
 Информация о коже пользователя (результаты последнего анализа):
 ${skinPassport}
 
+${inventoryContext}
+
 Отвечай на русском языке. Будь дружелюбной, профессиональной и давай конкретные советы.
-Если вопрос не касается кожи или косметологии, вежливо возвращай тему к уходу за кожей.`;
+Если вопрос не касается кожи или косметологии, вежливо возвращай тему к уходу за кожей.
+Учитывай средства из инвентаря пользователя при рекомендациях — советуй, какие из них подходят или не подходят.`;
 
     const history = await prisma.chatMessage.findMany({
       where: { userId: user.id },
