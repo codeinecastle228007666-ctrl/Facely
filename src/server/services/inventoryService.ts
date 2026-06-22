@@ -275,7 +275,7 @@ export const inventoryService = {
       if (cached) {
         name = name || cached.name;
         brand = brand || cached.brand;
-        ingredients = ingredients || cached.ingredients;
+        ingredients = ingredients || cached.ingredients || "";
       } else {
         const result = await lookupByBarcode(input.sourceUrl);
         if (result) {
