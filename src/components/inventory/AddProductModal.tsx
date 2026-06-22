@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CloseIcon } from "@/components/ui/Icons";
 import { api } from "@/services/api";
@@ -13,8 +13,8 @@ interface AddProductModalProps {
 
 type Step = "choose" | "photo" | "manual";
 
-const STEPS: { key: Step; icon: string; title: string; desc: string; disabled?: boolean }[] = [
-  { key: "photo", icon: "📷", title: "Фото состава — в работе", desc: "Сфотографируйте состав на упаковке — ИИ прочитает текст", disabled: true },
+const STEPS: { key: Step; icon: string; title: string; desc: string }[] = [
+  { key: "photo", icon: "📷", title: "Фото состава", desc: "Сфотографируйте состав на упаковке или экране — ИИ прочитает текст" },
   { key: "manual", icon: "✏️", title: "Ввести вручную", desc: "Введите название и состав средства" },
 ];
 
@@ -23,9 +23,42 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
   const [ingredients, setIngredients] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const reset = () => { setStep(null); setName(""); setBrand(""); setIngredients(""); setError(""); };
+
+  const compressImage = useCallback((dataUrl: string, maxDim = 1080, quality = 0.85): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) { const ratio = Math.min(maxDim / w, maxDim / h); w = Math.round(w * ratio); h = Math.round(h * ratio); }
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
+        c.getContext("2d")!.drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL("image/jpeg", quality).split(",")[1]);
+      };
+      img.src = dataUrl;
+    });
+  }, []);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const compressed = await compressImage(reader.result as string);
+      setLoading(true);
+      try {
+        await api.inventory.add({ source: "photo", imageBase64: compressed });
+        onSuccess();
+        reset();
+        onClose();
+      } catch { setError("Не удалось распознать текст на фото. Попробуйте сфоткать ровнее или введите вручную."); } finally { setLoading(false); }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async () => {
     setError("");
@@ -66,10 +99,10 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
                 {STEPS.map((s) => (
                   <motion.button
                     key={s.key}
-                    whileTap={s.disabled ? {} : { scale: 0.97 }}
-                    onClick={() => { if (!s.disabled) setStep(s.key); }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => setStep(s.key)}
                     className="flex items-center gap-3"
-                    style={{ padding: "14px 16px", borderRadius: 16, background: s.disabled ? "var(--border)" : "var(--bg)", border: "none", cursor: s.disabled ? "default" : "pointer", textAlign: "left", width: "100%", opacity: s.disabled ? 0.5 : 1 }}
+                    style={{ padding: "14px 16px", borderRadius: 16, background: "var(--bg)", border: "none", cursor: "pointer", textAlign: "left", width: "100%" }}
                   >
                     <span style={{ fontSize: 28 }}>{s.icon}</span>
                     <div style={{ flex: 1 }}>
@@ -79,6 +112,23 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </motion.button>
                 ))}
+              </div>
+            )}
+
+            {step === "photo" && (
+              <div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+                  Держите камеру ровно, без бликов. Лучше всего — сфотографируйте экран с открытым составом на сайте.
+                </div>
+                <div
+                  onClick={() => fileRef.current?.click()}
+                  style={{ width: "100%", height: 160, borderRadius: 16, border: "2px dashed var(--border)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: "var(--bg)", cursor: "pointer", marginBottom: 12 }}
+                >
+                  <span style={{ fontSize: 36 }}>📷</span>
+                  <span style={{ color: "var(--text-secondary)", fontSize: 14 }}>Нажмите, чтобы сфотографировать состав</span>
+                </div>
+                <input ref={fileRef} type="file" accept="image/*" capture="user" onChange={handleFile} style={{ display: "none" }} />
+                {loading && <div style={{ textAlign: "center", fontSize: 13, color: "var(--text-secondary)" }}>Распознаём текст...</div>}
               </div>
             )}
 

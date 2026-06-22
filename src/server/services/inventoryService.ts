@@ -2,6 +2,7 @@ import { prisma } from "../db";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.DEEPSEEK_API_KEY || "";
 const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 function extractNameFromUrlPath(url: string): string | null {
   try {
@@ -296,55 +297,77 @@ export const inventoryService = {
     }
 
     if (input.source === "photo" && input.imageBase64) {
-      const visionModels = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"];
-      for (const model of visionModels) {
+      let photoData: { name?: string; brand?: string; ingredients?: string } | null = null;
+
+      if (GEMINI_API_KEY) {
         try {
-          const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${GROQ_API_KEY}`,
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              model,
-              max_tokens: 1024,
-              temperature: 0.1,
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    { type: "text", text: `Ты — OCR для косметических составов. Прочитай текст на фото и верни ТОЛЬКО JSON.
-
-Если на фото виден INCI-состав (список ингредиентов), извлеки его максимально точно, сохраняя названия ингредиентов как они написаны.
-
-Если на фото есть название средства — верни его в "name".
-Если есть бренд — верни в "brand".
-
-Формат ответа (строго JSON, без пояснений):
-{"name": "название или пустая строка", "brand": "бренд или null", "ingredients": "ингредиенты через запятую или пустая строка"}` },
-                    { type: "image_url", image_url: { url: `data:image/jpeg;base64,${input.imageBase64}` } },
-                  ],
-                },
-              ],
+              contents: [{
+                parts: [
+                  { text: "Прочитай текст на фото. Это INCI-состав (список ингредиентов) косметического средства. Верни ТОЛЬКО JSON без пояснений: {\"name\": \"название средства, если видно или пустая строка\", \"brand\": \"бренд или null\", \"ingredients\": \"список ингредиентов через запятую, максимально точно, как написано\"}" },
+                  { inline_data: { mime_type: "image/jpeg", data: input.imageBase64 } },
+                ],
+              }],
             }),
           });
           if (res.ok) {
             const data = await res.json();
-            const raw = data.choices?.[0]?.message?.content || "";
-            const m = raw.match(/\{[\s\S]*?\}/);
-            if (m) {
-              const parsed = JSON.parse(m[0]);
-              name = name || parsed.name || "";
-              brand = brand || parsed.brand || null;
-              ingredients = ingredients || parsed.ingredients || "";
-              break;
-            }
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            const m = text.match(/\{[\s\S]*?\}/);
+            if (m) photoData = JSON.parse(m[0]);
+          } else {
+            const errBody = await res.text().catch(() => "");
+            console.error("[inventory] Gemini failed:", res.status, errBody.slice(0, 300));
           }
-          const errBody = await res.text().catch(() => "");
-          console.error(`[inventory] vision model ${model} failed:`, res.status, errBody.slice(0, 300));
         } catch (e) {
-          console.error(`[inventory] vision model ${model} error:`, e);
+          console.error("[inventory] Gemini error:", e);
         }
+      }
+
+      if (!photoData || (!photoData.ingredients && !photoData.name)) {
+        const visionModels = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"];
+        for (const model of visionModels) {
+          try {
+            const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${GROQ_API_KEY}`,
+              },
+              body: JSON.stringify({
+                model,
+                max_tokens: 1024,
+                temperature: 0.1,
+                messages: [{
+                  role: "user",
+                  content: [
+                    { type: "text", text: "Прочитай текст на фото и верни ТОЛЬКО JSON: {\"name\": \"название или пустая строка\", \"brand\": \"бренд или null\", \"ingredients\": \"ингредиенты через запятую\"}" },
+                    { type: "image_url", image_url: { url: `data:image/jpeg;base64,${input.imageBase64}` } },
+                  ],
+                }],
+              }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              const raw = data.choices?.[0]?.message?.content || "";
+              const m = raw.match(/\{[\s\S]*?\}/);
+              if (m) { photoData = JSON.parse(m[0]); break; }
+            }
+            const errBody = await res.text().catch(() => "");
+            console.error(`[inventory] vision model ${model} failed:`, res.status, errBody.slice(0, 300));
+          } catch (e) {
+            console.error(`[inventory] vision model ${model} error:`, e);
+          }
+        }
+      }
+
+      if (photoData) {
+        name = name || photoData.name || "";
+        brand = brand || photoData.brand || null;
+        ingredients = ingredients || photoData.ingredients || "";
       }
     }
 
