@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { TabBar } from "@/components/ui/TabBar";
 import { api, type LeaderboardEntry } from "@/services/api";
 import { motion } from "framer-motion";
+import { CardSkeleton } from "@/components/ui/Skeleton";
 
 type Tab = "referrers" | "streaks" | "level";
 
@@ -76,9 +77,8 @@ export default function LeaderboardPage() {
       </div>
 
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", paddingTop: 40 }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", border: "3px solid var(--border)", borderTopColor: "var(--primary)", animation: "spin 0.7s linear infinite" }} />
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)}
         </div>
       ) : (
         <div className="flex flex-col gap-2">

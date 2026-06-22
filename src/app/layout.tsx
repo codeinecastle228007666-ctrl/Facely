@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { OfflineBanner } from "@/components/ui/OfflineBanner";
 
 export const metadata: Metadata = {
-  title: "Facely",
+  title: "Facely — AI-анализ кожи",
   description: "AI-анализ кожи и персональный уход",
+  icons: { icon: "/favicon.svg" },
 };
 
 export default function RootLayout({
@@ -18,6 +20,7 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
       </head>
       <body>
+        <OfflineBanner />
         <div className="container">{children}</div>
       </body>
     </html>

@@ -1,23 +1,29 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { TabBar } from "@/components/ui/TabBar";
 import { UserProfile } from "@/components/dashboard/UserProfile";
 import { BalanceCard } from "@/components/dashboard/BalanceCard";
 import { AnalysisButton } from "@/components/dashboard/AnalysisButton";
 import { StreakCard } from "@/components/dashboard/StreakCard";
 import { AnalysisInput } from "@/components/dashboard/AnalysisInput";
+import { Onboarding } from "@/components/dashboard/Onboarding";
+import { SkinDiary } from "@/components/dashboard/SkinDiary";
 import { ResultModal } from "@/components/effects/ResultModal";
 import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
 import { PurchaseModal } from "@/components/purchase/PurchaseModal";
 import { useUser } from "@/hooks/useUser";
 import { useTelegram } from "@/hooks/useTelegram";
-import { api, type AnalysisResult } from "@/services/api";
+import { api, type AnalysisResult, type AnalysisHistoryItem } from "@/services/api";
 import { getLevelPerks } from "@/server/utils/levelSystem";
+import { ProfileSkeleton, CardSkeleton } from "@/components/ui/Skeleton";
 
 export default function Dashboard() {
+  const router = useRouter();
   const { user, loading, refetch } = useUser();
   const { impact, notify } = useTelegram();
+  const [onboardingDone, setOnboardingDone] = useState(false);
   const [inputOpen, setInputOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -28,6 +34,8 @@ export default function Dashboard() {
   const [streak, setStreak] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [prevAnalysisId, setPrevAnalysisId] = useState<string | null>(null);
+  const [lastAnalysisId, setLastAnalysisId] = useState<string | null>(null);
 
   const level = user?.level || 1;
   const perks = getLevelPerks(level);
@@ -35,6 +43,14 @@ export default function Dashboard() {
   const paidAnalyses = user?.paidAnalyses ?? 0;
   const hasSub = user?.subscription?.status === "active";
   const canAnalyze = freeAnalyses > 0 || paidAnalyses > 0 || hasSub;
+
+  useEffect(() => {
+    if (!localStorage.getItem("facely_onboarding_shown") && user) {
+      setOnboardingDone(false);
+    } else {
+      setOnboardingDone(true);
+    }
+  }, [user]);
 
   const handleSubmit = useCallback(
     async (photoBase64: string, description?: string) => {
@@ -53,6 +69,12 @@ export default function Dashboard() {
           notify("success");
         }
         refetch();
+
+        const hist = await api.analysis.history({ limit: 2 });
+        if (hist.analyses.length >= 2) {
+          setPrevAnalysisId(hist.analyses[1].id);
+          setLastAnalysisId(hist.analyses[0].id);
+        }
 
         if (res.level > level) {
           setNewLevel(res.level);
@@ -74,13 +96,26 @@ export default function Dashboard() {
     [user, refetch, notify, level],
   );
 
+  const handleShare = useCallback(() => {
+    if (!result) return;
+    const text = `✨ Facely — мой анализ кожи:\nТип: ${result.skin_type}\nПроблемы: ${result.problems.length > 0 ? result.problems.join(", ") : "не выявлены"}\nНастроение: ${result.mood}\n\nПопробуй сам! https://t.me/skin_ritual_bot`;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        notify("success");
+      }).catch(() => prompt("Скопируйте результат:", text));
+    } else {
+      prompt("Скопируйте результат:", text);
+    }
+  }, [result, notify]);
+
   if (loading) {
     return (
       <>
-        <div style={{ display: "flex", justifyContent: "center", paddingTop: 80 }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", border: "3px solid var(--border)", borderTopColor: "var(--primary)", animation: "spin 0.7s linear infinite" }} />
+        <div style={{ paddingTop: 8 }}>
+          <ProfileSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
         </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         <TabBar />
       </>
     );
@@ -88,6 +123,7 @@ export default function Dashboard() {
 
   return (
     <>
+      <Onboarding onDone={() => setOnboardingDone(true)} />
       <ConfettiEffect active={showConfetti} />
 
       <div style={{ paddingTop: 8 }}>
@@ -99,6 +135,7 @@ export default function Dashboard() {
           badge={perks.badge}
           referralCount={user?.referralCount ?? 0}
         />
+        <SkinDiary />
         <BalanceCard
           freeAnalyses={freeAnalyses}
           paidAnalyses={paidAnalyses}
@@ -167,6 +204,9 @@ export default function Dashboard() {
         totalXp={totalXp}
         level={newLevel || undefined}
         streak={streak}
+        onShare={handleShare}
+        onCompare={prevAnalysisId && lastAnalysisId ? () => router.push(`/compare?id1=${prevAnalysisId}&id2=${lastAnalysisId}`) : undefined}
+        hasPrevAnalysis={!!prevAnalysisId}
       />
 
       <PurchaseModal
