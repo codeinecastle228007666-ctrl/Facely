@@ -10,6 +10,7 @@ import { StreakCard } from "@/components/dashboard/StreakCard";
 import { AnalysisInput } from "@/components/dashboard/AnalysisInput";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { SkinDiary } from "@/components/dashboard/SkinDiary";
+import { AchievementsModal } from "@/components/dashboard/AchievementsModal";
 import { ResultModal } from "@/components/effects/ResultModal";
 import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
 import { PurchaseModal } from "@/components/purchase/PurchaseModal";
@@ -34,6 +35,7 @@ export default function Dashboard() {
   const [streak, setStreak] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [prevAnalysisId, setPrevAnalysisId] = useState<string | null>(null);
   const [lastAnalysisId, setLastAnalysisId] = useState<string | null>(null);
 
@@ -134,6 +136,7 @@ export default function Dashboard() {
           frame={perks.frame}
           badge={perks.badge}
           referralCount={user?.referralCount ?? 0}
+          onAchievementsClick={() => setAchievementsOpen(true)}
         />
         <SkinDiary />
         <BalanceCard
@@ -207,6 +210,11 @@ export default function Dashboard() {
         onShare={handleShare}
         onCompare={prevAnalysisId && lastAnalysisId ? () => router.push(`/compare?id1=${prevAnalysisId}&id2=${lastAnalysisId}`) : undefined}
         hasPrevAnalysis={!!prevAnalysisId}
+      />
+
+      <AchievementsModal
+        open={achievementsOpen}
+        onClose={() => setAchievementsOpen(false)}
       />
 
       <PurchaseModal

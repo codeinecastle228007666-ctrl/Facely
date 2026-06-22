@@ -1,13 +1,13 @@
 import { prisma } from "../db";
 
 const ACHIEVEMENT_DEFS = [
-  { key: "first_analysis", title: "Первый анализ", description: "Проведи свой первый анализ кожи", icon: "\u{1F52C}", xpReward: 10 },
-  { key: "week_streak", title: "Недельный стрик", description: "Достигни 7-дневного стрика", icon: "\u{1F525}", xpReward: 20 },
-  { key: "month_streak", title: "Месячный стрик", description: "Достигни 30-дневного стрика", icon: "\u{1F451}", xpReward: 50 },
-  { key: "five_referrals", title: "5 рефералов", description: "Пригласи 5 друзей", icon: "\u{1F465}", xpReward: 30 },
-  { key: "level_10", title: "Уровень 10", description: "Достигни 10-го уровня", icon: "\u{2B50}", xpReward: 40 },
-  { key: "level_25", title: "Уровень 25", description: "Достигни 25-го уровня", icon: "\u{1F31F}", xpReward: 80 },
-  { key: "xp_100", title: "100 XP", description: "Заработай 100 XP", icon: "\u{2728}", xpReward: 15 },
+  { key: "first_analysis", title: "Первый анализ", description: "Проведи свой первый анализ кожи", icon: "🔬", xpReward: 10 },
+  { key: "week_streak", title: "Недельный стрик", description: "Достигни 7-дневного стрика", icon: "🔥", xpReward: 20 },
+  { key: "month_streak", title: "Месячный стрик", description: "Достигни 30-дневного стрика", icon: "👑", xpReward: 50 },
+  { key: "five_referrals", title: "5 рефералов", description: "Пригласи 5 друзей", icon: "👥", xpReward: 30 },
+  { key: "level_10", title: "Уровень 10", description: "Достигни 10-го уровня", icon: "⭐", xpReward: 40 },
+  { key: "level_25", title: "Уровень 25", description: "Достигни 25-го уровня", icon: "🌟", xpReward: 80 },
+  { key: "xp_100", title: "100 XP", description: "Заработай 100 XP", icon: "✨", xpReward: 15 },
 ];
 
 export const achievementService = {

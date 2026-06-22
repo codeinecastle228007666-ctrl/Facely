@@ -11,6 +11,7 @@ interface UserProfileProps {
   frame?: string;
   badge?: string;
   referralCount?: number;
+  onAchievementsClick?: () => void;
 }
 
 const FRAME_COLORS: Record<string, string> = {
@@ -34,7 +35,7 @@ const BADGE_COLORS: Record<string, string> = {
   Миф: "rgba(255, 215, 0, 0.3)",
 };
 
-export const UserProfile: React.FC<UserProfileProps> = ({ name, level, xp, frame = "bronze", badge = "Новичок", referralCount = 0 }) => {
+export const UserProfile: React.FC<UserProfileProps> = ({ name, level, xp, frame = "bronze", badge = "Новичок", referralCount = 0, onAchievementsClick }) => {
   const xpInLevel = xp - (level > 1 ? (level - 1) * (level - 1) * 10 : 0);
   const nextLevelXp = level * level * 10;
   const xpNeeded = nextLevelXp - (level > 1 ? (level - 1) * (level - 1) * 10 : 0);
@@ -114,6 +115,32 @@ export const UserProfile: React.FC<UserProfileProps> = ({ name, level, xp, frame
           >
             {badge}
           </span>
+          {onAchievementsClick && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onAchievementsClick(); }}
+              style={{
+                fontSize: 11,
+                padding: "2px 8px",
+                borderRadius: 10,
+                background: "var(--bg)",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+                color: "var(--primary-dark)",
+                fontWeight: 600,
+                marginLeft: "auto",
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M4 21c0-4.5 3.5-8 8-8s8 3.5 8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <path d="M17 3l2 2 3-3" stroke="#7EC4D8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Ачивки
+            </button>
+          )}
         </div>
         <div style={{ marginTop: 4 }}>
           <div className="flex justify-between text-sm" style={{ marginBottom: 4 }}>
