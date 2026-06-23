@@ -5,6 +5,7 @@ export const ritualService = {
     const ritual = await prisma.ritual.findUnique({ where: { userId } });
 
     if (!ritual) {
+      console.log(`[ritual] No ritual found for ${userId}, creating with streak=1`);
       return prisma.ritual.create({
         data: { userId, streak: 1, maxStreak: 1, lastDate: new Date() },
       });
@@ -20,8 +21,11 @@ export const ritualService = {
       (today.getTime() - lastDate.getTime()) / 86400000,
     );
 
+    console.log(`[ritual] userId=${userId}, streak=${ritual.streak}, diffDays=${diffDays}, lastDate=${lastDate.toISOString()}, today=${today.toISOString()}`);
+
     if (diffDays === 0) {
       if (ritual.streak === 0) {
+        console.log(`[ritual] First analysis same day, bumping streak 0→1`);
         const updated = await prisma.ritual.update({
           where: { userId },
           data: { streak: 1, maxStreak: 1, lastDate: new Date() },
@@ -40,6 +44,7 @@ export const ritualService = {
 
     const newMaxStreak = Math.max(ritual.maxStreak, newStreak);
 
+    console.log(`[ritual] Updating streak ${ritual.streak}→${newStreak} (diffDays=${diffDays})`);
     return prisma.ritual.update({
       where: { userId },
       data: {
