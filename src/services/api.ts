@@ -128,6 +128,8 @@ export const api = {
     list: () => query<InventoryItem[]>("inventory.list"),
     add: (data: { name?: string; brand?: string; ingredients?: string; source: "manual" | "link" | "photo" | "barcode"; sourceUrl?: string; imageBase64?: string }) =>
       mutation<InventoryItem>("inventory.add", data),
+    update: (data: { id: string; name?: string; brand?: string; ingredients?: string }) =>
+      mutation<InventoryItem>("inventory.update", data),
     remove: (data: { id: string }) =>
       mutation<{ success: boolean }>("inventory.remove", data),
   },

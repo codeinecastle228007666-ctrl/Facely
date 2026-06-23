@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api, type InventoryItem } from "@/services/api";
 import { AddProductModal } from "./AddProductModal";
+import { EditProductModal } from "./EditProductModal";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 
 const SAFETY_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -18,6 +19,7 @@ export const InventoryPanel: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -174,12 +176,20 @@ export const InventoryPanel: React.FC = () => {
                                     </details>
                                   )}
 
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
-                                    style={{ marginTop: 8, fontSize: 11, color: "#E07A8E", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
-                                  >
-                                    Удалить
-                                  </button>
+                                  <div className="flex gap-3" style={{ marginTop: 8 }}>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setEditingItem(item); }}
+                                      style={{ fontSize: 11, color: "var(--text-secondary)", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
+                                    >
+                                      Редактировать
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                                      style={{ fontSize: 11, color: "#E07A8E", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
+                                    >
+                                      Удалить
+                                    </button>
+                                  </div>
                                 </div>
                               </motion.div>
                             )}
@@ -196,6 +206,7 @@ export const InventoryPanel: React.FC = () => {
       </motion.div>
 
       <AddProductModal open={addOpen} onClose={() => setAddOpen(false)} onSuccess={load} />
+      <EditProductModal open={!!editingItem} item={editingItem} onClose={() => setEditingItem(null)} onSuccess={load} />
     </>
   );
 };

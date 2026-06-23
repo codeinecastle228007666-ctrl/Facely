@@ -410,6 +410,35 @@ export const inventoryService = {
     });
   },
 
+  async update(
+    telegramId: string,
+    input: { id: string; name?: string; brand?: string; ingredients?: string },
+  ) {
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    if (!user) throw new Error("User not found");
+
+    const item = await prisma.inventoryItem.findFirst({
+      where: { id: input.id, userId: user.id },
+    });
+    if (!item) throw new Error("Item not found");
+
+    const data: Record<string, unknown> = {};
+    if (input.name !== undefined) data.name = input.name;
+    if (input.brand !== undefined) data.brand = input.brand;
+    if (input.ingredients !== undefined) data.ingredients = input.ingredients;
+
+    if (input.ingredients !== undefined && input.ingredients !== item.ingredients) {
+      const finalName = input.name ?? item.name;
+      const finalBrand = input.brand !== undefined ? input.brand : item.brand;
+      data.analysis = await analyzeIngredients(finalName, finalBrand, input.ingredients);
+    }
+
+    return prisma.inventoryItem.update({
+      where: { id: input.id },
+      data,
+    });
+  },
+
   async remove(telegramId: string, itemId: string) {
     const user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user) throw new Error("User not found");

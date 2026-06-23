@@ -22,6 +22,19 @@ export const inventoryRouter = router({
       return inventoryService.add(ctx.telegramId, input);
     }),
 
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().optional(),
+        brand: z.string().optional(),
+        ingredients: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return inventoryService.update(ctx.telegramId, input);
+    }),
+
   remove: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
