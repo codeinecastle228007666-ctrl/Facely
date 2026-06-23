@@ -6,6 +6,7 @@
 ```sql
 ALTER TABLE "SkinAnalysis" ADD COLUMN "photoHash" TEXT;
 CREATE INDEX "SkinAnalysis_photoHash_idx" ON "SkinAnalysis"("photoHash");
+CREATE INDEX "SkinAnalysis_userId_photoHash_idx" ON "SkinAnalysis"("userId", "photoHash");
 ```
 
 ### InventoryItem (инвентарь средств)

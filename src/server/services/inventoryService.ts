@@ -303,7 +303,47 @@ export const inventoryService = {
 
       let photoData: { name?: string; brand?: string; ingredients?: string } | null = null;
 
-      if (GEMINI_API_KEY) {
+      const groqVisionModels = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"];
+      for (const model of groqVisionModels) {
+        try {
+          console.log(`[inventory] Groq vision calling ${model}...`);
+          const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${GROQ_API_KEY}`,
+            },
+            signal: AbortSignal.timeout(10000),
+            body: JSON.stringify({
+              model,
+              max_tokens: 1024,
+              temperature: 0.1,
+              messages: [{
+                role: "user",
+                content: [
+                  { type: "text", text: "Прочитай текст на фото и верни ТОЛЬКО JSON: {\"name\": \"название или пустая строка\", \"brand\": \"бренд или null\", \"ingredients\": \"ингредиенты через запятую\"}" },
+                  { type: "image_url", image_url: { url: `data:image/jpeg;base64,${input.imageBase64}` } },
+                ],
+              }],
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const raw = data.choices?.[0]?.message?.content || "";
+            const m = raw.match(/\{[\s\S]*?\}/);
+            if (m) { photoData = JSON.parse(m[0]); console.log(`[inventory] Groq vision ${model} success`); break; }
+            console.error(`[inventory] Groq vision ${model} ok but no JSON in:`, raw.slice(0, 500));
+          } else {
+            const errBody = await res.text().catch(() => "");
+            console.error(`[inventory] Groq vision ${model} failed:`, res.status, errBody.slice(0, 300));
+          }
+        } catch (e) {
+          console.error(`[inventory] Groq vision ${model} error:`, e);
+        }
+      }
+
+      if ((!photoData || !photoData.ingredients) && GEMINI_API_KEY) {
+        console.log(`[inventory] Groq vision failed, trying Gemini fallback`);
         const geminiModels = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"];
         for (const model of geminiModels) {
           try {
@@ -340,46 +380,6 @@ export const inventoryService = {
         console.log(`[inventory] GEMINI_API_KEY not set, skipping Gemini`);
       }
 
-      if (!photoData || !photoData.ingredients) {
-        console.log(`[inventory] Gemini failed or no ingredients, trying Groq vision fallback`);
-        const visionModels = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"];
-        for (const model of visionModels) {
-          try {
-            console.log(`[inventory] Groq vision calling ${model}...`);
-            const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${GROQ_API_KEY}`,
-              },
-              signal: AbortSignal.timeout(8000),
-              body: JSON.stringify({
-                model,
-                max_tokens: 1024,
-                temperature: 0.1,
-                messages: [{
-                  role: "user",
-                  content: [
-                    { type: "text", text: "Прочитай текст на фото и верни ТОЛЬКО JSON: {\"name\": \"название или пустая строка\", \"brand\": \"бренд или null\", \"ingredients\": \"ингредиенты через запятую\"}" },
-                    { type: "image_url", image_url: { url: `data:image/jpeg;base64,${input.imageBase64}` } },
-                  ],
-                }],
-              }),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              const raw = data.choices?.[0]?.message?.content || "";
-              const m = raw.match(/\{[\s\S]*?\}/);
-              if (m) { photoData = JSON.parse(m[0]); console.log(`[inventory] Groq vision ${model} success`); break; }
-              console.error(`[inventory] Groq vision ${model} ok but no JSON in:`, raw.slice(0, 500));
-            } else {
-              const errBody = await res.text().catch(() => "");
-              console.error(`[inventory] Groq vision ${model} failed:`, res.status, errBody.slice(0, 300));
-            }
-          } catch (e) {
-            console.error(`[inventory] Groq vision ${model} error:`, e);
-          }
-        }
       }
 
       if (photoData) {

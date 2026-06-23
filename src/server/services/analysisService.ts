@@ -1,17 +1,13 @@
-import crypto from "crypto";
 import { prisma } from "../db";
 import { subscriptionService } from "./subscriptionService";
 import { ritualService } from "./ritualService";
 import { referralService } from "./referralService";
 import { compressImage } from "../utils/imageCompression";
+import { getPerceptualHash, hammingDistance } from "../utils/perceptualHash";
 import { XP_PER_ANALYSIS, calculateLevel, didLevelUp } from "../utils/levelSystem";
 import { pushService } from "./pushService";
 import { analyzeSkinWithFacePlus } from "./facePlusService";
 import { achievementService } from "./achievementService";
-
-function hashBase64(data: string): string {
-  return crypto.createHash("sha256").update(data).digest("hex");
-}
 
 export const analysisService = {
   async analyze(
@@ -27,12 +23,21 @@ export const analysisService = {
     if (!user) throw new Error("User not found");
 
     const compressedPhoto = await compressImage(photoBase64);
-    const photoHash = hashBase64(compressedPhoto);
+    const photoHash = await getPerceptualHash(compressedPhoto);
 
-    const existing = await prisma.skinAnalysis.findFirst({
-      where: { userId: user.id, photoUrl: photoHash },
+    const allPhotos = await prisma.skinAnalysis.findMany({
+      where: { userId: user.id, photoUrl: { not: null } },
+      select: { photoUrl: true, createdAt: true, result: true, id: true },
       orderBy: { createdAt: "desc" },
     });
+
+    let existing: typeof allPhotos[0] | null = null;
+    for (const p of allPhotos) {
+      if (p.photoUrl && hammingDistance(photoHash, p.photoUrl) < 20) {
+        existing = p;
+        break;
+      }
+    }
 
     if (existing) {
       const ritual = await ritualService.getStreak(user.id);
@@ -44,6 +49,7 @@ export const analysisService = {
         streak: ritual.streak,
         maxStreak: ritual.maxStreak,
         cached: true,
+        cachedAt: existing.createdAt.toISOString(),
       };
     }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useEffect } from "react";
+import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { TabBar } from "@/components/ui/TabBar";
 import { UserProfile } from "@/components/dashboard/UserProfile";
@@ -41,6 +42,11 @@ export default function Dashboard() {
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [prevAnalysisId, setPrevAnalysisId] = useState<string | null>(null);
   const [lastAnalysisId, setLastAnalysisId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (toast) { const t = setTimeout(() => setToast(null), 4000); return () => clearTimeout(t); }
+  }, [toast]);
 
   const level = user?.level || 1;
   const perks = getLevelPerks(level);
@@ -70,6 +76,10 @@ export default function Dashboard() {
         setInputOpen(false);
         if (res.cached) {
           notify("warning");
+          if (res.cachedAt) {
+            const d = new Date(res.cachedAt);
+            setToast(`\u0424\u043E\u0442\u043E \u0443\u0436\u0435 \u0430\u043D\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043B\u043E\u0441\u044C ${d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}`);
+          }
         } else {
           notify("success");
         }
@@ -130,6 +140,17 @@ export default function Dashboard() {
     <>
       <Onboarding onDone={() => setOnboardingDone(true)} />
       <ConfettiEffect active={showConfetti} />
+      {toast && (
+        <motion.div
+          initial={{ opacity: 0, y: -40 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          style={{ position: "fixed", top: 60, left: 12, right: 12, maxWidth: 430, margin: "0 auto", zIndex: 300, padding: "12px 16px", borderRadius: 14, background: "#FEF3C7", color: "#92400E", fontSize: 13, lineHeight: 1.4, textAlign: "center", boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}
+          onClick={() => setToast(null)}
+        >
+          {toast}
+        </motion.div>
+      )}
 
       <div style={{ paddingTop: 8 }}>
         <UserProfile

@@ -162,6 +162,7 @@ export interface AnalyzeResponse {
   streak: number;
   maxStreak: number;
   cached: boolean;
+  cachedAt?: string;
 }
 
 export interface AnalysisHistoryItem {

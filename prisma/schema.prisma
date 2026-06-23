@@ -88,7 +88,7 @@ model Report {
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
-  @@index([generatedAt])
+  @@index([createdAt])
 }
 
 model Referral {

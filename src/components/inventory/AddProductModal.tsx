@@ -48,7 +48,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async () => {
-      const compressed = await compressImage(reader.result as string);
+      const compressed = await compressImage(reader.result as string, 800, 0.8);
       setLoading(true);
       try {
         await api.inventory.add({ source: "photo", imageBase64: compressed });
