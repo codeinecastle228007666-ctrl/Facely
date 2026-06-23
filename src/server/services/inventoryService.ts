@@ -298,12 +298,16 @@ export const inventoryService = {
     }
 
     if (input.source === "photo" && input.imageBase64) {
+      const imgSize = Math.round(input.imageBase64.length * 0.75 / 1024);
+      console.log(`[inventory] OCR start, image size: ~${imgSize}KB, GEMINI_KEY: ${GEMINI_API_KEY ? "set" : "NOT SET"}, GROQ_KEY: ${GROQ_API_KEY ? "set" : "NOT SET"}`);
+
       let photoData: { name?: string; brand?: string; ingredients?: string } | null = null;
 
       if (GEMINI_API_KEY) {
         const geminiModels = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"];
         for (const model of geminiModels) {
           try {
+            console.log(`[inventory] Gemini calling ${model}...`);
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -312,16 +316,17 @@ export const inventoryService = {
                 contents: [{
                   parts: [
                     { text: "Прочитай текст на фото. Это INCI-состав (список ингредиентов) косметического средства. Верни ТОЛЬКО JSON без пояснений и без markdown: {\"name\": \"название или пустая строка\", \"brand\": \"бренд или null\", \"ingredients\": \"список ингредиентов через запятую\"}" },
-                    { inline_data: { mime_type: "image/jpeg", data: input.imageBase64 } },
+                    { inlineData: { mimeType: "image/jpeg", data: input.imageBase64 } },
                   ],
                 }],
               }),
             });
+            console.log(`[inventory] Gemini ${model} status:`, res.status);
             if (res.ok) {
               const data = await res.json();
               const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
               const m = text.match(/\{[\s\S]*?\}/);
-              if (m) { photoData = JSON.parse(m[0]); break; }
+              if (m) { photoData = JSON.parse(m[0]); console.log(`[inventory] Gemini ${model} success`); break; }
               console.error(`[inventory] Gemini ${model} ok but no JSON in:`, text.slice(0, 500));
             } else {
               const errBody = await res.text().catch(() => "");
@@ -331,12 +336,16 @@ export const inventoryService = {
             console.error(`[inventory] Gemini ${model} error:`, e);
           }
         }
+      } else {
+        console.log(`[inventory] GEMINI_API_KEY not set, skipping Gemini`);
       }
 
       if (!photoData || !photoData.ingredients) {
+        console.log(`[inventory] Gemini failed or no ingredients, trying Groq vision fallback`);
         const visionModels = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"];
         for (const model of visionModels) {
           try {
+            console.log(`[inventory] Groq vision calling ${model}...`);
             const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
               method: "POST",
               headers: {
@@ -361,10 +370,12 @@ export const inventoryService = {
               const data = await res.json();
               const raw = data.choices?.[0]?.message?.content || "";
               const m = raw.match(/\{[\s\S]*?\}/);
-              if (m) { photoData = JSON.parse(m[0]); break; }
+              if (m) { photoData = JSON.parse(m[0]); console.log(`[inventory] Groq vision ${model} success`); break; }
+              console.error(`[inventory] Groq vision ${model} ok but no JSON in:`, raw.slice(0, 500));
+            } else {
+              const errBody = await res.text().catch(() => "");
+              console.error(`[inventory] Groq vision ${model} failed:`, res.status, errBody.slice(0, 300));
             }
-            const errBody = await res.text().catch(() => "");
-            console.error(`[inventory] Groq vision ${model} failed:`, res.status, errBody.slice(0, 300));
           } catch (e) {
             console.error(`[inventory] Groq vision ${model} error:`, e);
           }
