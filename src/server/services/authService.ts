@@ -31,6 +31,23 @@ export const authService = {
 
     if (user) {
       await ensureCorrectLevel(user);
+      const pending = await prisma.referral.findUnique({
+        where: { refereeId: user.id },
+      });
+      if (pending && !pending.bonusGiven) {
+        try {
+          console.log(`[auth] Claiming pending referral for existing user ${user.id}`);
+          const referrer = await prisma.user.findUnique({ where: { id: pending.referrerId } });
+          if (referrer) {
+            await prisma.referral.update({ where: { id: pending.id }, data: { bonusGiven: true } });
+            await prisma.user.update({ where: { id: referrer.id }, data: { freeAnalyses: { increment: 2 }, referralCount: { increment: 1 } } });
+            await prisma.user.update({ where: { id: user.id }, data: { freeAnalyses: { increment: 1 } } });
+            console.log(`[auth] Pending referral claimed: referrer +2, existing user +1`);
+          }
+        } catch (e: any) {
+          console.error(`[auth] Error claiming pending referral: ${e.message}`, e);
+        }
+      }
     }
 
     if (!user) {
@@ -47,23 +64,40 @@ export const authService = {
       });
 
       if (input.referrerId) {
-        console.log(`[auth] Looking up referrer by telegramId=${input.referrerId}`);
-        const referrer = await prisma.user.findUnique({
-          where: { telegramId: input.referrerId },
-        });
-
-        if (referrer) {
-          console.log(`[auth] Creating referral: referrer=${referrer.id} -> referee=${created.id}`);
-          await prisma.referral.create({
-            data: {
-              referrerId: referrer.id,
-              refereeId: created.id,
-              bonusGiven: false,
-            },
+        try {
+          console.log(`[auth] Looking up referrer by telegramId=${input.referrerId}`);
+          const referrer = await prisma.user.findUnique({
+            where: { telegramId: input.referrerId },
           });
-          console.log(`[auth] Referral created successfully`);
-        } else {
-          console.log(`[auth] Referrer not found for telegramId=${input.referrerId}`);
+
+          if (referrer) {
+            console.log(`[auth] Awarding referral: referrer=${referrer.id} -> referee=${created.id}`);
+            await prisma.referral.create({
+              data: {
+                referrerId: referrer.id,
+                refereeId: created.id,
+                bonusGiven: true,
+              },
+            });
+            await prisma.user.update({
+              where: { id: referrer.id },
+              data: {
+                freeAnalyses: { increment: 2 },
+                referralCount: { increment: 1 },
+              },
+            });
+            await prisma.user.update({
+              where: { id: created.id },
+              data: {
+                freeAnalyses: { increment: 1 },
+              },
+            });
+            console.log(`[auth] Referral bonus awarded: referrer +2, referee +1`);
+          } else {
+            console.log(`[auth] Referrer NOT FOUND for telegramId=${input.referrerId}`);
+          }
+        } catch (e: any) {
+          console.error(`[auth] Referral error: ${e.message}`, e);
         }
       }
 
