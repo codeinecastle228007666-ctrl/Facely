@@ -21,6 +21,13 @@ export const ritualService = {
     );
 
     if (diffDays === 0) {
+      if (ritual.streak === 0) {
+        const updated = await prisma.ritual.update({
+          where: { userId },
+          data: { streak: 1, maxStreak: 1, lastDate: new Date() },
+        });
+        return updated;
+      }
       return ritual;
     }
 
