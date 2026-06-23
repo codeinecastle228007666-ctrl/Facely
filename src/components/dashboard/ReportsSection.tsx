@@ -33,29 +33,73 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="card"
-      style={{ marginBottom: 12, overflow: "hidden", padding: 0 }}
+      style={{
+        background: "var(--bg-card)",
+        borderRadius: 20,
+        boxShadow: "var(--shadow)",
+        marginBottom: 12,
+        overflow: "hidden",
+      }}
     >
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => hasSubscription ? setOpen(!open) : null}
         style={{
-          width: "100%", padding: "14px 16px", display: "flex", alignItems: "center", gap: 10,
-          border: "none", background: "transparent", cursor: "pointer",
+          width: "100%",
+          padding: "16px 18px",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          border: "none",
+          background: "transparent",
+          cursor: hasSubscription ? "pointer" : "default",
         }}
       >
-        <span style={{ fontSize: 20, opacity: hasSubscription ? 1 : 0.4 }}>📊</span>
+        <div style={{
+          width: 44,
+          height: 44,
+          borderRadius: 14,
+          background: "rgba(168, 216, 234, 0.15)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 20,
+          opacity: hasSubscription ? 1 : 0.4,
+          flexShrink: 0,
+        }}>
+          📊
+        </div>
         <div style={{ flex: 1, textAlign: "left" }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>
             Еженедельные отчёты
-            {!hasSubscription && <span style={{ fontSize: 10, color: "#E89B87", marginLeft: 8, fontWeight: 400 }}>по подписке</span>}
+            {!hasSubscription && (
+              <span style={{
+                fontSize: 10,
+                color: "#E89B87",
+                marginLeft: 8,
+                fontWeight: 500,
+                background: "rgba(232, 155, 135, 0.12)",
+                padding: "2px 8px",
+                borderRadius: 6,
+              }}>
+                подписка
+              </span>
+            )}
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {!hasSubscription ? "Оформите подписку для доступа" : reports.length > 0 ? `${reports.length} ${reports.length === 1 ? "отчёт" : "отчётов"}` : "Нет отчётов"}
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+            {!hasSubscription
+              ? "Оформите подписку для доступа к отчётам"
+              : reports.length > 0
+                ? `${reports.length} ${reports.length === 1 ? "отчёт" : "отчётов"}`
+                : "Нет отчётов"}
           </div>
         </div>
         {hasSubscription && (
-          <motion.svg animate={{ rotate: open ? 180 : 0 }} width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-            <path d="M6 9l6 6 6-6" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <motion.svg
+            animate={{ rotate: open ? 180 : 0 }}
+            width="16" height="16" viewBox="0 0 24 24" fill="none"
+            style={{ flexShrink: 0 }}
+          >
+            <path d="M6 9l6 6 6-6" stroke="var(--text-secondary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </motion.svg>
         )}
       </button>
@@ -70,38 +114,70 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
           >
             <div style={{ padding: "0 16px 16px" }}>
               {loading ? (
-                <div style={{ textAlign: "center", padding: "20px", fontSize: 13, color: "var(--text-muted)" }}>Загрузка...</div>
+                <div style={{ textAlign: "center", padding: "24px", fontSize: 13, color: "var(--text-secondary)" }}>
+                  Загрузка...
+                </div>
               ) : reports.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "20px" }}>
-                  <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-                  <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-                    Отчёты формируются раз в неделю. Скоро здесь появится первый отчёт о динамике вашей кожи.
+                <div style={{
+                  textAlign: "center",
+                  padding: "24px",
+                  background: "var(--bg)",
+                  borderRadius: 14,
+                }}>
+                  <div style={{ fontSize: 36, marginBottom: 10 }}>📋</div>
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                    Отчёты формируются раз в неделю.<br />Скоро здесь появится первый отчёт.
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {reports.map((r) => {
                     const dyn = r.dynamics?.dynamics || "";
-                    const info = DYNAMIC_LABELS[dyn] || { icon: "📋", color: "var(--text-muted)" };
+                    const info = DYNAMIC_LABELS[dyn] || { icon: "📋", color: "var(--text-secondary)" };
                     return (
                       <motion.div
                         key={r.id}
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        style={{ padding: "12px 14px", borderRadius: 14, background: "var(--bg)" }}
+                        style={{
+                          padding: "14px",
+                          borderRadius: 14,
+                          background: "var(--bg)",
+                        }}
                       >
-                        <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginBottom: 8,
+                        }}>
                           <span style={{ fontSize: 18 }}>{info.icon}</span>
-                          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                            {new Date(r.generatedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
+                          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                            {new Date(r.generatedAt).toLocaleDateString("ru-RU", {
+                              day: "numeric",
+                              month: "long",
+                              year: "numeric",
+                            })}
                           </span>
                           {r.dynamics?.dynamics && (
-                            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, background: `${info.color}20`, color: info.color, fontWeight: 600, marginLeft: "auto" }}>
+                            <span style={{
+                              fontSize: 11,
+                              padding: "2px 10px",
+                              borderRadius: 8,
+                              background: `${info.color}18`,
+                              color: info.color,
+                              fontWeight: 600,
+                              marginLeft: "auto",
+                            }}>
                               {r.dynamics.dynamics}
                             </span>
                           )}
                         </div>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                        <div style={{
+                          fontSize: 13,
+                          color: "var(--text)",
+                          lineHeight: 1.6,
+                        }}>
                           {r.summary || r.dynamics?.summary || "Нет данных"}
                         </div>
                       </motion.div>

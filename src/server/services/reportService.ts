@@ -1,10 +1,7 @@
 import { prisma } from "../db";
-import { OpenAI } from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY,
-  baseURL: process.env.DEEPSEEK_BASE_URL,
-});
+const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.DEEPSEEK_API_KEY || "";
+const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
 
 export const reportService = {
   async generateWeeklyReport(userId: string) {
@@ -22,9 +19,23 @@ export const reportService = {
 
     if (recentAnalyses.length < 2) return null;
 
-    const prompt = `Ты — дерматолог, анализирующий динамику состояния кожи за неделю.
-
-Вот JSON-массив анализов кожи пользователя за последние 7 дней (от старого к новому):
+    const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+      },
+      signal: AbortSignal.timeout(15000),
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          {
+            role: "system",
+            content: "Ты дерматолог. Анализируй динамику кожи по JSON-массиву анализов за неделю. Отвечай ТОЛЬКО JSON.",
+          },
+          {
+            role: "user",
+            content: `Вот JSON-массив анализов кожи пользователя за последние 7 дней (от старого к новому):
 ${JSON.stringify(
   recentAnalyses.map((a) => ({
     date: a.createdAt.toISOString().split("T")[0],
@@ -36,21 +47,23 @@ ${JSON.stringify(
   2,
 )}
 
-Верни JSON без дополнительного текста:
+Верни JSON:
 {
   "dynamics": "улучшение | ухудшение | стабильно",
   "summary": "Текстовый отчёт на русском языке (3-5 предложений) с анализом динамики, что изменилось, и советом на следующую неделю."
-}`;
-
-    const response = await openai.chat.completions.create({
-      model: "deepseek-chat",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 1500,
-      temperature: 0.7,
-      response_format: { type: "json_object" },
+}`,
+          },
+        ],
+        max_tokens: 1500,
+        temperature: 0.7,
+        response_format: { type: "json_object" },
+      }),
     });
 
-    const text = response.choices[0]?.message?.content;
+    if (!res.ok) throw new Error("AI API error");
+
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content;
     if (!text) throw new Error("AI returned empty report");
 
     const parsed = JSON.parse(text);

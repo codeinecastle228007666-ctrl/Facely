@@ -13,7 +13,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "invalid json" }, { status: 400 });
     }
 
-    const payment = update?.message?.successful_payment;
+    const msg = update?.message;
+    const payment = msg?.successful_payment;
+
+    if (msg?.text?.startsWith("/start")) {
+      const parts = msg.text.split(" ");
+      const refCode = parts[1] || "";
+      const chatId = msg.chat?.id;
+      const firstName = msg.from?.first_name || "";
+
+      let replyText = `Привет, ${firstName}! 👋\n\nДобро пожаловать в Facely — AI-анализ кожи лица.\nНажми кнопку ниже, чтобы начать:`;
+      if (refCode && /^\d{5,}$/.test(refCode)) {
+        replyText = `Привет, ${firstName}! 👋\n\nВас пригласили в Facely! 🎁\nПосле регистрации вы получите +1 бесплатный анализ.\n\nНажми кнопку ниже, чтобы начать:`;
+      }
+
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: replyText,
+          reply_markup: {
+            inline_keyboard: [[{ text: "🚀 Открыть Facely", web_app: { url: "https://facely-chi.vercel.app" } }]],
+          },
+        }),
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
     if (!payment || !payment.invoice_payload) {
       return NextResponse.json({ ok: true });
     }
