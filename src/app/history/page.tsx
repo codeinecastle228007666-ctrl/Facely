@@ -28,6 +28,13 @@ const SKIN_TYPE_DESC: Record<string, string> = {
   нормальная: "Сбалансированное состояние кожи. Достаточно поддерживающего ухода.",
 };
 
+const SKIN_TYPE_HINT: Record<string, string> = {
+  сухая: "нуждается в увлажнении",
+  жирная: "склонна к блеску",
+  комбинированная: "разные зоны — разный уход",
+  нормальная: "сбалансированное состояние",
+};
+
 const SEVERITY_COLORS: Record<string, string> = {
   лёгкое: "#A8D8EA",
   умеренное: "#FFB4A2",
@@ -340,12 +347,17 @@ export default function HistoryPage() {
                     padding: "8px 16px",
                     borderRadius: 20,
                     background: "var(--primary-light)",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--primary-dark)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
                   }}
                 >
-                  {result.skin_type}
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "var(--primary-dark)" }}>
+                    {result.skin_type}
+                  </span>
+                  <span style={{ fontSize: 10, color: "var(--primary-dark)", opacity: 0.6, marginTop: 1 }}>
+                    {SKIN_TYPE_HINT[result.skin_type] || ""}
+                  </span>
                 </div>
                 <div
                   style={{
@@ -373,8 +385,8 @@ export default function HistoryPage() {
                 }}
               >
                 {SKIN_TYPE_DESC[result.skin_type] || `Тип кожи: ${result.skin_type}`}
-                <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>
-                  {MOOD_DESC[result.mood] || ""}
+                <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 10, background: `${MOOD_COLORS[result.mood]}18`, fontSize: 13, color: MOOD_COLORS[result.mood] }}>
+                  <strong>Настроение кожи: {result.mood}</strong> — {MOOD_DESC[result.mood] || ""}
                 </div>
               </div>
 

@@ -85,7 +85,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
             <CrownIcon size={22} />
           </div>
           <span style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }}>
-            {subscriptionActive ? "Да" : "—"}
+            {subscriptionActive ? "Да" : "Нет"}
           </span>
           <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
             Подписка

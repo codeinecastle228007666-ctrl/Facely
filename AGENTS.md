@@ -33,6 +33,8 @@ ALTER TABLE "InventoryItem" ADD CONSTRAINT "InventoryItem_userId_fkey" FOREIGN K
 - `FACE_PLUS_SECRET`
 - `BOT_TOKEN`
 - `GROQ_API_KEY`
+- `GEMINI_API_KEY` (Google AI Studio, бесплатно)
+- `FEEDBACK_CHAT_ID` — ID чата для отзывов (узнать у @userinfobot)
 - `GROQ_BASE_URL` (опционально)
 
 ## Деплой

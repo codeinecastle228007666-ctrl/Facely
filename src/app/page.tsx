@@ -15,6 +15,7 @@ import { AchievementsModal } from "@/components/dashboard/AchievementsModal";
 import { ResultModal } from "@/components/effects/ResultModal";
 import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
 import { PurchaseModal } from "@/components/purchase/PurchaseModal";
+import { FeedbackModal } from "@/components/dashboard/FeedbackModal";
 import { useUser } from "@/hooks/useUser";
 import { useTelegram } from "@/hooks/useTelegram";
 import { api, type AnalysisResult, type AnalysisHistoryItem } from "@/services/api";
@@ -36,6 +37,7 @@ export default function Dashboard() {
   const [streak, setStreak] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [prevAnalysisId, setPrevAnalysisId] = useState<string | null>(null);
   const [lastAnalysisId, setLastAnalysisId] = useState<string | null>(null);
@@ -178,20 +180,20 @@ export default function Dashboard() {
           maxStreak={user?.rituals?.maxStreak || 0}
           nextAnalysisDate={user?.rituals?.nextAnalysisDate || null}
         />
-        <a
-          href="/privacy"
-          style={{
-            display: "block",
-            textAlign: "center",
-            fontSize: 11,
-            color: "var(--text-muted)",
-            marginTop: 24,
-            paddingBottom: 8,
-            textDecoration: "none",
-          }}
-        >
-          Политика конфиденциальности
-        </a>
+        <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 24, paddingBottom: 8 }}>
+          <a
+            href="/privacy"
+            style={{ fontSize: 11, color: "var(--text-muted)", textDecoration: "none" }}
+          >
+            Политика конфиденциальности
+          </a>
+          <button
+            onClick={() => setFeedbackOpen(true)}
+            style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "none" }}
+          >
+            Обратная связь
+          </button>
+        </div>
       </div>
 
       <AnalysisInput
@@ -223,6 +225,10 @@ export default function Dashboard() {
         open={purchaseOpen}
         onClose={() => setPurchaseOpen(false)}
         onSuccess={refetch}
+      />
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
       />
 
       <TabBar />
