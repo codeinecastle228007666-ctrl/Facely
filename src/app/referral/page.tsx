@@ -25,7 +25,7 @@ export default function ReferralPage() {
     impact("light");
     const botUsername = "skin_ritual_bot";
     const refCode = tgUser?.id || localStorage.getItem("__tid") || "";
-    const refLink = `https://t.me/${botUsername}/app?startapp=${refCode}`;
+    const refLink = `https://t.me/${botUsername}?start=${refCode}`;
     const text = `✨ Присоединяйся к Facely — AI-анализ кожи и персональный уход!\n${refLink}`;
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(() => {

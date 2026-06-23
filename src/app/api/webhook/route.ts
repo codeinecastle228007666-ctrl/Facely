@@ -22,15 +22,25 @@ export async function POST(req: NextRequest) {
       const chatId = msg.chat?.id;
       const firstName = msg.from?.first_name || "";
 
-      let replyText = `Привет, ${firstName}! 👋\n\nДобро пожаловать в Facely — AI-анализ кожи лица.\n\n⬇ Нажми кнопку в меню снизу, чтобы открыть приложение:`;
+      const webAppUrl = refCode && /^\d{5,}$/.test(refCode)
+        ? `https://facely-chi.vercel.app/?ref=${refCode}`
+        : "https://facely-chi.vercel.app";
+
+      let replyText = `Привет, ${firstName}! 👋\n\nДобро пожаловать в Facely — AI-анализ кожи лица.`;
       if (refCode && /^\d{5,}$/.test(refCode)) {
-        replyText = `Привет, ${firstName}! 👋\n\nВас пригласили в Facely! 🎁\nПосле регистрации вы получите +1 бесплатный анализ.\n\n⬇ Нажми кнопку в меню снизу, чтобы открыть приложение:`;
+        replyText = `Привет, ${firstName}! 👋\n\nВас пригласили в Facely! 🎁\nПосле регистрации вы получите +1 бесплатный анализ.`;
       }
 
       await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text: replyText }),
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: replyText,
+          reply_markup: {
+            inline_keyboard: [[{ text: "🚀 Открыть Facely", web_app: { url: webAppUrl } }]],
+          },
+        }),
       });
 
       return NextResponse.json({ ok: true });
