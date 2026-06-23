@@ -11,6 +11,16 @@ interface AchievementsModalProps {
   onClose: () => void;
 }
 
+const ACHIEVEMENT_ICONS: Record<string, string> = {
+  first_analysis: "П",
+  week_streak: "Н",
+  month_streak: "М",
+  five_referrals: "5",
+  level_10: "10",
+  level_25: "25",
+  xp_100: "100",
+};
+
 export const AchievementsModal: React.FC<AchievementsModalProps> = ({ open, onClose }) => {
   const [data, setData] = useState<AchievementListResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -102,11 +112,13 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({ open, onCl
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: 20,
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: ach.unlocked ? "var(--primary-dark)" : "var(--text-muted)",
                         flexShrink: 0,
                       }}
                     >
-                      {ach.icon}
+                      {ACHIEVEMENT_ICONS[ach.key] || ach.title.charAt(0)}
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
