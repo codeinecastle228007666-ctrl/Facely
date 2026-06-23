@@ -35,10 +35,16 @@ export function useUser() {
       const tgUser = getTelegramInfo() || (await waitForTelegram());
       if (tgUser) {
         try {
-          const sp = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.start_param || "";
-          const urlParam = new URLSearchParams(window.location.search).get("startapp") || new URLSearchParams(window.location.search).get("ref") || "";
+          const tg = (window as any)?.Telegram?.WebApp?.initDataUnsafe || {};
+          const sp = tg.start_param || "";
+          const fullUrl = window.location.href;
+          const search = window.location.search;
+          const urlParam = new URLSearchParams(search).get("startapp") || new URLSearchParams(search).get("ref") || "";
           const startParam = sp || urlParam;
-          console.log(`[useUser] start_param(telegram)="${sp}", url_param="${urlParam}", tgUser=${String(tgUser?.id)}`);
+          console.log(`[useUser] fullUrl="${fullUrl}"`);
+          console.log(`[useUser] search="${search}"`);
+          console.log(`[useUser] tgInitData=${JSON.stringify(tg)}`);
+          console.log(`[useUser] start_param(telegram)="${sp}", url_param="${urlParam}"`);
           const referrerId = startParam && /^\d{5,}$/.test(startParam) ? startParam : undefined;
           console.log(`[useUser] referrerId="${referrerId}"`);
           const data = await api.auth.register({
