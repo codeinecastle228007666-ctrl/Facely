@@ -227,8 +227,8 @@ function CompareContent() {
   const sel1 = analyses.find((a) => a.id === selected1);
   const sel2 = analyses.find((a) => a.id === selected2);
 
-  const photo1 = getPhoto(selected1);
-  const photo2 = getPhoto(selected2);
+  const photo1 = comparison?.analysis1?.photoBase64 || getPhoto(selected1);
+  const photo2 = comparison?.analysis2?.photoBase64 || getPhoto(selected2);
 
   return (
     <div style={{ paddingTop: 8, paddingBottom: 80 }}>

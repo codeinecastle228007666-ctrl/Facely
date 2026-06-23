@@ -12,8 +12,6 @@ const ACHIEVEMENT_DEFS = [
 
 export const achievementService = {
   async ensureDefinitions() {
-    const count = await prisma.achievement.count();
-    if (count >= ACHIEVEMENT_DEFS.length) return;
     for (const def of ACHIEVEMENT_DEFS) {
       await prisma.achievement.upsert({
         where: { key: def.key },

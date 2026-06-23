@@ -211,8 +211,8 @@ export const analysisService = {
     }
 
     return {
-      analysis1: { id: a1.id, date: a1.createdAt, result: r1, skinType: a1.skinType },
-      analysis2: { id: a2.id, date: a2.createdAt, result: r2, skinType: a2.skinType },
+      analysis1: { id: a1.id, date: a1.createdAt, result: r1, skinType: a1.skinType, photoBase64: a1.photoBase64 },
+      analysis2: { id: a2.id, date: a2.createdAt, result: r2, skinType: a2.skinType, photoBase64: a2.photoBase64 },
       differences,
     };
   },

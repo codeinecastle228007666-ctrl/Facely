@@ -198,8 +198,8 @@ export interface WeeklyStreakResult {
 }
 
 export interface ComparisonResult {
-  analysis1: { id: string; date: string; result: any; skinType: string | null };
-  analysis2: { id: string; date: string; result: any; skinType: string | null };
+  analysis1: { id: string; date: string; result: any; skinType: string | null; photoBase64: string | null };
+  analysis2: { id: string; date: string; result: any; skinType: string | null; photoBase64: string | null };
   differences: Record<string, { from: number; to: number; diff: number; improved: boolean }>;
 }
 
