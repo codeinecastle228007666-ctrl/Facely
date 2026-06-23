@@ -13,15 +13,20 @@ export async function POST(req: NextRequest) {
     const text = `📝 Новый отзыв\n\n${message.trim()}`;
 
     if (BOT_TOKEN && CHAT_ID) {
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chat_id: CHAT_ID, text }),
       });
+      if (!tgRes.ok) {
+        const errBody = await tgRes.text().catch(() => "");
+        console.error(`[feedback] Telegram API error ${tgRes.status}: ${errBody.slice(0, 300)}`);
+      }
     }
 
     return Response.json({ success: true });
-  } catch {
+  } catch (e) {
+    console.error("[feedback] Error:", e instanceof Error ? e.message : e);
     return Response.json({ error: "internal" }, { status: 500 });
   }
 }
