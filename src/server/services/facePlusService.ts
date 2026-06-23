@@ -211,12 +211,32 @@ function generateProductLinks(
   }
 
   if (links.length === 0) {
-    links.push({
-      name: "Увлажняющий крем SPF 30",
-      url: "https://www.ozon.ru/search/?text=увлажняющий+крем+spf",
-      image: "https://via.placeholder.com/100",
-      reason: "Ежедневная защита и увлажнение для здоровой кожи",
-    });
+    links.push(
+      {
+        name: "Мягкая пенка для умывания",
+        url: "https://www.wildberries.ru/catalog/0/search.aspx?search=мягкая+пенка+умывание+лица",
+        image: "https://via.placeholder.com/100",
+        reason: "Мягкое очищение без пересушивания — основа здоровой кожи",
+      },
+      {
+        name: "Увлажняющий крем с гиалуроновой кислотой",
+        url: "https://www.ozon.ru/search/?text=увлажняющий+крем+гиалуроновая+кислота+лицо",
+        image: "https://via.placeholder.com/100",
+        reason: "Гиалуроновая кислота удерживает влагу и поддерживает барьер кожи",
+      },
+      {
+        name: "Сыворотка с ниацинамидом 5%",
+        url: "https://www.wildberries.ru/catalog/0/search.aspx?search=сыворотка+ниацинамид+5%+лицо",
+        image: "https://via.placeholder.com/100",
+        reason: "Ниацинамид укрепляет кожу, выравнивает тон и сужает поры",
+      },
+      {
+        name: "SPF 50+ для лица",
+        url: "https://www.ozon.ru/search/?text=spf+50+крем+для+лица",
+        image: "https://via.placeholder.com/100",
+        reason: "Ежедневная защита от фотостарения и пигментации",
+      },
+    );
   }
 
   return links;
