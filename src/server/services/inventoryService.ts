@@ -380,8 +380,6 @@ export const inventoryService = {
         console.log(`[inventory] GEMINI_API_KEY not set, skipping Gemini`);
       }
 
-      }
-
       if (photoData) {
         name = name || photoData.name || "";
         brand = brand || photoData.brand || null;
