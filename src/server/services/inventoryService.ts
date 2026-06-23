@@ -303,7 +303,7 @@ export const inventoryService = {
 
       let photoData: { name?: string; brand?: string; ingredients?: string } | null = null;
 
-      const groqVisionModels = ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"];
+      const groqVisionModels = ["meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3.6-27b"];
       for (const model of groqVisionModels) {
         try {
           console.log(`[inventory] Groq vision calling ${model}...`);
@@ -344,11 +344,11 @@ export const inventoryService = {
 
       if ((!photoData || !photoData.ingredients) && GEMINI_API_KEY) {
         console.log(`[inventory] Groq vision failed, trying Gemini fallback`);
-        const geminiModels = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite"];
+        const geminiModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
         for (const model of geminiModels) {
           try {
             console.log(`[inventory] Gemini calling ${model}...`);
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               signal: AbortSignal.timeout(8000),
