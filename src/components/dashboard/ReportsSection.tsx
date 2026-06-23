@@ -134,6 +134,7 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
                   {reports.map((r) => {
                     const dyn = r.dynamics?.dynamics || "";
                     const info = DYNAMIC_LABELS[dyn] || { icon: "📋", color: "var(--text-secondary)" };
+                    const d = r.dynamics || {};
                     return (
                       <motion.div
                         key={r.id}
@@ -149,7 +150,7 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
                           display: "flex",
                           alignItems: "center",
                           gap: 8,
-                          marginBottom: 8,
+                          marginBottom: 10,
                         }}>
                           <span style={{ fontSize: 18 }}>{info.icon}</span>
                           <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
@@ -159,7 +160,7 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
                               year: "numeric",
                             })}
                           </span>
-                          {r.dynamics?.dynamics && (
+                          {dyn && (
                             <span style={{
                               fontSize: 11,
                               padding: "2px 10px",
@@ -169,17 +170,66 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
                               fontWeight: 600,
                               marginLeft: "auto",
                             }}>
-                              {r.dynamics.dynamics}
+                              {dyn}
                             </span>
                           )}
                         </div>
+
                         <div style={{
                           fontSize: 13,
                           color: "var(--text)",
                           lineHeight: 1.6,
+                          fontWeight: 500,
+                          marginBottom: 8,
                         }}>
-                          {r.summary || r.dynamics?.summary || "Нет данных"}
+                          {r.summary || d.summary}
                         </div>
+
+                        {d.mainChange && (
+                          <Section label="Главное изменение" text={d.mainChange} />
+                        )}
+
+                        {d.skinTypeChange && (
+                          <Section label="Тип кожи" text={d.skinTypeChange} />
+                        )}
+
+                        {d.problemDynamics && (
+                          <Section label="Динамика проблем" text={d.problemDynamics} />
+                        )}
+
+                        {d.routineAdvice && (
+                          <div style={{
+                            marginTop: 10,
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            background: "rgba(126, 196, 216, 0.1)",
+                            border: "1px solid rgba(126, 196, 216, 0.2)",
+                          }}>
+                            <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                              🧴 Совет по уходу
+                            </div>
+                            <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>
+                              {d.routineAdvice}
+                            </div>
+                          </div>
+                        )}
+
+                        {d.weeklyGoal && (
+                          <div style={{
+                            marginTop: 8,
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            background: "rgba(255, 209, 102, 0.1)",
+                            border: "1px solid rgba(255, 209, 102, 0.2)",
+                          }}>
+                            <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                              🎯 Цель на неделю
+                            </div>
+                            <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>
+                              {d.weeklyGoal}
+                            </div>
+                          </div>
+                        )}
                       </motion.div>
                     );
                   })}
@@ -192,3 +242,14 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
     </motion.div>
   );
 };
+
+const Section: React.FC<{ label: string; text: string }> = ({ label, text }) => (
+  <div style={{ marginTop: 8 }}>
+    <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 3, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+      {label}
+    </div>
+    <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>
+      {text}
+    </div>
+  </div>
+);

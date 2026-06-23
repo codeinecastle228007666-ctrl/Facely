@@ -260,7 +260,7 @@ export interface ReferralStatsResult {
 
 export interface ReportItem {
   id: string;
-  dynamics: { dynamics: string; summary: string } | null;
+  dynamics: Record<string, string> | null;
   summary: string | null;
   generatedAt: string;
 }
