@@ -47,11 +47,13 @@ export const authService = {
       });
 
       if (input.referrerId) {
+        console.log(`[auth] Looking up referrer by telegramId=${input.referrerId}`);
         const referrer = await prisma.user.findUnique({
           where: { telegramId: input.referrerId },
         });
 
         if (referrer) {
+          console.log(`[auth] Creating referral: referrer=${referrer.id} -> referee=${created.id}`);
           await prisma.referral.create({
             data: {
               referrerId: referrer.id,
@@ -59,6 +61,9 @@ export const authService = {
               bonusGiven: false,
             },
           });
+          console.log(`[auth] Referral created successfully`);
+        } else {
+          console.log(`[auth] Referrer not found for telegramId=${input.referrerId}`);
         }
       }
 

@@ -35,8 +35,10 @@ export function useUser() {
       const tgUser = getTelegramInfo() || (await waitForTelegram());
       if (tgUser) {
         try {
-          const startParam = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.start_param || new URLSearchParams(window.location.search).get("startapp");
+          const startParam = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.start_param || new URLSearchParams(window.location.search).get("startapp") || "";
+          console.log(`[useUser] start_param="${startParam}", tgUser=${String(tgUser?.id)}`);
           const referrerId = startParam && /^\d{5,}$/.test(startParam) ? startParam : undefined;
+          console.log(`[useUser] referrerId="${referrerId}"`);
           const data = await api.auth.register({
             telegramId: String(tgUser.id),
             name: tgUser.first_name,
