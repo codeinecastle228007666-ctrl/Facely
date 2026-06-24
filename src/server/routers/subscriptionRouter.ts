@@ -4,6 +4,10 @@ import { subscriptionService } from "../services/subscriptionService";
 import { prisma } from "../db";
 
 export const subscriptionRouter = router({
+  prices: protectedProcedure.query(() => {
+    return subscriptionService.getPrices();
+  }),
+
   status: protectedProcedure.query(async ({ ctx }) => {
     const user = await prisma.user.findUnique({
       where: { telegramId: ctx.telegramId },

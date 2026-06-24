@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CloseIcon } from "@/components/ui/Icons";
+import { CloseIcon, CameraIcon } from "@/components/ui/Icons";
 import { api } from "@/services/api";
 
 interface AddProductModalProps {
@@ -25,9 +25,51 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
   const [ingredients, setIngredients] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showCamera, setShowCamera] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const reset = () => { setStep(null); setName(""); setBrand(""); setIngredients(""); setError(""); };
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setShowCamera(false);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop()); };
+  }, []);
+
+  const reset = () => { setStep(null); setName(""); setBrand(""); setIngredients(""); setError(""); setPhoto(null); stopCamera(); };
+
+  const startCamera = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1080 }, height: { ideal: 1080 } },
+      });
+      streamRef.current = stream;
+      setShowCamera(true);
+      setPhoto(null);
+      setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, 100);
+    } catch {
+      fileRef.current?.click();
+    }
+  }, []);
+
+  const capturePhoto = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const c = document.createElement("canvas");
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    c.getContext("2d")!.drawImage(video, 0, 0);
+    stopCamera();
+    const base64 = c.toDataURL("image/jpeg", 0.85).split(",")[1];
+    setPhoto(base64);
+  }, [stopCamera]);
 
   const compressImage = useCallback((dataUrl: string, maxDim = 1600, quality = 0.92): Promise<string> => {
     return new Promise((resolve) => {
@@ -43,22 +85,38 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
     });
   }, []);
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadPhoto = useCallback(async (base64: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      await api.inventory.add({ source: "photo", imageBase64: base64 });
+      onSuccess();
+      reset();
+      onClose();
+    } catch { setError("ИИ не смог прочитать текст. Попробуйте сфотографировать ровнее или введите вручную."); } finally { setLoading(false); }
+  }, [onSuccess, onClose]);
+
+  const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async () => {
       const compressed = await compressImage(reader.result as string, 800, 0.8);
-      setLoading(true);
-      try {
-        await api.inventory.add({ source: "photo", imageBase64: compressed });
-        onSuccess();
-        reset();
-        onClose();
-      } catch { setError("ИИ не смог прочитать текст. Попробуйте сфотографировать экран с составом ровнее или введите вручную."); } finally { setLoading(false); }
+      await uploadPhoto(compressed);
     };
     reader.readAsDataURL(file);
-  };
+  }, [compressImage, uploadPhoto]);
+
+  const retakePhoto = useCallback(() => {
+    setPhoto(null);
+    startCamera();
+  }, [startCamera]);
+
+  const confirmPhoto = useCallback(async () => {
+    if (!photo) return;
+    const compressed = await compressImage(`data:image/jpeg;base64,${photo}`, 800, 0.8);
+    await uploadPhoto(compressed);
+  }, [photo, compressImage, uploadPhoto]);
 
   const handleSubmit = async () => {
     setError("");
@@ -115,20 +173,86 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ open, onClose,
               </div>
             )}
 
-            {step === "photo" && (
+            {step === "photo" && !showCamera && !photo && (
               <div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.5 }}>
                   Держите камеру ровно, без бликов. Лучше всего — сфотографируйте экран с открытым составом на сайте.
                 </div>
-                <div
-                  onClick={() => fileRef.current?.click()}
-                  style={{ width: "100%", height: 160, borderRadius: 16, border: "2px dashed var(--border)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: "var(--bg)", cursor: "pointer", marginBottom: 12 }}
-                >
-                  <span style={{ fontSize: 36 }}>📷</span>
-                  <span style={{ color: "var(--text-secondary)", fontSize: 14 }}>Нажмите, чтобы сфотографировать состав</span>
+                <div className="flex gap-3">
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    onClick={startCamera}
+                    style={{ flex: 1, padding: "18px", borderRadius: 16, background: "linear-gradient(135deg, var(--primary), var(--secondary))", color: "white", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}
+                  >
+                    <CameraIcon size={24} />
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>Камера</span>
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => fileRef.current?.click()}
+                    style={{ flex: 1, padding: "18px", borderRadius: 16, border: "2px solid var(--border)", background: "var(--bg)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}
+                  >
+                    <span style={{ fontSize: 24 }}>🖼️</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Галерея</span>
+                  </motion.button>
                 </div>
-                <input ref={fileRef} type="file" accept="image/*" capture="user" onChange={handleFile} style={{ display: "none" }} />
-                {loading && <div style={{ textAlign: "center", fontSize: 13, color: "var(--text-secondary)" }}>Распознаём текст...</div>}
+                <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+                {loading && <div style={{ textAlign: "center", fontSize: 13, color: "var(--text-secondary)", marginTop: 12 }}>Распознаём текст...</div>}
+              </div>
+            )}
+
+            {step === "photo" && showCamera && (
+              <div style={{ position: "relative" }}>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{ width: "100%", borderRadius: 16, aspectRatio: "3/4", objectFit: "cover", background: "#000" }}
+                />
+                <div style={{ position: "absolute", bottom: 16, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 16 }}>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={stopCamera}
+                    style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,0.9)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}
+                  >
+                    ✕
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={capturePhoto}
+                    style={{ width: 64, height: 64, borderRadius: "50%", background: "white", border: "4px solid var(--primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--primary)" }} />
+                  </motion.button>
+                </div>
+              </div>
+            )}
+
+            {step === "photo" && photo && !showCamera && (
+              <div>
+                <img
+                  src={`data:image/jpeg;base64,${photo}`}
+                  alt="preview"
+                  style={{ width: "100%", borderRadius: 16, aspectRatio: "3/4", objectFit: "cover", background: "#f0f0f0" }}
+                />
+                <div className="flex gap-3" style={{ marginTop: 12 }}>
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    onClick={retakePhoto}
+                    style={{ flex: 1, padding: "14px", borderRadius: 14, border: "2px solid var(--border)", background: "var(--bg)", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "var(--text)" }}
+                  >
+                    Переснять
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    onClick={confirmPhoto}
+                    disabled={loading}
+                    style={{ flex: 1, padding: "14px", borderRadius: 14, background: "linear-gradient(135deg, var(--primary), var(--secondary))", color: "white", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, opacity: loading ? 0.7 : 1 }}
+                  >
+                    {loading ? "Распознаём..." : "Распознать"}
+                  </motion.button>
+                </div>
               </div>
             )}
 

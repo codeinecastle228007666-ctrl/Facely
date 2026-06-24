@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CloseIcon, CheckIcon } from "@/components/ui/Icons";
 import { api } from "@/services/api";
@@ -17,6 +17,29 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
   onSuccess,
 }) => {
   const [loading, setLoading] = useState<string | null>(null);
+  const [prices, setPrices] = useState<{
+    analysis: number;
+    currency: string;
+    isStars: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    api.subscription.prices().then(setPrices).catch(() => {});
+  }, [open]);
+
+  const formatPrice = (amount: number) => {
+    if (!prices) return "1";
+    if (prices.isStars) return String(amount);
+    return (amount / 100).toLocaleString("ru-RU", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  };
+
+  const formatCurrency = () => {
+    if (!prices) return "⭐";
+    return prices.isStars ? "⭐" : "₽";
+  };
 
   const handleStarsPurchase = async () => {
     const tg = (window as any).Telegram?.WebApp;
@@ -26,8 +49,8 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
     }
     setLoading("analysis_1");
     try {
-      const { url } = await api.subscription.createStarsInvoice({ quantity: 1 });
-      tg.openInvoice(url, async (status: string) => {
+      const res = await api.subscription.createStarsInvoice({ quantity: 1 });
+      tg.openInvoice(res.url, async (status: string) => {
         if (status === "paid") {
           alert("Оплата прошла! Анализы будут зачислены в течение минуты.");
           setTimeout(() => { onSuccess?.(); onClose(); }, 1000);
@@ -114,7 +137,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
                     color: "white",
                   }}
                 >
-                  Telegram Stars
+                  {prices?.isStars ? "Telegram Stars" : "Банковская карта"}
                 </span>
                 <div className="flex justify-between items-center" style={{ marginBottom: 8 }}>
                   <div>
@@ -124,8 +147,12 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 20, fontWeight: 700 }}>1</div>
-                    <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>⭐</div>
+                    <div style={{ fontSize: 20, fontWeight: 700 }}>
+                      {formatPrice(prices?.analysis ?? 1)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                      {formatCurrency()}
+                    </div>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">

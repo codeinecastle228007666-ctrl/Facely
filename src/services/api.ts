@@ -90,11 +90,18 @@ export const api = {
   },
   ritual: {
     getStreak: () =>
-      query<{ streak: number; maxStreak: number; lastDate: string | null }>("ritual.getStreak"),
+      query<{ streak: number; maxStreak: number; lastDate: string | null; weeklyStreak: number; nextAnalysisDate: string | null }>("ritual.getStreak"),
     getWeeklyStreak: () =>
       query<WeeklyStreakResult>("ritual.getWeeklyStreak"),
   },
   subscription: {
+    prices: () =>
+      query<{
+        analysis: number;
+        chat: number;
+        currency: string;
+        isStars: boolean;
+      }>("subscription.prices"),
     status: () => query<SubscriptionStatus>("subscription.status"),
     activate: (data: { type: "trial" | "paid" }) =>
       mutation<unknown>("subscription.activate", data),
@@ -103,11 +110,11 @@ export const api = {
     purchaseSubscription: () =>
       mutation<PurchaseResult>("subscription.purchaseSubscription"),
     createStarsInvoice: (data: { quantity: number }) =>
-      mutation<{ url: string }>("subscription.createStarsInvoice", data),
+      mutation<{ url: string; currency: string; amount: number }>("subscription.createStarsInvoice", data),
     confirmStarsPayment: (data: { payload: string }) =>
       mutation<{ success: boolean }>("subscription.confirmStarsPayment", data),
     createChatStarsInvoice: () =>
-      mutation<{ url: string }>("subscription.createChatStarsInvoice"),
+      mutation<{ url: string; currency: string; amount: number }>("subscription.createChatStarsInvoice"),
   },
   referral: {
     claimBonus: () => mutation<boolean>("referral.claimBonus"),

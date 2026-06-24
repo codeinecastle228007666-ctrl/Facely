@@ -23,8 +23,8 @@ export const leaderboardRouter = router({
     if (!user) throw new Error("User not found");
 
     const rituals = await prisma.ritual.findMany({
-      where: { weeklyStreak: { gt: 0 } },
-      orderBy: { weeklyStreak: "desc" },
+      where: { streak: { gt: 0 } },
+      orderBy: { streak: "desc" },
       take: 50,
       include: { user: { select: { id: true, name: true } } },
     });
@@ -32,7 +32,7 @@ export const leaderboardRouter = router({
     return rituals.map((r, i) => ({
       id: r.user.id,
       name: r.user.name,
-      value: r.weeklyStreak,
+      value: r.streak,
       rank: i + 1,
       isMe: r.user.id === user.id,
     }));

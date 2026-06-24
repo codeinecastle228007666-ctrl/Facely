@@ -8,6 +8,7 @@ import { UserProfile } from "@/components/dashboard/UserProfile";
 import { BalanceCard } from "@/components/dashboard/BalanceCard";
 import { AnalysisButton } from "@/components/dashboard/AnalysisButton";
 import { ProgressCard } from "@/components/dashboard/ProgressCard";
+import { StreakCard } from "@/components/dashboard/StreakCard";
 import { AnalysisInput } from "@/components/dashboard/AnalysisInput";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { SkinDiary } from "@/components/dashboard/SkinDiary";
@@ -38,6 +39,8 @@ export default function Dashboard() {
   const [totalXp, setTotalXp] = useState(0);
   const [newLevel, setNewLevel] = useState(0);
   const [streak, setStreak] = useState(0);
+  const [maxStreak, setMaxStreak] = useState(0);
+  const [nextAnalysisDate, setNextAnalysisDate] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -70,6 +73,11 @@ export default function Dashboard() {
     if (!user) return;
     api.analysis.history({ limit: 1, offset: 0 }).then((data) => {
       if (data.analyses.length > 0) setLastAnalysis(data.analyses[0]);
+    }).catch(() => {});
+    api.ritual.getStreak().then((r) => {
+      setStreak(r.streak);
+      setMaxStreak(r.maxStreak);
+      setNextAnalysisDate(r.nextAnalysisDate);
     }).catch(() => {});
   }, [user]);
 
@@ -211,6 +219,11 @@ export default function Dashboard() {
           freeAnalyses={freeAnalyses}
           paidAnalyses={paidAnalyses}
           subscriptionActive={hasSub}
+        />
+        <StreakCard
+          streak={streak}
+          maxStreak={maxStreak}
+          nextAnalysisDate={nextAnalysisDate}
         />
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           <div style={{ flex: 1 }}>

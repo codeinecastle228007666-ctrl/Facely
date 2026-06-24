@@ -37,6 +37,7 @@ ALTER TABLE "InventoryItem" ADD CONSTRAINT "InventoryItem_userId_fkey" FOREIGN K
 - `GEMINI_API_KEY` (Google AI Studio, бесплатно)
 - `FEEDBACK_CHAT_ID` — ID чата для отзывов (узнать у @userinfobot)
 - `GROQ_BASE_URL` (опционально)
+- `PROVIDER_TOKEN` — токен платёжного провайдера (Smart Global). Если не задан — оплата в Telegram Stars
 
 ## Деплой
 - Vercel авто-деплой из `main`
