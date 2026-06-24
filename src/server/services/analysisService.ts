@@ -33,7 +33,7 @@ async function analyzeProblemPositions(photoBase64: string): Promise<ProblemPosi
             content: [
               {
                 type: "text",
-                text: "Ты — косметолог. Проанализируй фото лица и найди видимые проблемы кожи. Для каждой проблемы укажи координаты в процентах от ширины и высоты изображения. Верни ТОЛЬКО JSON без пояснений: {\"problems\":[{\"type\":\"acne\"|\"spot\"|\"redness\"|\"wrinkle\"|\"dark_circle\"|\"pore\"|\"pigmentation\"|\"scar\"|\"other\",\"label\":\"описание на русском 2-4 слова\",\"x\":число(0-100),\"y\":число(0-100),\"radius\":число(1-10)}]}",
+                text: "Ты косметолог. Найди на фото лица проблемы кожи. Верни ТОЛЬКО JSON массива problems. Пример: {\"problems\":[{\"type\":\"acne\",\"label\":\"прыщ на щеке\",\"x\":45,\"y\":60,\"radius\":3}]}. type может быть: acne, spot, redness, wrinkle, dark_circle, pore, pigmentation, scar, other. x и y — проценты от ширины и высоты (0-100). radius — 1-10. label — коротко по-русски.",
               },
               { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } },
             ],

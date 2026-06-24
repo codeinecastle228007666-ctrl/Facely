@@ -47,6 +47,9 @@ const PROBLEM_MAP: Record<string, string> = {
   pore: "поры",
   spot: "пигментация",
   wrinkle: "морщины",
+  blackhead: "чёрные точки",
+  eye_pouch: "мешки под глазами",
+  eyelids: "отёчность век",
 };
 
 const SEVERITY_LABELS: Record<number, string> = {
@@ -60,6 +63,9 @@ const PROBLEM_DESC: Record<string, string> = {
   pore: "Расширенные поры — результат избыточной выработки себума и снижения упругости стенок пор. Чаще встречаются в Т-зоне.",
   spot: "Участки гиперпигментации: постакне, солнечные пятна, мелазма. Возникают из-за избыточной выработки меланина под воздействием УФ.",
   wrinkle: "Мимические и возрастные морщины. Появляются из-за снижения выработки коллагена и эластина, обезвоженности, воздействия УФ.",
+  blackhead: "Открытые комедоны — результат закупорки пор кожным салом и ороговевшими клетками. Чаще встречаются в Т-зоне.",
+  eye_pouch: "Припухлость под глазами: задержка жидкости, усталость, возрастные изменения, нарушение лимфотока.",
+  eyelids: "Отёчность век — скопление жидкости в тканях вокруг глаз. Причины: усталость, недосып, задержка соли.",
 };
 
 const RECOMMENDATIONS_MAP: Record<string, string[]> = {
@@ -87,6 +93,21 @@ const RECOMMENDATIONS_MAP: Record<string, string[]> = {
     "Крем с ретинолом для стимуляции коллагена",
     "Сыворотка с пептидами для упругости кожи",
     "Увлажняющий крем с коэнзимом Q10",
+  ],
+  blackhead: [
+    "Сыворотка с салициловой кислотой 2%",
+    "Энзимная пудра для умывания",
+    "Маска с глиной 2 раза в неделю",
+  ],
+  eye_pouch: [
+    "Крем для век с кофеином",
+    "Патчи с гидрогелем под глаза",
+    "Лимфодренажный массаж лица",
+  ],
+  eyelids: [
+    "Лёгкий гель для век с экстрактом огурца",
+    "Патчи с зелёным чаем для снятия отёчности",
+    "Ограничить солёное на ночь",
   ],
 };
 
@@ -166,6 +187,18 @@ function generateProductLinks(
     морщины: [
       { name: "Крем с ретинолом", reason: "Стимулирует выработку коллагена", effect: "Мелкие морщины разгладятся через месяц, глубокие станут менее заметными" },
       { name: "Сыворотка с пептидами", reason: "Повышает упругость кожи", effect: "Кожа станет более упругой и подтянутой через 2-3 недели" },
+    ],
+    "чёрные точки": [
+      { name: "Сыворотка с салициловой кислотой 2%", reason: "Растворяет пробки в порах", effect: "Чёрные точки станут заметно светлее и меньше через 2 недели" },
+      { name: "Энзимная пудра", reason: "Мягко отшелушивает без травмирования", effect: "Поры очистятся, текстура выровняется через 3-4 применения" },
+    ],
+    "мешки под глазами": [
+      { name: "Крем для век с кофеином", reason: "Улучшает микроциркуляцию и отток жидкости", effect: "Отёчность уменьшится утром после первого же применения" },
+      { name: "Патчи гидрогелевые", reason: "Охлаждают и увлажняют тонкую кожу век", effect: "Мешки заметно уменьшатся после 15 минут, взгляд станет свежее" },
+    ],
+    "отёчность век": [
+      { name: "Гель для век с экстрактом огурца", reason: "Охлаждает и снимает припухлость", effect: "Отёчность спадает через 10-15 минут после нанесения" },
+      { name: "Патчи с зелёным чаем", reason: "Антиоксиданты и кофеин тонизируют кожу век", effect: "Веки выглядят менее припухшими, взгляд открытый" },
     ],
   };
 
@@ -273,6 +306,8 @@ export async function analyzeSkinWithFacePlus(
   const acneScore = scaleValue(r.acne?.value ?? 0);
   const darkCircleScore = scaleValue(r.dark_circle?.value ?? 0);
   const spotScore = scaleValue(r.skin_spot?.value ?? 0);
+  const blackheadScore = scaleValue(r.blackhead?.value ?? 0);
+  const eyePouchScore = scaleValue(r.eye_pouch?.value ?? 0);
 
   // Average pore score across all pore locations
   const poreValues = [
@@ -293,13 +328,19 @@ export async function analyzeSkinWithFacePlus(
   ];
   const wrinkleScore = Math.max(...wrinkleValues.map(scaleValue));
 
-  // Build score map
+  // Eyelids: average of both
+  const eyelidScore = (scaleValue(r.left_eyelids?.value ?? 0) + scaleValue(r.right_eyelids?.value ?? 0)) / 2;
+
+  // Build score map (excluding mole — not a skin problem)
   const scores: Record<string, number> = {
     acne: acneScore,
     dark_circle: darkCircleScore,
     pore: poreScore,
     spot: spotScore,
     wrinkle: wrinkleScore,
+    blackhead: blackheadScore,
+    eye_pouch: eyePouchScore,
+    eyelids: eyelidScore,
   };
 
   const skinType = SKIN_TYPE_MAP[r.skin_type?.skin_type] || "нормальная";
