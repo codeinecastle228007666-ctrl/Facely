@@ -132,6 +132,14 @@ export const api = {
   achievement: {
     list: () => query<AchievementListResult>("achievement.list"),
   },
+  routine: {
+    get: () => query<RoutineResult | null>("routine.get"),
+    save: (data: {
+      steps: { inventoryId?: string; productName: string; timeOfDay: string; dayOfWeek?: number | null; stepOrder: number }[];
+    }) => mutation<RoutineResult | null>("routine.save", data),
+    removeStep: (data: { stepId: string }) =>
+      mutation<RoutineResult | null>("routine.removeStep", data),
+  },
   inventory: {
     list: () => query<InventoryItem[]>("inventory.list"),
     add: (data: { name?: string; brand?: string; ingredients?: string; source: "manual" | "link" | "photo" | "barcode"; sourceUrl?: string; imageBase64?: string }) =>
@@ -258,6 +266,21 @@ export interface LeaderboardEntry {
   value: number;
   rank: number;
   isMe: boolean;
+}
+
+export interface RoutineStepItem {
+  id: string;
+  inventoryId: string | null;
+  productName: string;
+  timeOfDay: string;
+  dayOfWeek: number | null;
+  stepOrder: number;
+  inventory: { name: string; brand: string | null } | null;
+}
+
+export interface RoutineResult {
+  id: string;
+  steps: RoutineStepItem[];
 }
 
 export interface ReferralStatsResult {

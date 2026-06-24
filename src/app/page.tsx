@@ -19,6 +19,7 @@ import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
 import { PurchaseModal } from "@/components/purchase/PurchaseModal";
 import { FeedbackModal } from "@/components/dashboard/FeedbackModal";
 import { ReportsSection } from "@/components/dashboard/ReportsSection";
+import { RoutineSection } from "@/components/routine/RoutineSection";
 import { LastAnalysisCard } from "@/components/dashboard/LastAnalysisCard";
 import { useUser } from "@/hooks/useUser";
 import { useTelegram } from "@/hooks/useTelegram";
@@ -258,6 +259,7 @@ export default function Dashboard() {
           lastAnalysisDate={null}
         />
         <LastAnalysisCard item={lastAnalysis} />
+        <RoutineSection />
         <ReportsSection hasSubscription={hasSub} />
         <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 24, paddingBottom: 8 }}>
           <a
