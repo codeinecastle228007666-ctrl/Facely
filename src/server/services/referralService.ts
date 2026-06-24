@@ -67,6 +67,20 @@ export const referralService = {
     const pos = allUsers.findIndex((u) => u.id === user.id);
     if (pos >= 0) leaderboardPosition = pos + 1;
 
-    return { count, bonusEarned, leaderboardPosition };
+    const referrals = await prisma.referral.findMany({
+      where: { referrerId: user.id },
+      include: {
+        referee: { select: { name: true, createdAt: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const referredUsers = referrals.map((r) => ({
+      name: r.referee.name || "Пользователь",
+      joinedAt: r.createdAt.toISOString(),
+      bonusGiven: r.bonusGiven,
+    }));
+
+    return { count, bonusEarned, leaderboardPosition, referredUsers };
   },
 };

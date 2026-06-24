@@ -264,6 +264,7 @@ export interface ReferralStatsResult {
   count: number;
   bonusEarned: number;
   leaderboardPosition: number | null;
+  referredUsers: { name: string; joinedAt: string; bonusGiven: boolean }[];
 }
 
 export interface ReportItem {

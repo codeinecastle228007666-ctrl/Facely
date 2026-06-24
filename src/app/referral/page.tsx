@@ -78,6 +78,7 @@ export default function ReferralPage() {
               invitedCount={stats?.count || 0}
               bonusAnalyses={stats?.bonusEarned || 0}
               onShare={handleShare}
+              referredUsers={stats?.referredUsers}
             />
             {copied && (
               <motion.div

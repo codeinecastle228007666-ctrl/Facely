@@ -8,12 +8,14 @@ interface ReferralStatsProps {
   invitedCount: number;
   bonusAnalyses: number;
   onShare: () => void;
+  referredUsers?: { name: string; joinedAt: string; bonusGiven: boolean }[];
 }
 
 export const ReferralStats: React.FC<ReferralStatsProps> = ({
   invitedCount,
   bonusAnalyses,
   onShare,
+  referredUsers,
 }) => {
   return (
     <div className="flex flex-col gap-3">
@@ -102,6 +104,37 @@ export const ReferralStats: React.FC<ReferralStatsProps> = ({
         <br />
         Пригласите друга по ссылке — вы получите +2 бесплатных анализа, а друг +1.
       </motion.div>
+
+      {referredUsers && referredUsers.length > 0 && (
+        <motion.div
+          className="card"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Приглашённые</div>
+          <div className="flex flex-col gap-3">
+            {referredUsers.map((u, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--primary-light)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", flexShrink: 0 }}>
+                    {u.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{u.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      {new Date(u.joinedAt).toLocaleDateString("ru-RU")}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: u.bonusGiven ? "rgba(76, 175, 80, 0.1)" : "rgba(255, 193, 7, 0.1)", color: u.bonusGiven ? "#4CAF50" : "#FF9800" }}>
+                  {u.bonusGiven ? "Бонус получен" : "Ожидание"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 };
