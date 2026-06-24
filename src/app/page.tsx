@@ -248,21 +248,23 @@ export default function Dashboard() {
               <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>анализов</div>
             </div>
           </motion.div>
-          <motion.div
+          <motion.button
+            onClick={() => setPurchaseOpen(true)}
             className="card flex items-center gap-2"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
-            style={{ flex: 1, padding: "14px 16px" }}
+            whileTap={{ scale: 0.97 }}
+            style={{ flex: 1, padding: "14px 16px", border: "none", cursor: "pointer", textAlign: "left" }}
           >
             <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(255, 215, 0, 0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-              🆓
+              💎
             </div>
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>{freeAnalyses + paidAnalyses}</div>
               <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>доступно</div>
             </div>
-          </motion.div>
+          </motion.button>
         </div>
 
         <div className="flex gap-2" style={{ marginBottom: 12 }}>

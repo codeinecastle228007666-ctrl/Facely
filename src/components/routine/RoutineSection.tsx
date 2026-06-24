@@ -134,59 +134,73 @@ export const RoutineSection: React.FC = () => {
 
               {editing && (
                 <div>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                    <select
-                      value={newStep.timeOfDay}
-                      onChange={(e) => setNewStep((p) => ({ ...p, timeOfDay: e.target.value as "morning" | "evening" }))}
-                      style={{ padding: "8px 12px", borderRadius: 12, border: "1px solid var(--border)", fontSize: 13, background: "var(--bg)" }}
-                    >
-                      <option value="morning">☀️ Утро</option>
-                      <option value="evening">🌙 Вечер</option>
-                    </select>
-                    <select
-                      value={newStep.inventoryId || ""}
-                      onChange={(e) => {
-                        const inv = inventory.find((i) => i.id === e.target.value);
-                        setNewStep((p) => ({ ...p, inventoryId: e.target.value || undefined, productName: inv?.name || "" }));
-                      }}
-                      style={{ flex: 1, padding: "8px 12px", borderRadius: 12, border: "1px solid var(--border)", fontSize: 13, background: "var(--bg)" }}
-                    >
-                      <option value="">Из инвентаря...</option>
-                      {inventory.map((i) => (
-                        <option key={i.id} value={i.id}>{i.name}{i.brand ? ` (${i.brand})` : ""}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                    <input
-                      placeholder="Название средства"
-                      value={newStep.productName}
-                      onChange={(e) => setNewStep((p) => ({ ...p, productName: e.target.value }))}
-                      style={{ flex: 1, padding: "8px 12px", borderRadius: 12, border: "1px solid var(--border)", fontSize: 13, background: "var(--bg)" }}
-                    />
-                    <motion.button
-                      whileTap={{ scale: 0.95 }}
-                      onClick={addStep}
-                      disabled={!newStep.productName.trim()}
-                      style={{ padding: "8px 16px", borderRadius: 12, border: "none", background: "var(--primary)", color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: newStep.productName.trim() ? 1 : 0.5 }}
-                    >
-                      + Добавить
-                    </motion.button>
-                  </div>
-
-                  {steps.map((s, i) => (
-                    <div key={s.id} className="flex items-center gap-2" style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-                      <span style={{ width: 20, textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>{i + 1}</span>
-                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 8, background: s.timeOfDay === "morning" ? "rgba(255, 193, 7, 0.1)" : "rgba(33, 150, 243, 0.1)", color: s.timeOfDay === "morning" ? "#FF9800" : "#1976D2" }}>
-                        {s.timeOfDay === "morning" ? "Утро" : "Вечер"}
-                      </span>
-                      <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
-                      <button onClick={() => removeStep(s.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--text-muted)", padding: 4 }}>✕</button>
+                  <div style={{ background: "var(--bg)", borderRadius: 14, padding: 12, marginBottom: 12 }}>
+                    <div className="flex gap-2" style={{ marginBottom: 10 }}>
+                      <select
+                        value={newStep.timeOfDay}
+                        onChange={(e) => setNewStep((p) => ({ ...p, timeOfDay: e.target.value as "morning" | "evening" }))}
+                        style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", fontSize: 13, background: "white", flex: 1 }}
+                      >
+                        <option value="morning">☀️ Утро</option>
+                        <option value="evening">🌙 Вечер</option>
+                      </select>
+                      <select
+                        value={newStep.inventoryId || ""}
+                        onChange={(e) => {
+                          const inv = inventory.find((i) => i.id === e.target.value);
+                          setNewStep((p) => ({ ...p, inventoryId: e.target.value || undefined, productName: inv?.name || "" }));
+                        }}
+                        style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", fontSize: 13, background: "white", flex: 2 }}
+                      >
+                        <option value="">Из инвентаря...</option>
+                        {inventory.map((i) => (
+                          <option key={i.id} value={i.id}>{i.name}{i.brand ? ` (${i.brand})` : ""}</option>
+                        ))}
+                      </select>
                     </div>
-                  ))}
+                    <div className="flex gap-2">
+                      <input
+                        placeholder="Название средства"
+                        value={newStep.productName}
+                        onChange={(e) => setNewStep((p) => ({ ...p, productName: e.target.value }))}
+                        style={{ flex: 1, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", fontSize: 13, background: "white" }}
+                      />
+                      <motion.button
+                        whileTap={{ scale: 0.95 }}
+                        onClick={addStep}
+                        disabled={!newStep.productName.trim()}
+                        style={{ padding: "10px 18px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, var(--primary), var(--secondary))", color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: newStep.productName.trim() ? 1 : 0.5, whiteSpace: "nowrap" }}
+                      >
+                        + Добавить
+                      </motion.button>
+                    </div>
+                  </div>
 
                   {steps.length > 0 && (
-                    <div className="flex gap-3" style={{ marginTop: 16 }}>
+                    <div style={{ marginBottom: 12 }}>
+                      {steps.map((s, i) => (
+                        <div key={s.id} className="flex items-center gap-2" style={{ padding: "8px 10px", marginBottom: 4, borderRadius: 12, background: "var(--bg)" }}>
+                          <span style={{ width: 20, height: 20, borderRadius: 8, background: s.timeOfDay === "morning" ? "rgba(255, 193, 7, 0.15)" : "rgba(33, 150, 243, 0.15)", color: s.timeOfDay === "morning" ? "#FF9800" : "#1976D2", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            {i + 1}
+                          </span>
+                          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 8, background: s.timeOfDay === "morning" ? "rgba(255, 193, 7, 0.1)" : "rgba(33, 150, 243, 0.1)", color: s.timeOfDay === "morning" ? "#FF9800" : "#1976D2", flexShrink: 0 }}>
+                            {s.timeOfDay === "morning" ? "Утро" : "Вечер"}
+                          </span>
+                          <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
+                          <motion.button
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => removeStep(s.id)}
+                            style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(232, 160, 180, 0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}
+                          >
+                            ✕
+                          </motion.button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {steps.length > 0 && (
+                    <div className="flex gap-3">
                       <motion.button
                         whileTap={{ scale: 0.97 }}
                         onClick={() => { setEditing(false); load(); }}
@@ -201,6 +215,12 @@ export const RoutineSection: React.FC = () => {
                       >
                         Сохранить
                       </motion.button>
+                    </div>
+                  )}
+
+                  {steps.length === 0 && (
+                    <div style={{ textAlign: "center", padding: "8px 0", fontSize: 12, color: "var(--text-muted)" }}>
+                      Добавьте хотя бы один шаг
                     </div>
                   )}
                 </div>

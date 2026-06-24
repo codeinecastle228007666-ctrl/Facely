@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { StreakIcon } from "@/components/ui/Icons";
 import { motion } from "framer-motion";
 
@@ -18,28 +18,7 @@ const MILESTONES: Record<number, string> = {
   24: "24 дня",
 };
 
-export const StreakCard: React.FC<StreakCardProps> = ({ streak, maxStreak, nextAnalysisDate }) => {
-  const [countdown, setCountdown] = useState<string>("");
-
-  useEffect(() => {
-    if (!nextAnalysisDate) return;
-    const update = () => {
-      const now = new Date();
-      const target = new Date(nextAnalysisDate);
-      const diff = target.getTime() - now.getTime();
-      if (diff <= 0) {
-        setCountdown("Доступно");
-        return;
-      }
-      const days = Math.floor(diff / 86400000);
-      const hours = Math.floor((diff % 86400000) / 3600000);
-      setCountdown(`${days}д ${hours}ч`);
-    };
-    update();
-    const interval = setInterval(update, 60000);
-    return () => clearInterval(interval);
-  }, [nextAnalysisDate]);
-
+export const StreakCard: React.FC<StreakCardProps> = ({ streak, maxStreak }) => {
   const nearestMilestone = Object.entries(MILESTONES)
     .map(([days, label]) => ({ days: parseInt(days), label }))
     .find((m) => streak < m.days);
@@ -50,6 +29,7 @@ export const StreakCard: React.FC<StreakCardProps> = ({ streak, maxStreak, nextA
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.3 }}
+      style={{ marginBottom: 12 }}
     >
       <div className="flex items-center gap-3">
         <div
@@ -80,11 +60,6 @@ export const StreakCard: React.FC<StreakCardProps> = ({ streak, maxStreak, nextA
               ? `До цели "${nearestMilestone.label}": ${nearestMilestone.days - streak} дней`
               : "Цель достигнута!"}
           </div>
-          {countdown && (
-            <div style={{ fontSize: 11, color: "var(--primary-dark)", marginTop: 2 }}>
-              Следующий анализ через: {countdown}
-            </div>
-          )}
         </div>
       </div>
       <div
