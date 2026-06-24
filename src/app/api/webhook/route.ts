@@ -26,9 +26,9 @@ export async function POST(req: NextRequest) {
         ? `https://facely-chi.vercel.app/?ref=${refCode}`
         : "https://facely-chi.vercel.app";
 
-      let replyText = `Привет, ${firstName}! 👋\n\nДобро пожаловать в Facely — AI-анализ кожи лица.`;
+      let replyText = `Привет, ${firstName}! 👋\n\nДобро пожаловать в Reveli — AI-анализ кожи лица.`;
       if (refCode && /^\d{5,}$/.test(refCode)) {
-        replyText = `Привет, ${firstName}! 👋\n\nВас пригласили в Facely! 🎁\nПосле регистрации вы получите +1 бесплатный анализ.`;
+        replyText = `Привет, ${firstName}! 👋\n\nВас пригласили в Reveli! 🎁\nПосле регистрации вы получите +1 бесплатный анализ.`;
       }
 
       await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
           chat_id: chatId,
           text: replyText,
           reply_markup: {
-            inline_keyboard: [[{ text: "🚀 Открыть Facely", web_app: { url: webAppUrl } }]],
+            inline_keyboard: [[{ text: "🚀 Открыть Reveli", web_app: { url: webAppUrl } }]],
           },
         }),
       });

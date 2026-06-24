@@ -1,4 +1,4 @@
-# Facely — Developer Instructions
+# Reveli — Developer Instructions
 
 ## SQL миграции (выполнять в Supabase SQL Editor)
 
@@ -43,7 +43,8 @@ ALTER TABLE "InventoryItem" ADD CONSTRAINT "InventoryItem_userId_fkey" FOREIGN K
 - cron-job.org: `https://facely-chi.vercel.app/api/health` — каждые 5 мин (прогрев)
 - cron-job.org: `https://facely-chi.vercel.app/api/remind` — раз в день (напоминания)
 - Webhook: `https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url=https://facely-chi.vercel.app/api/webhook`
+- Новый BOT_TOKEN: `8883652449:AAEbmeiun9UkRb1XkKxfv_xZg0MXM1gvuNo`
 
 ## BotFather
-- `/mybot` → Facely → Payments → Stars → Activate
-- `/mybot` → Facely → Edit Bot → Privacy Policy URL: `https://facely-chi.vercel.app/privacy`
+- `/mybot` → Reveli → Payments → Stars → Activate
+- `/mybot` → Reveli → Edit Bot → Privacy Policy URL: `https://facely-chi.vercel.app/privacy`

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const KEY = "facely_onboarding_shown";
+const KEY = "reveli_onboarding_shown";
 
 const slides = [
   {

@@ -114,7 +114,7 @@ export const subscriptionService = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: `${quantity} анализ кожи`,
-          description: `AI-анализ кожи в Facely — ${quantity} шт.`,
+          description: `AI-анализ кожи в Reveli — ${quantity} шт.`,
           payload: `analysis_${quantity}_${user.id}`,
           provider_token: "",
           currency: "XTR",
@@ -150,7 +150,7 @@ export const subscriptionService = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: "10 вопросов косметологу",
-          description: "Пакет из 10 вопросов AI-косметологу в Facely",
+          description: "Пакет из 10 вопросов AI-косметологу в Reveli",
           payload: `chat_10_${user.id}`,
           provider_token: "",
           currency: "XTR",

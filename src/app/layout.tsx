@@ -3,7 +3,7 @@ import "./globals.css";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
 
 export const metadata: Metadata = {
-  title: "Facely — AI-анализ кожи",
+  title: "Reveli — AI-анализ кожи",
   description: "AI-анализ кожи и персональный уход",
   icons: { icon: "/favicon.svg" },
 };

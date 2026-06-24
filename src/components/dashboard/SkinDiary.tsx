@@ -11,7 +11,7 @@ const moods = [
   { emoji: "😢", label: "Ужасно", color: "#E8A0B4" },
 ];
 
-const STORAGE_KEY = "facely_diary";
+const STORAGE_KEY = "reveli_diary";
 
 interface DiaryEntry {
   date: string;

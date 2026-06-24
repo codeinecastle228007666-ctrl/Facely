@@ -57,7 +57,7 @@ export default function Dashboard() {
   const canAnalyze = freeAnalyses > 0 || paidAnalyses > 0 || hasSub;
 
   useEffect(() => {
-    if (!localStorage.getItem("facely_onboarding_shown") && user) {
+    if (!localStorage.getItem("reveli_onboarding_shown") && user) {
       setOnboardingDone(false);
     } else {
       setOnboardingDone(true);
@@ -114,7 +114,7 @@ export default function Dashboard() {
 
   const handleShare = useCallback(() => {
     if (!result) return;
-    const text = `✨ Facely — мой анализ кожи:\nТип: ${result.skin_type}\nПроблемы: ${result.problems.length > 0 ? result.problems.join(", ") : "не выявлены"}\nНастроение: ${result.mood}\n\nПопробуй сам! https://t.me/skin_ritual_bot`;
+    const text = `✨ Reveli — мой анализ кожи:\nТип: ${result.skin_type}\nПроблемы: ${result.problems.length > 0 ? result.problems.join(", ") : "не выявлены"}\nНастроение: ${result.mood}\n\nПопробуй сам! https://t.me/Reveli_bot`;
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(() => {
         notify("success");
