@@ -3,7 +3,7 @@
 import React from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { HistoryIcon, ShareIcon, StarIcon } from "./Icons";
+import { HistoryIcon, ShareIcon } from "./Icons";
 
 interface Tab {
   key: string;

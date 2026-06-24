@@ -26,14 +26,14 @@ export const analysisService = {
     const photoHash = await getPerceptualHash(compressedPhoto);
 
     const allPhotos = await prisma.skinAnalysis.findMany({
-      where: { userId: user.id, photoUrl: { not: null } },
-      select: { photoUrl: true, createdAt: true, result: true, id: true },
+      where: { userId: user.id, photoHash: { not: null } },
+      select: { photoHash: true, createdAt: true, result: true, id: true },
       orderBy: { createdAt: "desc" },
     });
 
     let existing: typeof allPhotos[0] | null = null;
     for (const p of allPhotos) {
-      if (p.photoUrl && hammingDistance(photoHash, p.photoUrl) < 20) {
+      if (p.photoHash && hammingDistance(photoHash, p.photoHash) < 20) {
         existing = p;
         break;
       }
@@ -75,7 +75,7 @@ export const analysisService = {
         data: {
           userId: user.id,
           photoBase64: compressedPhoto,
-          photoUrl: photoHash,
+          photoHash,
           userDescription: description,
           result: result,
           skinType: result.skin_type,

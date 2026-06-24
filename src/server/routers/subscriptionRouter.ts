@@ -72,12 +72,14 @@ export const subscriptionRouter = router({
         payload: z.string(),
       }),
     )
-    .mutation(async ({ ctx }) => {
+    .mutation(async ({ ctx, input }) => {
       const user = await prisma.user.findUnique({
         where: { telegramId: ctx.telegramId },
       });
       if (!user) throw new Error("User not found");
-      return subscriptionService.confirmStarsPayment(user.id);
+
+      const quantity = parseInt(input.payload.replace("analysis_", "").split("_")[0], 10) || 1;
+      return subscriptionService.confirmStarsPayment(user.id, quantity);
     }),
 
   createChatStarsInvoice: protectedProcedure.mutation(async ({ ctx }) => {

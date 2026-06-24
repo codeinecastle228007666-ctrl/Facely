@@ -153,10 +153,10 @@ export const subscriptionService = {
     return { url: data.result, currency: PAYMENT_CURRENCY, amount };
   },
 
-  async confirmStarsPayment(userId: string) {
+  async confirmStarsPayment(userId: string, quantity = 1) {
     await prisma.user.update({
       where: { id: userId },
-      data: { paidAnalyses: { increment: 1 } },
+      data: { paidAnalyses: { increment: quantity } },
     });
     return { success: true };
   },

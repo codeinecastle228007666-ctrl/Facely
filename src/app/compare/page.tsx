@@ -15,7 +15,7 @@ function CompareFallback() {
 
 const FIELD_NAMES: Record<string, string> = {
   acne: "Акне",
-  dark_circle: "Темные круги",
+  dark_circle: "Тёмные круги",
   pore: "Поры",
   spot: "Пигментация",
   wrinkle: "Морщины",

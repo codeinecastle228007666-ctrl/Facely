@@ -1,5 +1,11 @@
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
 
+function pluralize(n: number, one: string, few: string, many: string) {
+  if (n % 10 === 1 && n % 100 !== 11) return one;
+  if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return few;
+  return many;
+}
+
 async function sendTelegramMessage(telegramId: string, text: string) {
   if (!BOT_TOKEN) {
     console.log(`[Push] No BOT_TOKEN set, would send to ${telegramId}: ${text}`);
@@ -33,7 +39,7 @@ export const pushService = {
   },
 
   async sendLevelUp(telegramId: string, level: number) {
-    const text = `\u{1F389} \u041D\u043E\u0432\u044B\u0439 \u0443\u0440\u043E\u0432\u0435\u043D\u044C!\n\u041F\u043E\u0437\u0434\u0440\u0430\u0432\u043B\u044F\u0435\u043C! \u0422\u044B \u0434\u043E\u0441\u0442\u0438\u0433 ${level}-\u0433\u043E \u0443\u0440\u043E\u0432\u043D\u044F \u0432 Reveli!`;
+    const text = `\u{1F389} \u041D\u043E\u0432\u044B\u0439 \u0443\u0440\u043E\u0432\u0435\u043D\u044C!\n\u041F\u043E\u0437\u0434\u0440\u0430\u0432\u043B\u044F\u0435\u043C! \u0422\u044B \u0434\u043E\u0441\u0442\u0438\u0433(\u043B\u0430) ${level}-\u0433\u043E \u0443\u0440\u043E\u0432\u043D\u044F \u0432 Reveli!`;
     return sendTelegramMessage(telegramId, text);
   },
 
@@ -60,7 +66,7 @@ export const pushService = {
   },
 
   async sendStreakExpiring(telegramId: string, daysLeft: number) {
-    const text = `\u{23F0} \u0421\u0442\u0440\u0438\u043A \u0441\u0433\u043E\u0440\u0438\u0442 \u0447\u0435\u0440\u0435\u0437 ${daysLeft} \u0434\u043D\u044F!\n\u0421\u0434\u0435\u043B\u0430\u0439 \u0430\u043D\u0430\u043B\u0438\u0437, \u0447\u0442\u043E\u0431\u044B \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441.`;
+    const text = `\u{23F0} \u0421\u0442\u0440\u0438\u043A \u0441\u0433\u043E\u0440\u0438\u0442 \u0447\u0435\u0440\u0435\u0437 ${daysLeft} ${pluralize(daysLeft, "\u0434\u0435\u043D\u044C", "\u0434\u043D\u044F", "\u0434\u043D\u0435\u0439")}!\n\u0421\u0434\u0435\u043B\u0430\u0439 \u0430\u043D\u0430\u043B\u0438\u0437, \u0447\u0442\u043E\u0431\u044B \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441.`;
     return sendTelegramMessage(telegramId, text);
   },
 

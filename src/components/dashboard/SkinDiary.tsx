@@ -23,6 +23,8 @@ export const SkinDiary: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState<DiaryEntry | null>(null);
   const [history, setHistory] = useState<DiaryEntry[]>([]);
+  const [noteModal, setNoteModal] = useState<{ moodIdx: number } | null>(null);
+  const [noteText, setNoteText] = useState("");
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -145,8 +147,8 @@ export const SkinDiary: React.FC = () => {
                 <button
                   key={i}
                   onClick={() => {
-                    const note = prompt("Комментарий (необязательно):") || "";
-                    save(i, note);
+                    setNoteModal({ moodIdx: i });
+                    setNoteText(today?.note || "");
                   }}
                   style={{
                     flex: 1,
@@ -185,6 +187,91 @@ export const SkinDiary: React.FC = () => {
                 </div>
               </div>
             )}
+          </motion.div>
+        </motion.div>
+      )}
+
+      {noteModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            zIndex: 300,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => setNoteModal(null)}
+        >
+          <motion.div
+            initial={{ scale: 0.9 }}
+            animate={{ scale: 1 }}
+            style={{
+              background: "white",
+              borderRadius: 20,
+              padding: "24px 20px",
+              width: "90%",
+              maxWidth: 360,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
+              {moods[noteModal.moodIdx]?.emoji} {moods[noteModal.moodIdx]?.label}
+            </h3>
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Что заметила о коже сегодня?"
+              rows={3}
+              style={{
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 14,
+                border: "1px solid var(--border)",
+                fontSize: 14,
+                resize: "none",
+                outline: "none",
+                fontFamily: "inherit",
+                boxSizing: "border-box",
+              }}
+            />
+            <div className="flex gap-2" style={{ marginTop: 16, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setNoteModal(null)}
+                style={{
+                  padding: "10px 20px",
+                  borderRadius: 14,
+                  border: "1px solid var(--border)",
+                  background: "white",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => {
+                  save(noteModal.moodIdx, noteText);
+                  setNoteModal(null);
+                }}
+                style={{
+                  padding: "10px 24px",
+                  borderRadius: 14,
+                  border: "none",
+                  background: "var(--primary)",
+                  color: "white",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Сохранить
+              </button>
+            </div>
           </motion.div>
         </motion.div>
       )}

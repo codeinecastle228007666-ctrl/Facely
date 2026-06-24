@@ -43,7 +43,7 @@ const SKIN_TYPE_MAP: Record<number, string> = {
 
 const PROBLEM_MAP: Record<string, string> = {
   acne: "акне",
-  dark_circle: "темные круги",
+  dark_circle: "тёмные круги",
   pore: "поры",
   spot: "пигментация",
   wrinkle: "морщины",
@@ -71,7 +71,7 @@ const PROBLEM_DESC: Record<string, string> = {
 const RECOMMENDATIONS_MAP: Record<string, string[]> = {
   acne: [
     "Сыворотка с салициловой кислотой 2% для проблемной кожи",
-    "Легкий гель с цинком для успокоения воспалений",
+    "Лёгкий гель с цинком для успокоения воспалений",
     "Маска с глиной для глубокого очищения пор",
   ],
   dark_circle: [
@@ -136,7 +136,7 @@ function buildRoutine(
   }
 
   if (skinType === "жирная" || skinType === "комбинированная") {
-    parts.push("Увлажнение: легкий гелевый крем");
+    parts.push("Увлажнение: лёгкий гелевый крем");
   } else {
     parts.push("Увлажнение: питательный крем");
   }
@@ -176,7 +176,7 @@ function generateProductLinks(
       { name: "Сыворотка с ниацинамидом 5%", reason: "Сужает поры и выравнивает тон", effect: "Через месяц поры станут менее заметными, тон кожи выровняется" },
       { name: "Энзимная пудра для умывания", reason: "Мягко отшелушивает и очищает", effect: "Текстура кожи станет более гладкой уже через неделю" },
     ],
-    "темные круги": [
+    "тёмные круги": [
       { name: "Крем для глаз с кофеином", reason: "Улучшает микроциркуляцию", effect: "Тёмные круги станут светлее через 2 недели регулярного применения" },
       { name: "Патчи с гиалуроновой кислотой", reason: "Интенсивно увлажняют и освежают", effect: "Экспресс-эффект — кожа вокруг глаз выглядит отдохнувшей сразу" },
     ],
@@ -222,9 +222,7 @@ function generateProductLinks(
 }
 
 function scaleValue(v: number): number {
-  // Face++ returns 0=not present, 1=present, 2=severe
-  // Scale to 0-100 for our threshold system (>50 = problem)
-  return v === 2 ? 100 : v === 1 ? 60 : 0;
+  return Math.max(0, Math.min(100, v));
 }
 
 export async function analyzeSkinWithFacePlus(

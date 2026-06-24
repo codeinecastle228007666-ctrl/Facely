@@ -81,7 +81,6 @@ export default function Dashboard() {
       setNextAnalysisDate(r.nextAnalysisDate);
     }).catch(() => {});
   }, [user]);
-
   const handleSubmit = useCallback(
     async (photoBase64: string, description?: string) => {
       setAnalyzing(true);
@@ -98,27 +97,29 @@ export default function Dashboard() {
           notify("warning");
           if (res.cachedAt) {
             const d = new Date(res.cachedAt);
+
             setToast(`\u0424\u043E\u0442\u043E \u0443\u0436\u0435 \u0430\u043D\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043B\u043E\u0441\u044C ${d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}`);
           }
         } else {
           notify("success");
         }
-        refetch();
-
-        const hist = await api.analysis.history({ limit: 2 });
-        if (hist.analyses.length >= 2) {
-          setPrevAnalysisId(hist.analyses[1].id);
-          setLastAnalysisId(hist.analyses[0].id);
-        }
-        if (hist.analyses.length > 0) {
-          setLastAnalysis(hist.analyses[0]);
-        }
-
-        if (res.level > level) {
-          setNewLevel(res.level);
-          setShowConfetti(true);
-          setTimeout(() => setShowConfetti(false), 2500);
-        }
+        refetch().then(() => {
+          const currentLevel = user?.level ?? 1;
+          api.analysis.history({ limit: 2 }).then((hist) => {
+            if (hist.analyses.length >= 2) {
+              setPrevAnalysisId(hist.analyses[1].id);
+              setLastAnalysisId(hist.analyses[0].id);
+            }
+            if (hist.analyses.length > 0) {
+              setLastAnalysis(hist.analyses[0]);
+            }
+            if (res.level > currentLevel) {
+              setNewLevel(res.level);
+              setShowConfetti(true);
+              setTimeout(() => setShowConfetti(false), 2500);
+            }
+          });
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : "";
         if (msg === "no_analyses_left" || msg === "no_free_analyses") {
@@ -131,7 +132,7 @@ export default function Dashboard() {
         setAnalyzing(false);
       }
     },
-    [user, refetch, notify, level],
+    [user, refetch, notify],
   );
 
   const handleShare = useCallback(() => {

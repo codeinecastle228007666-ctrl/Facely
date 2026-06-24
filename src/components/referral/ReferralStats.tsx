@@ -40,7 +40,7 @@ export const ReferralStats: React.FC<ReferralStatsProps> = ({
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 600 }}>Приглашено друзей</div>
           <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-            Получено бонусов: +{bonusAnalyses} анализа
+            Получено бонусов: +{bonusAnalyses} {bonusAnalyses === 1 ? "анализа" : "анализов"}
           </div>
         </div>
         <div style={{ fontSize: 24, fontWeight: 700, color: "var(--primary-dark)" }}>

@@ -20,8 +20,22 @@ export async function GET() {
     });
 
     const generated: string[] = [];
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setHours(0, 0, 0, 0);
+    startOfWeek.setDate(now.getDate() - now.getDay() + 1);
+
     for (const user of users) {
       try {
+        const existingReport = await prisma.report.findFirst({
+          where: {
+            userId: user.id,
+            generatedAt: { gte: startOfWeek },
+          },
+        });
+
+        if (existingReport) continue;
+
         const report = await reportService.generateWeeklyReport(user.id);
         if (report) generated.push(user.id);
       } catch (e) {

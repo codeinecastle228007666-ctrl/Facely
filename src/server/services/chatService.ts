@@ -55,12 +55,21 @@ export const chatService = {
       orderBy: { createdAt: "desc" },
     });
 
+    const routine = await prisma.routine.findUnique({
+      where: { userId: user.id },
+      include: { steps: { orderBy: { stepOrder: "asc" } } },
+    });
+
     const inventoryContext = inventory.length > 0
       ? "Средства пользователя в инвентаре:\n" + inventory.map((item) => {
           const a = item.analysis as Record<string, unknown> | null;
           return `- ${item.name}${item.brand ? ` (${item.brand})` : ""}${item.ingredients ? `\n  Состав: ${item.ingredients}` : ""}${a?.suitability ? `\n  Анализ: ${a.suitability}` : ""}`;
         }).join("\n")
       : "Инвентарь пуст";
+
+    const routineContext = routine && routine.steps.length > 0
+      ? "Текущая рутина пользователя:\n" + routine.steps.map((s) => `- ${s.stepOrder + 1}. ${s.productName} (${s.timeOfDay})`).join("\n")
+      : "Рутина пока не настроена";
 
     const systemPrompt = `Ты — косметолог-консультант в приложении Reveli. Отвечай на вопросы пользователя об уходе за кожей.
 
@@ -71,7 +80,9 @@ ${skinPassport}
 
 ${inventoryContext}
 
-Отвечай на русском языке, дружелюбно, с эмодзи. Давай конкретные советы. Если вопрос не про кожу — вежливо возвращай к теме. Учитывай средства из инвентаря.`;
+${routineContext}
+
+Отвечай на русском языке, дружелюбно, с эмодзи. Давай конкретные советы. Если вопрос не про кожу — вежливо возвращай к теме. Учитывай средства из инвентаря и текущую рутину. Ты можешь предлагать изменения в рутине.`;
 
     const history = await prisma.chatMessage.findMany({
       where: { userId: user.id },
