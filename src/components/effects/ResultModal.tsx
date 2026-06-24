@@ -22,11 +22,13 @@ interface ResultModalProps {
 
 const PROBLEM_COLORS: Record<string, string> = {
   acne: "#E07A8E",
+  pimple: "#E07A8E",
   spot: "#A0A0A0",
   redness: "#FF8A80",
   wrinkle: "#90A4AE",
   dark_circle: "#7E57C2",
   pore: "#8D6E63",
+  large_pore: "#8D6E63",
   pigmentation: "#A1887F",
   scar: "#BDBDBD",
   other: "#90A4AE",

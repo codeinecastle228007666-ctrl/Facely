@@ -33,7 +33,7 @@ async function analyzeProblemPositions(photoBase64: string): Promise<ProblemPosi
             content: [
               {
                 type: "text",
-                text: "Ты косметолог. Найди на фото лица проблемы кожи. Верни ТОЛЬКО JSON массива problems. Пример: {\"problems\":[{\"type\":\"acne\",\"label\":\"прыщ на щеке\",\"x\":45,\"y\":60,\"radius\":3}]}. type может быть: acne, spot, redness, wrinkle, dark_circle, pore, pigmentation, scar, other. x и y — проценты от ширины и высоты (0-100). radius — 1-10. label — коротко по-русски.",
+                text: "Найди проблемы кожи на этом фото. Верни JSON с координатами каждого проблемного участка. Формат: {\"problems\":[{\"type\":\"pimple\",\"label\":\"воспаление\",\"x\":50,\"y\":50,\"radius\":4}]}. type: pimple, spot, redness, wrinkle, dark_circle, large_pore, pigmentation. x y от 0 до 100. Не пиши ничего кроме JSON.",
               },
               { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } },
             ],
@@ -43,10 +43,24 @@ async function analyzeProblemPositions(photoBase64: string): Promise<ProblemPosi
 
       if (res.ok) {
         const data = await res.json();
-        const raw = data.choices?.[0]?.message?.content || "";
-        const m = raw.match(/\{[\s\S]*?\}/);
-        if (m) {
-          const parsed = JSON.parse(m[0]);
+        let raw = data.choices?.[0]?.message?.content || "";
+        // Strip markdown code blocks
+        raw = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
+        // Try parsing as-is first, then fall back to regex extraction
+        let parsed: any;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          // If it's a double-encoded string, unwrap it
+          if (raw.startsWith('"') && raw.endsWith('"')) {
+            try { parsed = JSON.parse(raw); } catch {}
+          }
+          if (!parsed) {
+            const m = raw.match(/\{[\s\S]*\}/);
+            if (m) { try { parsed = JSON.parse(m[0]); } catch {} }
+          }
+        }
+        if (parsed) {
           const problems: ProblemPosition[] = parsed.problems || parsed.positions || [];
           if (problems.length > 0) return problems;
         }
