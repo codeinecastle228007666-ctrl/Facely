@@ -5,10 +5,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { TabBar } from "@/components/ui/TabBar";
 import { UserProfile } from "@/components/dashboard/UserProfile";
-import { BalanceCard } from "@/components/dashboard/BalanceCard";
 import { AnalysisButton } from "@/components/dashboard/AnalysisButton";
-import { ProgressCard } from "@/components/dashboard/ProgressCard";
-import { StreakCard } from "@/components/dashboard/StreakCard";
 import { AnalysisInput } from "@/components/dashboard/AnalysisInput";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { SkinDiary } from "@/components/dashboard/SkinDiary";
@@ -19,13 +16,15 @@ import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
 import { PurchaseModal } from "@/components/purchase/PurchaseModal";
 import { FeedbackModal } from "@/components/dashboard/FeedbackModal";
 import { ReportsSection } from "@/components/dashboard/ReportsSection";
-import { RoutineSection } from "@/components/routine/RoutineSection";
 import { LastAnalysisCard } from "@/components/dashboard/LastAnalysisCard";
+import { StreakCard } from "@/components/dashboard/StreakCard";
+import { RoutineSection } from "@/components/routine/RoutineSection";
+import { FireIcon } from "@/components/ui/Icons";
 import { useUser } from "@/hooks/useUser";
 import { useTelegram } from "@/hooks/useTelegram";
 import { api, type AnalysisResult, type AnalysisHistoryItem } from "@/services/api";
 import { getLevelPerks } from "@/server/utils/levelSystem";
-import { ProfileSkeleton, CardSkeleton } from "@/components/ui/Skeleton";
+import { ProfileSkeleton } from "@/components/ui/Skeleton";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -150,8 +149,11 @@ export default function Dashboard() {
       <>
         <div style={{ paddingTop: 8 }}>
           <ProfileSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
+          <div className="flex gap-2" style={{ marginBottom: 12 }}>
+            <div className="card" style={{ flex: 1, height: 64 }} />
+            <div className="card" style={{ flex: 1, height: 64 }} />
+            <div className="card" style={{ flex: 1, height: 64 }} />
+          </div>
         </div>
         <TabBar />
       </>
@@ -214,19 +216,56 @@ export default function Dashboard() {
           referralCount={user?.referralCount ?? 0}
           onAchievementsClick={() => setAchievementsOpen(true)}
         />
-        <SkinDiary />
-        <InventoryPanel />
-        <BalanceCard
-          freeAnalyses={freeAnalyses}
-          paidAnalyses={paidAnalyses}
-          subscriptionActive={hasSub}
-        />
-        <StreakCard
-          streak={streak}
-          maxStreak={maxStreak}
-          nextAnalysisDate={nextAnalysisDate}
-        />
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+
+        <div className="flex gap-2" style={{ marginBottom: 12 }}>
+          <motion.div
+            className="card flex items-center gap-2"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+            style={{ flex: 1, padding: "14px 16px" }}
+          >
+            <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(255, 143, 163, 0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <FireIcon size={18} />
+            </div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>{streak}</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>стрик</div>
+            </div>
+          </motion.div>
+          <motion.div
+            className="card flex items-center gap-2"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
+            style={{ flex: 1, padding: "14px 16px" }}
+          >
+            <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(168, 216, 234, 0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+              📊
+            </div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>{user?._count?.analyses ?? 0}</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>анализов</div>
+            </div>
+          </motion.div>
+          <motion.div
+            className="card flex items-center gap-2"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.2 }}
+            style={{ flex: 1, padding: "14px 16px" }}
+          >
+            <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(255, 215, 0, 0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+              🆓
+            </div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>{freeAnalyses + paidAnalyses}</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>доступно</div>
+            </div>
+          </motion.div>
+        </div>
+
+        <div className="flex gap-2" style={{ marginBottom: 12 }}>
           <div style={{ flex: 1 }}>
             <AnalysisButton
               onPress={() => setInputOpen(true)}
@@ -235,7 +274,10 @@ export default function Dashboard() {
             />
           </div>
           {!canAnalyze && (
-            <button
+            <motion.button
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
               onClick={() => setPurchaseOpen(true)}
               style={{
                 padding: "18px 16px",
@@ -250,18 +292,20 @@ export default function Dashboard() {
               }}
             >
               Купить
-            </button>
+            </motion.button>
           )}
         </div>
-        <ProgressCard
-          totalAnalyses={user?._count?.analyses ?? 0}
-          lastSkinType={result?.skin_type || null}
-          lastAnalysisDate={null}
-        />
+
         <LastAnalysisCard item={lastAnalysis} />
-        <RoutineSection />
-        <ReportsSection hasSubscription={hasSub} />
-        <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 24, paddingBottom: 8 }}>
+
+        <div style={{ marginBottom: 12 }}>
+          <RoutineSection />
+          <SkinDiary />
+          <InventoryPanel />
+          <ReportsSection hasSubscription={hasSub} />
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "center", gap: 16, paddingBottom: 8 }}>
           <a
             href="/privacy"
             style={{ fontSize: 11, color: "var(--text-muted)", textDecoration: "none" }}

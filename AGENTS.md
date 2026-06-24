@@ -9,6 +9,34 @@ CREATE INDEX "SkinAnalysis_photoHash_idx" ON "SkinAnalysis"("photoHash");
 CREATE INDEX "SkinAnalysis_userId_photoHash_idx" ON "SkinAnalysis"("userId", "photoHash");
 ```
 
+### Routine + RoutineStep (рутина ухода)
+```sql
+CREATE TABLE "Routine" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Routine_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "Routine_userId_key" ON "Routine"("userId");
+ALTER TABLE "Routine" ADD CONSTRAINT "Routine_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+CREATE TABLE "RoutineStep" (
+    "id" TEXT NOT NULL,
+    "routineId" TEXT NOT NULL,
+    "inventoryId" TEXT,
+    "productName" TEXT NOT NULL,
+    "timeOfDay" TEXT NOT NULL,
+    "dayOfWeek" INTEGER,
+    "stepOrder" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "RoutineStep_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "RoutineStep_routineId_idx" ON "RoutineStep"("routineId");
+ALTER TABLE "RoutineStep" ADD CONSTRAINT "RoutineStep_routineId_fkey" FOREIGN KEY ("routineId") REFERENCES "Routine"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "RoutineStep" ADD CONSTRAINT "RoutineStep_inventoryId_fkey" FOREIGN KEY ("inventoryId") REFERENCES "InventoryItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+```
+
 ### InventoryItem (инвентарь средств)
 ```sql
 CREATE TABLE "InventoryItem" (
