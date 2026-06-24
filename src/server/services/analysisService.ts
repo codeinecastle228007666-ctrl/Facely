@@ -8,72 +8,6 @@ import { XP_PER_ANALYSIS, calculateLevel, didLevelUp } from "../utils/levelSyste
 import { pushService } from "./pushService";
 import { analyzeSkinWithFacePlus } from "./facePlusService";
 import { achievementService } from "./achievementService";
-import type { ProblemPosition } from "@/services/api";
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.DEEPSEEK_API_KEY || "";
-const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
-
-async function analyzeProblemPositions(photoBase64: string): Promise<ProblemPosition[] | null> {
-  if (!GROQ_API_KEY) return null;
-
-  const models = ["meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3.6-27b"];
-
-  for (const model of models) {
-    try {
-      const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
-        signal: AbortSignal.timeout(15000),
-        body: JSON.stringify({
-          model,
-          max_tokens: 2048,
-          temperature: 0.1,
-          messages: [{
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Найди проблемы кожи на этом фото. Верни JSON с координатами каждого проблемного участка. Формат: {\"problems\":[{\"type\":\"pimple\",\"label\":\"воспаление\",\"x\":50,\"y\":50,\"radius\":4}]}. type: pimple, spot, redness, wrinkle, dark_circle, large_pore, pigmentation. x y от 0 до 100. Не пиши ничего кроме JSON.",
-              },
-              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } },
-            ],
-          }],
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        let raw = data.choices?.[0]?.message?.content || "";
-        // Strip markdown code blocks
-        raw = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
-        // Try parsing as-is first, then fall back to regex extraction
-        let parsed: any;
-        try {
-          parsed = JSON.parse(raw);
-        } catch {
-          // If it's a double-encoded string, unwrap it
-          if (raw.startsWith('"') && raw.endsWith('"')) {
-            try { parsed = JSON.parse(raw); } catch {}
-          }
-          if (!parsed) {
-            const m = raw.match(/\{[\s\S]*\}/);
-            if (m) { try { parsed = JSON.parse(m[0]); } catch {} }
-          }
-        }
-        if (parsed) {
-          const problems: ProblemPosition[] = parsed.problems || parsed.positions || [];
-          if (problems.length > 0) return problems;
-        }
-      } else {
-        const errBody = await res.text().catch(() => "");
-        console.error(`[analysis] Groq vision ${model} failed:`, res.status, errBody.slice(0, 200));
-      }
-    } catch (e) {
-      console.error(`[analysis] Groq vision ${model} error:`, e);
-    }
-  }
-  return null;
-}
 
 export const analysisService = {
   async analyze(
@@ -126,15 +60,8 @@ export const analysisService = {
 
     const result = await analyzeSkinWithFacePlus(compressedPhoto);
 
-    // Try to detect problem positions via Groq vision
-    try {
-      const positions = await analyzeProblemPositions(compressedPhoto);
-      if (positions && positions.length > 0) {
-        (result as any).problem_positions = positions;
-      }
-    } catch (e) {
-      console.error("[analysis] Groq problem positions failed:", e);
-    }
+    // problem_positions via Groq vision — отключено, качество маски нестабильно
+    // TODO: заменить на зонную разметку через face_rectangle от Face++
 
     const hasActiveSubscription =
       user.subscription?.status === "active" &&
