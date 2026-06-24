@@ -18,6 +18,7 @@ import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
 import { PurchaseModal } from "@/components/purchase/PurchaseModal";
 import { FeedbackModal } from "@/components/dashboard/FeedbackModal";
 import { ReportsSection } from "@/components/dashboard/ReportsSection";
+import { LastAnalysisCard } from "@/components/dashboard/LastAnalysisCard";
 import { useUser } from "@/hooks/useUser";
 import { useTelegram } from "@/hooks/useTelegram";
 import { api, type AnalysisResult, type AnalysisHistoryItem } from "@/services/api";
@@ -43,6 +44,7 @@ export default function Dashboard() {
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [prevAnalysisId, setPrevAnalysisId] = useState<string | null>(null);
   const [lastAnalysisId, setLastAnalysisId] = useState<string | null>(null);
+  const [lastAnalysis, setLastAnalysis] = useState<AnalysisHistoryItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -57,11 +59,18 @@ export default function Dashboard() {
   const canAnalyze = freeAnalyses > 0 || paidAnalyses > 0 || hasSub;
 
   useEffect(() => {
-    if (!localStorage.getItem("reveli_onboarding_shown") && user) {
+    if (!localStorage.getItem("facely_onboarding_shown") && user) {
       setOnboardingDone(false);
     } else {
       setOnboardingDone(true);
     }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    api.analysis.history({ limit: 1, offset: 0 }).then((data) => {
+      if (data.analyses.length > 0) setLastAnalysis(data.analyses[0]);
+    }).catch(() => {});
   }, [user]);
 
   const handleSubmit = useCallback(
@@ -90,6 +99,9 @@ export default function Dashboard() {
         if (hist.analyses.length >= 2) {
           setPrevAnalysisId(hist.analyses[1].id);
           setLastAnalysisId(hist.analyses[0].id);
+        }
+        if (hist.analyses.length > 0) {
+          setLastAnalysis(hist.analyses[0]);
         }
 
         if (res.level > level) {
@@ -232,6 +244,7 @@ export default function Dashboard() {
           lastSkinType={result?.skin_type || null}
           lastAnalysisDate={null}
         />
+        <LastAnalysisCard item={lastAnalysis} />
         <ReportsSection hasSubscription={hasSub} />
         <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 24, paddingBottom: 8 }}>
           <a
