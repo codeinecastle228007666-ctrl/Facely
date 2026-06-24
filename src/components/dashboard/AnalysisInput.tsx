@@ -28,8 +28,10 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
   const [step, setStep] = useState<"tutorial" | "photo">("tutorial");
   const [photo, setPhoto] = useState<string | null>(null);
   const [description, setDescription] = useState("");
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const galleryRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const streamRef = useRef<MediaStream | null>(null);
   const { impact } = useTelegram();
 
   const compressImage = (dataUrl: string, maxDim = 1080, quality = 0.85): Promise<string> => {
@@ -52,6 +54,40 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
     });
   };
 
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1080 }, height: { ideal: 1080 } } });
+      streamRef.current = stream;
+      setShowCamera(true);
+      setTimeout(() => {
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      }, 100);
+    } catch {
+      fileRef.current?.click();
+    }
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const c = document.createElement("canvas");
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    const ctx = c.getContext("2d")!;
+    ctx.drawImage(video, 0, 0);
+    stopCamera();
+    const base64 = c.toDataURL("image/jpeg", 0.85).split(",")[1];
+    setPhoto(base64);
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setShowCamera(false);
+  };
+
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -70,6 +106,7 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
   };
 
   const reset = () => {
+    stopCamera();
     setStep("tutorial");
     setPhoto(null);
     setDescription("");
@@ -236,77 +273,100 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
                   )}
                 </div>
 
-                {!photo && (
-                  <div className="flex gap-2" style={{ marginBottom: 16 }}>
-                    <motion.button
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => { impact("light"); cameraRef.current?.click(); }}
-                      style={{
-                        flex: 1,
-                        padding: "14px",
-                        borderRadius: 14,
-                        background: "linear-gradient(135deg, var(--primary), var(--secondary))",
-                        color: "white",
-                        fontSize: 14,
-                        fontWeight: 600,
-                        border: "none",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                      }}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2v11z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        <circle cx="12" cy="13" r="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      Камера
-                    </motion.button>
-                    <motion.button
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => { impact("light"); galleryRef.current?.click(); }}
-                      style={{
-                        flex: 1,
-                        padding: "14px",
-                        borderRadius: 14,
-                        background: "var(--bg)",
-                        color: "var(--text)",
-                        fontSize: 14,
-                        fontWeight: 600,
-                        border: "1px solid var(--border)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                      }}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                        <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-                        <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.5"/>
-                        <path d="M17 5l-2-3H9L7 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      </svg>
-                      Галерея
-                    </motion.button>
-                  </div>
-                )}
+                  {showCamera && (
+                    <div style={{ position: "relative", marginBottom: 12, borderRadius: 16, overflow: "hidden" }}>
+                      <video ref={videoRef} autoPlay playsInline style={{ width: "100%", borderRadius: 16, display: "block" }} />
+                      <div style={{ position: "absolute", bottom: 12, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 12 }}>
+                        <motion.button
+                          whileTap={{ scale: 0.9 }}
+                          onClick={capturePhoto}
+                          style={{
+                            width: 56, height: 56, borderRadius: "50%",
+                            background: "white", border: "4px solid var(--primary)",
+                            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--primary)" }} />
+                        </motion.button>
+                        <button
+                          onClick={stopCamera}
+                          style={{
+                            position: "absolute", top: 8, right: 8,
+                            width: 32, height: 32, borderRadius: "50%",
+                            background: "rgba(0,0,0,0.5)", border: "none",
+                            color: "white", fontSize: 18, cursor: "pointer",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
-                <input
-                  ref={cameraRef}
-                  type="file"
-                  accept="image/*"
-                  capture="user"
-                  onChange={handleFile}
-                  style={{ display: "none" }}
-                />
-                <input
-                  ref={galleryRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFile}
-                  style={{ display: "none" }}
-                />
+                  {!photo && !showCamera && (
+                    <div className="flex gap-2" style={{ marginBottom: 16 }}>
+                      <motion.button
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => { impact("light"); startCamera(); }}
+                        style={{
+                          flex: 1,
+                          padding: "14px",
+                          borderRadius: 14,
+                          background: "linear-gradient(135deg, var(--primary), var(--secondary))",
+                          color: "white",
+                          fontSize: 14,
+                          fontWeight: 600,
+                          border: "none",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2v11z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          <circle cx="12" cy="13" r="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        Камера
+                      </motion.button>
+                      <motion.button
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => { impact("light"); fileRef.current?.click(); }}
+                        style={{
+                          flex: 1,
+                          padding: "14px",
+                          borderRadius: 14,
+                          background: "var(--bg)",
+                          color: "var(--text)",
+                          fontSize: 14,
+                          fontWeight: 600,
+                          border: "1px solid var(--border)",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                          <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.5"/>
+                          <path d="M17 5l-2-3H9L7 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                        Галерея
+                      </motion.button>
+                    </div>
+                  )}
+
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFile}
+                    style={{ display: "none" }}
+                  />
 
                 <textarea
                   placeholder="Опишите свои ощущения (необязательно)"

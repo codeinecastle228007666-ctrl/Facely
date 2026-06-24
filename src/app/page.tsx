@@ -46,7 +46,7 @@ export default function Dashboard() {
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    if (toast) { const t = setTimeout(() => setToast(null), 4000); return () => clearTimeout(t); }
+    if (toast) { const t = setTimeout(() => setToast(null), 8000); return () => clearTimeout(t); }
   }, [toast]);
 
   const level = user?.level || 1;
@@ -143,13 +143,43 @@ export default function Dashboard() {
       <ConfettiEffect active={showConfetti} />
       {toast && (
         <motion.div
-          initial={{ opacity: 0, y: -40 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          style={{ position: "fixed", top: 60, left: 12, right: 12, maxWidth: 430, margin: "0 auto", zIndex: 300, padding: "12px 16px", borderRadius: 14, background: "#FEF3C7", color: "#92400E", fontSize: 13, lineHeight: 1.4, textAlign: "center", boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}
+          style={{
+            position: "fixed", inset: 0, zIndex: 500,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.35)",
+          }}
           onClick={() => setToast(null)}
         >
-          {toast}
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            style={{
+              background: "white", borderRadius: 20, padding: "28px 24px 20px",
+              maxWidth: 320, width: "90%", textAlign: "center",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
+            }}
+          >
+            <div style={{ fontSize: 36, marginBottom: 12 }}>📸</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+              Фото уже анализировалось
+            </div>
+            <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 16 }}>
+              {toast}
+            </div>
+            <button
+              onClick={() => setToast(null)}
+              style={{
+                padding: "10px 32px", borderRadius: 14,
+                background: "var(--primary)", color: "white",
+                fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer",
+              }}
+            >
+              Понятно
+            </button>
+          </motion.div>
         </motion.div>
       )}
 

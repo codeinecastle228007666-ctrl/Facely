@@ -79,18 +79,43 @@ export const UserProfile: React.FC<UserProfileProps> = ({ name, level, xp, frame
           {name?.[0]?.toUpperCase() || "?"}
         </div>
       </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {name || "Пользователь"}
           </h2>
           {referralCount > 0 && (
-            <span style={{ fontSize: 11, color: "var(--text-secondary)", background: "var(--bg)", padding: "2px 8px", borderRadius: 10 }}>
+            <span style={{ fontSize: 11, color: "var(--text-secondary)", background: "var(--bg)", padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>
               +{referralCount}
             </span>
           )}
+          {onAchievementsClick && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onAchievementsClick(); }}
+              style={{
+                marginLeft: "auto",
+                width: 32,
+                height: 32,
+                borderRadius: 10,
+                background: "var(--bg)",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+              title="Ачивки"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M4 21c0-4.5 3.5-8 8-8s8 3.5 8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <path d="M17 3l2 2 3-3" stroke="#7EC4D8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
         </div>
-        <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
+        <div className="flex items-center gap-1.5" style={{ marginBottom: 6, flexWrap: "wrap" }}>
           <span
             style={{
               fontSize: 12,
@@ -99,6 +124,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ name, level, xp, frame
               background: "var(--primary-light)",
               padding: "2px 10px",
               borderRadius: 20,
+              whiteSpace: "nowrap",
             }}
           >
             Уровень {level}
@@ -111,36 +137,11 @@ export const UserProfile: React.FC<UserProfileProps> = ({ name, level, xp, frame
               borderRadius: 20,
               background: BADGE_COLORS[badge] || "var(--bg)",
               color: "var(--text-secondary)",
+              whiteSpace: "nowrap",
             }}
           >
             {badge}
           </span>
-          {onAchievementsClick && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onAchievementsClick(); }}
-              style={{
-                fontSize: 11,
-                padding: "2px 8px",
-                borderRadius: 10,
-                background: "var(--bg)",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 3,
-                color: "var(--primary-dark)",
-                fontWeight: 600,
-                marginLeft: "auto",
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/>
-                <path d="M4 21c0-4.5 3.5-8 8-8s8 3.5 8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                <path d="M17 3l2 2 3-3" stroke="#7EC4D8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Ачивки
-            </button>
-          )}
         </div>
         <div style={{ marginTop: 4 }}>
           <div className="flex justify-between text-sm" style={{ marginBottom: 4 }}>
