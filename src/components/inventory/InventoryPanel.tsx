@@ -140,32 +140,69 @@ export const InventoryPanel: React.FC = () => {
                               >
                                 <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
                                   {item.analysis && (
-                                    <div className="flex flex-col gap-2">
+                                    <div className="flex flex-col gap-3">
                                       <div>
-                                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4 }}>Ключевые ингредиенты</div>
-                                        <div className="flex gap-1 flex-wrap">
+                                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6, letterSpacing: "0.3px" }}>
+                                          🌿 Ключевые ингредиенты
+                                        </div>
+                                        <div style={{
+                                          display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4,
+                                          scrollbarWidth: "none", msOverflowStyle: "none",
+                                          WebkitOverflowScrolling: "touch",
+                                        }}>
                                           {item.analysis.key_ingredients.map((k, i) => (
-                                            <span key={i} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: "var(--primary-light)", color: "var(--primary-dark)" }}>{k}</span>
+                                            <span key={i} style={{
+                                              fontSize: 12, padding: "5px 12px", borderRadius: 10,
+                                              background: "linear-gradient(135deg, rgba(168,216,234,0.2), rgba(126,196,216,0.12))",
+                                              color: "var(--primary-dark)", fontWeight: 500,
+                                              whiteSpace: "nowrap", flexShrink: 0,
+                                              border: "1px solid rgba(126,196,216,0.15)",
+                                            }}>
+                                              {k}
+                                            </span>
                                           ))}
                                         </div>
                                       </div>
                                       {item.analysis.benefits.length > 0 && (
                                         <div>
-                                          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 2 }}>Польза</div>
-                                          {item.analysis.benefits.map((b, i) => (
-                                            <div key={i} style={{ fontSize: 12, color: "var(--text-secondary)", paddingLeft: 12 }}>• {b}</div>
-                                          ))}
+                                          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, letterSpacing: "0.3px" }}>
+                                            ✅ Польза для кожи
+                                          </div>
+                                          <div className="flex flex-col gap-1.5">
+                                            {item.analysis.benefits.map((b, i) => (
+                                              <div key={i} style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4, display: "flex", gap: 6 }}>
+                                                <span style={{ color: "#7EC4D8", flexShrink: 0 }}>▸</span>
+                                                <span>{b}</span>
+                                              </div>
+                                            ))}
+                                          </div>
                                         </div>
                                       )}
                                       {item.analysis.concerns.length > 0 && (
                                         <div>
-                                          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 2 }}>⚠ Возможные проблемы</div>
-                                          {item.analysis.concerns.map((c, i) => (
-                                            <div key={i} style={{ fontSize: 12, color: "#E07A8E", paddingLeft: 12 }}>• {c}</div>
-                                          ))}
+                                          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, letterSpacing: "0.3px" }}>
+                                            ⚠️ Возможные проблемы
+                                          </div>
+                                          <div className="flex flex-col gap-1.5">
+                                            {item.analysis.concerns.map((c, i) => (
+                                              <div key={i} style={{ fontSize: 12, color: "#E07A8E", lineHeight: 1.4, display: "flex", gap: 6 }}>
+                                                <span style={{ flexShrink: 0 }}>▸</span>
+                                                <span>{c}</span>
+                                              </div>
+                                            ))}
+                                          </div>
                                         </div>
                                       )}
-                                      <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>{item.analysis.suitability}</div>
+                                      {item.analysis.suitability && (
+                                        <div style={{
+                                          fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5,
+                                          padding: "8px 12px", borderRadius: 10,
+                                          background: "rgba(168,216,234,0.08)",
+                                          borderLeft: "3px solid var(--primary)",
+                                        }}>
+                                          {item.analysis.suitability}
+                                        </div>
+                                      )}
                                     </div>
                                   )}
 
