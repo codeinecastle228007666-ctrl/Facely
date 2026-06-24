@@ -7,7 +7,7 @@ import { TabBar } from "@/components/ui/TabBar";
 import { UserProfile } from "@/components/dashboard/UserProfile";
 import { BalanceCard } from "@/components/dashboard/BalanceCard";
 import { AnalysisButton } from "@/components/dashboard/AnalysisButton";
-import { StreakCard } from "@/components/dashboard/StreakCard";
+import { ProgressCard } from "@/components/dashboard/ProgressCard";
 import { AnalysisInput } from "@/components/dashboard/AnalysisInput";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { SkinDiary } from "@/components/dashboard/SkinDiary";
@@ -227,10 +227,10 @@ export default function Dashboard() {
             </button>
           )}
         </div>
-        <StreakCard
-          streak={user?.rituals?.streak || 0}
-          maxStreak={user?.rituals?.maxStreak || 0}
-          nextAnalysisDate={user?.rituals?.nextAnalysisDate || null}
+        <ProgressCard
+          totalAnalyses={user?._count?.analyses ?? 0}
+          lastSkinType={result?.skin_type || null}
+          lastAnalysisDate={null}
         />
         <ReportsSection hasSubscription={hasSub} />
         <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 24, paddingBottom: 8 }}>
