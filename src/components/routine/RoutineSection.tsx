@@ -107,11 +107,11 @@ export const RoutineSection: React.FC = () => {
                     <div style={{ marginBottom: 12 }}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 6 }}>☀️ Утро</div>
                       {morningSteps.map((s, i) => (
-                        <div key={s.id} className="flex items-center gap-2" style={{ padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
-                          <span style={{ width: 16, height: 16, borderRadius: "50%", background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
-                          <span style={{ fontSize: 12, flex: 1 }}>{s.productName}</span>
-                          {s.inventory?.brand && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{s.inventory.brand}</span>}
-                          {s.dayOfWeek !== null && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 6, background: "rgba(255, 193, 7, 0.1)", color: "#FF9800" }}>{["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][s.dayOfWeek]}</span>}
+                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 4, borderRadius: 12, background: "var(--bg)" }}>
+                          <span style={{ width: 20, height: 20, borderRadius: 8, background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                          <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
+                          {s.inventory?.brand && <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>{s.inventory.brand}</span>}
+                          {s.dayOfWeek !== null && <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 6, background: "var(--primary-light)", color: "var(--primary-dark)" }}>{["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][s.dayOfWeek]}</span>}
                         </div>
                       ))}
                     </div>
@@ -120,11 +120,11 @@ export const RoutineSection: React.FC = () => {
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 6 }}>🌙 Вечер</div>
                       {eveningSteps.map((s, i) => (
-                        <div key={s.id} className="flex items-center gap-2" style={{ padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
-                          <span style={{ width: 16, height: 16, borderRadius: "50%", background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
-                          <span style={{ fontSize: 12, flex: 1 }}>{s.productName}</span>
-                          {s.inventory?.brand && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{s.inventory.brand}</span>}
-                          {s.dayOfWeek !== null && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 6, background: "rgba(255, 193, 7, 0.1)", color: "#FF9800" }}>{["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][s.dayOfWeek]}</span>}
+                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 4, borderRadius: 12, background: "var(--bg)" }}>
+                          <span style={{ width: 20, height: 20, borderRadius: 8, background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                          <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
+                          {s.inventory?.brand && <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>{s.inventory.brand}</span>}
+                          {s.dayOfWeek !== null && <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 6, background: "var(--primary-light)", color: "var(--primary-dark)" }}>{["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][s.dayOfWeek]}</span>}
                         </div>
                       ))}
                     </div>
@@ -134,77 +134,101 @@ export const RoutineSection: React.FC = () => {
 
               {editing && (
                 <div>
-                  <div style={{ background: "var(--bg)", borderRadius: 14, padding: 12, marginBottom: 12 }}>
-                    <div className="flex gap-2" style={{ marginBottom: 10 }}>
-                      <select
-                        value={newStep.timeOfDay}
-                        onChange={(e) => setNewStep((p) => ({ ...p, timeOfDay: e.target.value as "morning" | "evening" }))}
-                        style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", fontSize: 13, background: "white", flex: 1 }}
-                      >
-                        <option value="morning">☀️ Утро</option>
-                        <option value="evening">🌙 Вечер</option>
-                      </select>
-                      <select
-                        value={newStep.inventoryId || ""}
-                        onChange={(e) => {
-                          const inv = inventory.find((i) => i.id === e.target.value);
-                          setNewStep((p) => ({ ...p, inventoryId: e.target.value || undefined, productName: inv?.name || "" }));
-                        }}
-                        style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", fontSize: 13, background: "white", flex: 2 }}
-                      >
-                        <option value="">Из инвентаря...</option>
-                        {inventory.map((i) => (
-                          <option key={i.id} value={i.id}>{i.name}{i.brand ? ` (${i.brand})` : ""}</option>
+                  <div style={{ background: "var(--bg)", borderRadius: 14, padding: 14, marginBottom: 12 }}>
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                        {["morning", "evening"].map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => setNewStep((p) => ({ ...p, timeOfDay: t as "morning" | "evening" }))}
+                            style={{
+                              flex: 1, padding: "8px 0", borderRadius: 10, border: "none",
+                              background: newStep.timeOfDay === t ? "var(--primary-light)" : "white",
+                              color: newStep.timeOfDay === t ? "var(--primary-dark)" : "var(--text-muted)",
+                              fontSize: 13, fontWeight: 600, cursor: "pointer",
+                            }}
+                          >
+                            {t === "morning" ? "☀️ Утро" : "🌙 Вечер"}
+                          </button>
                         ))}
-                      </select>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        placeholder="Название средства"
-                        value={newStep.productName}
-                        onChange={(e) => setNewStep((p) => ({ ...p, productName: e.target.value }))}
-                        style={{ flex: 1, padding: "10px 12px", borderRadius: 12, border: "1px solid var(--border)", fontSize: 13, background: "white" }}
-                      />
-                      <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        onClick={addStep}
-                        disabled={!newStep.productName.trim()}
-                        style={{ padding: "10px 18px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, var(--primary), var(--secondary))", color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: newStep.productName.trim() ? 1 : 0.5, whiteSpace: "nowrap" }}
-                      >
-                        + Добавить
-                      </motion.button>
+                      </div>
+                      {inventory.length > 0 && (
+                        <select
+                          value={newStep.inventoryId || ""}
+                          onChange={(e) => {
+                            const inv = inventory.find((i) => i.id === e.target.value);
+                            setNewStep((p) => ({ ...p, inventoryId: e.target.value || undefined, productName: inv?.name || "" }));
+                          }}
+                          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", fontSize: 13, background: "white", marginBottom: 8 }}
+                        >
+                          <option value="">Выбрать из инвентаря...</option>
+                          {inventory.map((i) => (
+                            <option key={i.id} value={i.id}>{i.name}{i.brand ? ` (${i.brand})` : ""}</option>
+                          ))}
+                        </select>
+                      )}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          placeholder={inventory.length > 0 ? "Или введите название" : "Название средства"}
+                          value={newStep.productName}
+                          onChange={(e) => {
+                            setNewStep((p) => ({ ...p, productName: e.target.value }));
+                            if (e.target.value && newStep.inventoryId) {
+                              setNewStep((p) => ({ ...p, inventoryId: undefined }));
+                            }
+                          }}
+                          style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)", fontSize: 13, background: "white" }}
+                        />
+                        <motion.button
+                          whileTap={{ scale: 0.95 }}
+                          onClick={addStep}
+                          disabled={!newStep.productName.trim()}
+                          style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, var(--primary), var(--secondary))", color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: newStep.productName.trim() ? 1 : 0.5, whiteSpace: "nowrap" }}
+                        >
+                          + Добавить
+                        </motion.button>
+                      </div>
                     </div>
                   </div>
 
                   {steps.length > 0 && (
                     <div style={{ marginBottom: 12 }}>
-                      {steps.map((s, i) => (
-                        <div key={s.id} className="flex items-center gap-2" style={{ padding: "8px 10px", marginBottom: 4, borderRadius: 12, background: "var(--bg)" }}>
-                          <span style={{ width: 20, height: 20, borderRadius: 8, background: s.timeOfDay === "morning" ? "rgba(255, 193, 7, 0.15)" : "rgba(33, 150, 243, 0.15)", color: s.timeOfDay === "morning" ? "#FF9800" : "#1976D2", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            {i + 1}
-                          </span>
-                          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 8, background: s.timeOfDay === "morning" ? "rgba(255, 193, 7, 0.1)" : "rgba(33, 150, 243, 0.1)", color: s.timeOfDay === "morning" ? "#FF9800" : "#1976D2", flexShrink: 0 }}>
-                            {s.timeOfDay === "morning" ? "Утро" : "Вечер"}
-                          </span>
-                          <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
-                          <motion.button
-                            whileTap={{ scale: 0.9 }}
-                            onClick={() => removeStep(s.id)}
-                            style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(232, 160, 180, 0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}
-                          >
-                            ✕
-                          </motion.button>
-                        </div>
-                      ))}
+                      {(["morning", "evening"] as const).map((tod) => {
+                        const group = steps.filter((s) => s.timeOfDay === tod);
+                        if (group.length === 0) return null;
+                        return (
+                          <div key={tod} style={{ marginBottom: group === morningSteps && eveningSteps.length > 0 ? 12 : 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 6 }}>
+                              {tod === "morning" ? "☀️ Утро" : "🌙 Вечер"}
+                            </div>
+                            {group.map((s, i) => (
+                              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", marginBottom: 4, borderRadius: 12, background: "var(--bg)" }}>
+                                <span style={{ width: 20, height: 20, borderRadius: 8, background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                  {i + 1}
+                                </span>
+                                <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
+                                {s.inventory?.brand && <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>{s.inventory.brand}</span>}
+                                <motion.button
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={() => removeStep(s.id)}
+                                  style={{ width: 24, height: 24, borderRadius: "50%", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#E07A8E", background: "rgba(224, 122, 142, 0.1)", flexShrink: 0 }}
+                                >
+                                  ✕
+                                </motion.button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 
                   {steps.length > 0 && (
-                    <div className="flex gap-3">
+                    <div style={{ display: "flex", gap: 10 }}>
                       <motion.button
                         whileTap={{ scale: 0.97 }}
                         onClick={() => { setEditing(false); load(); }}
-                        style={{ flex: 1, padding: "12px", borderRadius: 14, border: "2px solid var(--border)", background: "var(--bg)", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--text)" }}
+                        style={{ flex: 1, padding: "12px", borderRadius: 14, border: "2px solid var(--border)", background: "white", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}
                       >
                         Отмена
                       </motion.button>
