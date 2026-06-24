@@ -20,7 +20,7 @@ export const RoutineSection: React.FC = () => {
     setInventory(inv);
   }, []);
 
-  useEffect(() => { if (expanded) load(); }, [expanded, load]);
+  useEffect(() => { load(); }, [load]);
 
   const addStep = () => {
     if (!newStep.productName.trim()) return;
@@ -63,25 +63,24 @@ export const RoutineSection: React.FC = () => {
   return (
     <div style={{ marginBottom: 12 }}>
       <motion.button
-        className="card flex items-center justify-between"
         onClick={() => setExpanded(!expanded)}
         whileTap={{ scale: 0.98 }}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.25 }}
+        className="card"
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, border: "none", cursor: "pointer", textAlign: "left" }}
       >
-        <div className="flex items-center gap-3">
-          <div style={{ width: 44, height: 44, borderRadius: 14, background: "rgba(168, 216, 234, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
-            🧴
-          </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>Рутина ухода</div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-              {steps.length > 0 ? `${steps.length} ${steps.length === 1 ? "шаг" : steps.length < 5 ? "шага" : "шагов"}` : "Не настроена"}
-            </div>
+        <div style={{ width: 44, height: 44, borderRadius: 14, background: "rgba(168, 216, 234, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
+          🗓️
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Рутина ухода</div>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+            {steps.length > 0 ? `${steps.length} ${steps.length === 1 ? "шаг" : steps.length < 5 ? "шага" : "шагов"}` : "Не настроена"}
           </div>
         </div>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s", flexShrink: 0 }}>
           <path d="M6 9l6 6 6-6" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </motion.button>
@@ -95,9 +94,9 @@ export const RoutineSection: React.FC = () => {
             transition={{ duration: 0.3 }}
             style={{ overflow: "hidden" }}
           >
-            <div className="card" style={{ marginTop: 8 }}>
+            <div className="card" style={{ marginTop: 8, padding: "14px 16px" }}>
               {!editing && steps.length === 0 && (
-                <div style={{ textAlign: "center", padding: "20px 0", fontSize: 13, color: "var(--text-muted)" }}>
+                <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--text-muted)" }}>
                   Добавьте средства для ухода и назначьте их на утро/вечер
                 </div>
               )}
@@ -105,27 +104,27 @@ export const RoutineSection: React.FC = () => {
               {!editing && steps.length > 0 && (
                 <>
                   {morningSteps.length > 0 && (
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 8 }}>☀️ Утро</div>
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 6 }}>☀️ Утро</div>
                       {morningSteps.map((s, i) => (
-                        <div key={s.id} className="flex items-center gap-2" style={{ padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                          <span style={{ width: 18, height: 18, borderRadius: "50%", background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
-                          <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
-                          {s.inventory?.brand && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.inventory.brand}</span>}
-                          {s.dayOfWeek !== null && <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8, background: "rgba(255, 193, 7, 0.1)", color: "#FF9800" }}>{["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][s.dayOfWeek]}</span>}
+                        <div key={s.id} className="flex items-center gap-2" style={{ padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                          <span style={{ width: 16, height: 16, borderRadius: "50%", background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                          <span style={{ fontSize: 12, flex: 1 }}>{s.productName}</span>
+                          {s.inventory?.brand && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{s.inventory.brand}</span>}
+                          {s.dayOfWeek !== null && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 6, background: "rgba(255, 193, 7, 0.1)", color: "#FF9800" }}>{["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][s.dayOfWeek]}</span>}
                         </div>
                       ))}
                     </div>
                   )}
                   {eveningSteps.length > 0 && (
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 8 }}>🌙 Вечер</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 6 }}>🌙 Вечер</div>
                       {eveningSteps.map((s, i) => (
-                        <div key={s.id} className="flex items-center gap-2" style={{ padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                          <span style={{ width: 18, height: 18, borderRadius: "50%", background: "var(--secondary-light)", color: "var(--secondary)", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
-                          <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
-                          {s.inventory?.brand && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.inventory.brand}</span>}
-                          {s.dayOfWeek !== null && <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8, background: "rgba(255, 193, 7, 0.1)", color: "#FF9800" }}>{["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][s.dayOfWeek]}</span>}
+                        <div key={s.id} className="flex items-center gap-2" style={{ padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                          <span style={{ width: 16, height: 16, borderRadius: "50%", background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                          <span style={{ fontSize: 12, flex: 1 }}>{s.productName}</span>
+                          {s.inventory?.brand && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{s.inventory.brand}</span>}
+                          {s.dayOfWeek !== null && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 6, background: "rgba(255, 193, 7, 0.1)", color: "#FF9800" }}>{["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][s.dayOfWeek]}</span>}
                         </div>
                       ))}
                     </div>

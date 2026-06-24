@@ -298,6 +298,12 @@ export default function Dashboard() {
 
         <LastAnalysisCard item={lastAnalysis} />
 
+        <StreakCard
+          streak={streak}
+          maxStreak={maxStreak}
+          nextAnalysisDate={nextAnalysisDate}
+        />
+
         <div style={{ marginBottom: 12 }}>
           <RoutineSection />
           <SkinDiary />
