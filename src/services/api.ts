@@ -115,6 +115,7 @@ export const api = {
   },
   report: {
     list: () => query<ReportItem[]>("report.list"),
+    generate: () => mutation<ReportItem | null>("report.generate"),
   },
   chat: {
     getMessages: () => query<ChatMessageResult[]>("chat.getMessages"),

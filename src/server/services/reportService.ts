@@ -112,6 +112,12 @@ ${JSON.stringify(
     });
   },
 
+  async generateForUser(telegramId: string) {
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    if (!user) throw new Error("User not found");
+    return this.generateWeeklyReport(user.id);
+  },
+
   async getReports(telegramId: string) {
     const user = await prisma.user.findUnique({
       where: { telegramId },

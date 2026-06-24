@@ -18,16 +18,35 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
   const [open, setOpen] = useState(false);
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  const loadReports = () => {
+    if (!hasSubscription) return;
+    setLoading(true);
+    api.report.list()
+      .then(setReports)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    if (open && hasSubscription) {
-      setLoading(true);
-      api.report.list()
-        .then(setReports)
-        .catch(() => {})
-        .finally(() => setLoading(false));
+    if (hasSubscription) loadReports();
+  }, [hasSubscription]);
+
+  useEffect(() => {
+    if (open && hasSubscription && reports.length === 0) {
+      loadReports();
     }
   }, [open, hasSubscription]);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      await api.report.generate();
+      loadReports();
+    } catch {}
+    setGenerating(false);
+  };
 
   return (
     <motion.div
@@ -125,9 +144,22 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
                   borderRadius: 14,
                 }}>
                   <div style={{ fontSize: 36, marginBottom: 10 }}>📋</div>
-                  <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                    Отчёты формируются раз в неделю.<br />Скоро здесь появится первый отчёт.
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 14 }}>
+                    Ещё нет отчётов.<br />Нужно минимум 2 анализа за последние 7 дней.
                   </div>
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    style={{
+                      padding: "10px 24px", borderRadius: 14,
+                      background: generating ? "var(--border)" : "var(--primary)",
+                      color: generating ? "var(--text-muted)" : "white",
+                      fontSize: 13, fontWeight: 600, border: "none", cursor: generating ? "default" : "pointer",
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                    }}
+                  >
+                    {generating ? "Формируем..." : "Сформировать отчёт"}
+                  </button>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
@@ -233,6 +265,20 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
                       </motion.div>
                     );
                   })}
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    style={{
+                      padding: "10px", borderRadius: 14,
+                      background: "var(--bg)", color: "var(--text-secondary)",
+                      fontSize: 12, fontWeight: 500, border: "1px dashed var(--border)",
+                      cursor: generating ? "default" : "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      marginTop: 8,
+                    }}
+                  >
+                    {generating ? "Формируем..." : "🔄 Обновить отчёт"}
+                  </button>
                 </div>
               )}
             </div>
