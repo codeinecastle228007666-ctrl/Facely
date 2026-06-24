@@ -254,6 +254,29 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </div>
             )}
 
+            {result.skin_score !== undefined && (
+              <div style={{ marginBottom: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Skin Score</div>
+                <div style={{ position: "relative", display: "inline-block", width: 80, height: 80 }}>
+                  <svg width="80" height="80" viewBox="0 0 80 80">
+                    <circle cx="40" cy="40" r="34" fill="none" stroke="var(--border)" strokeWidth="6" />
+                    <circle
+                      cx="40" cy="40" r="34" fill="none"
+                      stroke={result.skin_score >= 80 ? "#4CAF50" : result.skin_score >= 50 ? "#FF9800" : "#E07A8E"}
+                      strokeWidth="6" strokeDasharray={`${2 * Math.PI * 34 * result.skin_score / 100} ${2 * Math.PI * 34}`}
+                      strokeLinecap="round" transform="rotate(-90, 40, 40)"
+                    />
+                    <text x="40" y="45" textAnchor="middle" fontSize="18" fontWeight={700} fill="var(--text)">
+                      {result.skin_score}
+                    </text>
+                  </svg>
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                  {result.skin_score >= 80 ? "Отличное состояние" : result.skin_score >= 50 ? "Требует внимания" : "Нужен уход"}
+                </div>
+              </div>
+            )}
+
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                 Ежедневная рутина
@@ -280,57 +303,40 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                 </div>
                 <div className="flex flex-col gap-2">
                   {productLinks.map((p, i) => (
-                    <a
+                    <div
                       key={i}
-                      href={p.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3"
+                      className="flex flex-col gap-1"
                       style={{
-                        padding: "10px 14px",
+                        padding: "12px 14px",
                         borderRadius: 14,
                         background: "var(--bg)",
-                        textDecoration: "none",
                       }}
                     >
-                      <div
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 10,
-                          background: "var(--primary-light)",
-                          flexShrink: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 10,
-                          color: "var(--primary-dark)",
-                          fontWeight: 600,
-                          overflow: "hidden",
-                        }}
-                      >
-                        <img
-                          src={p.image}
-                          alt={p.name}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                            (e.target as HTMLImageElement).parentElement!.innerText = p.name.slice(0, 2);
+                      <div className="flex items-center gap-2">
+                        <div
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 8,
+                            background: "var(--primary-light)",
+                            flexShrink: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 14,
                           }}
-                        />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                          {p.name}
+                        >
+                          ✦
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
-                          {p.reason}
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 36 }}>
+                        <div style={{ marginBottom: 2 }}>{p.reason}</div>
+                        <div style={{ color: "var(--primary-dark)", fontStyle: "italic" }}>
+                          ✦ {p.effect}
                         </div>
                       </div>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                        <path d="M7 17l10-10M7 7h10v10" stroke="#C47A8F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </a>
+                    </div>
                   ))}
                 </div>
               </div>

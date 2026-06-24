@@ -158,13 +158,13 @@ export const api = {
 
 export interface ProductLink {
   name: string;
-  url: string;
-  image: string;
   reason: string;
+  effect: string;
 }
 
 export interface AnalysisResult {
   skin_type: string;
+  skin_score: number;
   problems: string[];
   recommendations: string[];
   daily_routine: string;

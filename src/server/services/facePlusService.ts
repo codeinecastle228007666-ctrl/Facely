@@ -145,97 +145,43 @@ function determineMood(
 
 function generateProductLinks(
   problems: string[],
-): Array<{ name: string; url: string; image: string; reason: string }> {
-  const links: Array<{
-    name: string;
-    url: string;
-    image: string;
-    reason: string;
-  }> = [];
+): Array<{ name: string; reason: string; effect: string }> {
+  const PRODUCTS: Record<string, Array<{ name: string; reason: string; effect: string }>> = {
+    акне: [
+      { name: "Сыворотка с салициловой кислотой 2%", reason: "Глубоко очищает поры и уменьшает воспаления", effect: "Через 2 недели воспаления станут заметно меньше, кожа успокоится" },
+      { name: "Гель с цинком", reason: "Успокаивает и подсушивает высыпания", effect: "Новые прыщи будут появляться реже, краснота уйдёт за 3-4 дня" },
+    ],
+    поры: [
+      { name: "Сыворотка с ниацинамидом 5%", reason: "Сужает поры и выравнивает тон", effect: "Через месяц поры станут менее заметными, тон кожи выровняется" },
+      { name: "Энзимная пудра для умывания", reason: "Мягко отшелушивает и очищает", effect: "Текстура кожи станет более гладкой уже через неделю" },
+    ],
+    "темные круги": [
+      { name: "Крем для глаз с кофеином", reason: "Улучшает микроциркуляцию", effect: "Тёмные круги станут светлее через 2 недели регулярного применения" },
+      { name: "Патчи с гиалуроновой кислотой", reason: "Интенсивно увлажняют и освежают", effect: "Экспресс-эффект — кожа вокруг глаз выглядит отдохнувшей сразу" },
+    ],
+    пигментация: [
+      { name: "Сыворотка с витамином C", reason: "Осветляет пигментные пятна", effect: "Пигментация станет заметно светлее через 3-4 недели" },
+      { name: "SPF 50+ ежедневно", reason: "Защищает от появления новых пятен", effect: "Предотвращает потемнение существующих пятен и появление новых" },
+    ],
+    морщины: [
+      { name: "Крем с ретинолом", reason: "Стимулирует выработку коллагена", effect: "Мелкие морщины разгладятся через месяц, глубокие станут менее заметными" },
+      { name: "Сыворотка с пептидами", reason: "Повышает упругость кожи", effect: "Кожа станет более упругой и подтянутой через 2-3 недели" },
+    ],
+  };
 
-  if (problems.includes("акне")) {
-    links.push({
-      name: "Сыворотка с салициловой кислотой 2%",
-      url: "https://www.wildberries.ru/catalog/0/search.aspx?search=сыворотка+салициловая+кислота+акне",
-      image: "https://via.placeholder.com/100",
-      reason: "Салициловая кислота глубоко очищает поры и уменьшает воспаления",
-    });
-  }
-  if (problems.includes("сухость")) {
-    links.push({
-      name: "Увлажняющий крем с гиалуроновой кислотой",
-      url: "https://www.ozon.ru/search/?text=увлажняющий+крем+гиалуроновая+кислота",
-      image: "https://via.placeholder.com/100",
-      reason: "Гиалуроновая кислота интенсивно увлажняет и восстанавливает кожу",
-    });
-  }
-  if (problems.includes("поры")) {
-    links.push({
-      name: "Сыворотка с ниацинамидом",
-      url: "https://www.wildberries.ru/catalog/0/search.aspx?search=сыворотка+ниацинамид+поры",
-      image: "https://via.placeholder.com/100",
-      reason: "Ниацинамид сужает поры и выравнивает тон кожи",
-    });
-  }
-  if (problems.includes("морщины")) {
-    links.push({
-      name: "Крем с ретинолом от морщин",
-      url: "https://www.ozon.ru/search/?text=крем+ретинол+морщины",
-      image: "https://via.placeholder.com/100",
-      reason: "Ретинол стимулирует выработку коллагена и разглаживает морщины",
-    });
-  }
-  if (problems.includes("темные круги")) {
-    links.push({
-      name: "Патчи под глаза с кофеином",
-      url: "https://www.wildberries.ru/catalog/0/search.aspx?search=патчи+под+глаза+кофеин",
-      image: "https://via.placeholder.com/100",
-      reason: "Кофеин устраняет отечность и осветляет темные круги",
-    });
-  }
-  if (problems.includes("жирность")) {
-    links.push({
-      name: "Матирующий тоник с цинком",
-      url: "https://www.ozon.ru/search/?text=матирующий+тоник+цинк",
-      image: "https://via.placeholder.com/100",
-      reason: "Цинк регулирует выработку себума и матирует кожу",
-    });
-  }
-  if (problems.includes("пигментация")) {
-    links.push({
-      name: "Сыворотка с витамином C",
-      url: "https://www.wildberries.ru/catalog/0/search.aspx?search=сыворотка+витамин+с+пигментация",
-      image: "https://via.placeholder.com/100",
-      reason: "Витамин C осветляет пигментные пятна и выравнивает тон",
-    });
+  const links: Array<{ name: string; reason: string; effect: string }> = [];
+
+  for (const [problem, items] of Object.entries(PRODUCTS)) {
+    if (problems.some((p) => p.startsWith(problem))) {
+      links.push(...items);
+    }
   }
 
   if (links.length === 0) {
     links.push(
-      {
-        name: "Мягкая пенка для умывания",
-        url: "https://www.wildberries.ru/catalog/0/search.aspx?search=мягкая+пенка+умывание+лица",
-        image: "https://via.placeholder.com/100",
-        reason: "Мягкое очищение без пересушивания — основа здоровой кожи",
-      },
-      {
-        name: "Увлажняющий крем с гиалуроновой кислотой",
-        url: "https://www.ozon.ru/search/?text=увлажняющий+крем+гиалуроновая+кислота+лицо",
-        image: "https://via.placeholder.com/100",
-        reason: "Гиалуроновая кислота удерживает влагу и поддерживает барьер кожи",
-      },
-      {
-        name: "Сыворотка с ниацинамидом 5%",
-        url: "https://www.wildberries.ru/catalog/0/search.aspx?search=сыворотка+ниацинамид+5%+лицо",
-        image: "https://via.placeholder.com/100",
-        reason: "Ниацинамид укрепляет кожу, выравнивает тон и сужает поры",
-      },
-      {
-        name: "SPF 50+ для лица",
-        url: "https://www.ozon.ru/search/?text=spf+50+крем+для+лица",
-        image: "https://via.placeholder.com/100",
-        reason: "Ежедневная защита от фотостарения и пигментации",
-      },
+      { name: "Мягкая пенка для умывания", reason: "Мягкое очищение без пересушивания", effect: "Кожа остаётся чистой и увлажнённой после каждого умывания" },
+      { name: "Увлажняющий крем с гиалуроновой кислотой", reason: "Интенсивно увлажняет", effect: "Спустя неделю кожа станет более упругой и сияющей" },
+      { name: "SPF 50+ для лица", reason: "Защита от фотостарения", effect: "Предотвращает преждевременное старение и пигментацию" },
     );
   }
 
@@ -253,14 +199,14 @@ export async function analyzeSkinWithFacePlus(
 ): Promise<{
   skin_type: string;
   problems: string[];
+  skin_score: number;
   recommendations: string[];
   daily_routine: string;
   mood: "позитивный" | "нейтральный" | "тревожный";
   product_links: Array<{
     name: string;
-    url: string;
-    image: string;
     reason: string;
+    effect: string;
   }>;
 }> {
   const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
@@ -379,9 +325,13 @@ export async function analyzeSkinWithFacePlus(
   const dailyRoutine = buildRoutine(skinType, problems, acneScore > 50);
   const productLinks = generateProductLinks(problems);
 
+  const avgScore = Object.values(scores).reduce((a, b) => a + b, 0) / Object.values(scores).length;
+  const skinScore = Math.round(Math.max(0, 100 - avgScore));
+
   return {
     skin_type: skinType,
     problems,
+    skin_score: skinScore,
     recommendations,
     daily_routine: dailyRoutine,
     mood,
