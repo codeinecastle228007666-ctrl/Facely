@@ -3,7 +3,7 @@ import { XP_PER_PURCHASE, calculateLevel } from "../utils/levelSystem";
 
 const SUBSCRIPTION_PRICE = 500;
 const SUBSCRIPTION_DAYS = 30;
-const STARS_PRICE_PER_ANALYSIS = 50;
+const STARS_PRICE_PER_ANALYSIS = 1;
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
 
 export const subscriptionService = {
@@ -154,7 +154,7 @@ export const subscriptionService = {
           payload: `chat_10_${user.id}`,
           provider_token: "",
           currency: "XTR",
-          prices: [{ label: "10 вопросов", amount: 10 }],
+          prices: [{ label: "10 вопросов", amount: 1 }],
         }),
       },
     );

@@ -124,7 +124,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 20, fontWeight: 700 }}>50</div>
+                    <div style={{ fontSize: 20, fontWeight: 700 }}>1</div>
                     <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>⭐</div>
                   </div>
                 </div>
