@@ -10,6 +10,7 @@ interface ResultModalProps {
   open: boolean;
   onClose: () => void;
   result: AnalysisResult | null;
+  photoBase64?: string | null;
   xpGained?: number;
   totalXp?: number;
   level?: number;
@@ -18,6 +19,18 @@ interface ResultModalProps {
   onShare?: () => void;
   hasPrevAnalysis?: boolean;
 }
+
+const PROBLEM_COLORS: Record<string, string> = {
+  acne: "#E07A8E",
+  spot: "#A0A0A0",
+  redness: "#FF8A80",
+  wrinkle: "#90A4AE",
+  dark_circle: "#7E57C2",
+  pore: "#8D6E63",
+  pigmentation: "#A1887F",
+  scar: "#BDBDBD",
+  other: "#90A4AE",
+};
 
 const MOOD_COLORS: Record<string, string> = {
   позитивный: "#A8D8EA",
@@ -63,6 +76,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
   open,
   onClose,
   result,
+  photoBase64,
   xpGained,
   totalXp,
   level,
@@ -76,6 +90,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
   const problems = result.problems || [];
   const recommendations = result.recommendations || [];
   const productLinks = result.product_links || [];
+  const problemPositions = result.problem_positions || [];
 
   const parseSeverity = (p: string): string | null => {
     const m = p.match(/\((.+?)\)/);
@@ -163,6 +178,46 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                 {result.mood}
               </div>
             </div>
+
+            {photoBase64 && (
+              <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", borderRadius: 16, overflow: "hidden", marginBottom: 16, background: "var(--bg)" }}>
+                <img
+                  src={`data:image/jpeg;base64,${photoBase64}`}
+                  alt="face"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+                <svg
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="xMidYMid meet"
+                  style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+                >
+                  {problemPositions.map((p, i) => (
+                    <g key={i}>
+                      <circle
+                        cx={p.x}
+                        cy={p.y}
+                        r={p.radius}
+                        fill={PROBLEM_COLORS[p.type] || PROBLEM_COLORS.other}
+                        fillOpacity={0.25}
+                        stroke={PROBLEM_COLORS[p.type] || PROBLEM_COLORS.other}
+                        strokeWidth={0.4}
+                      />
+                      <text
+                        x={p.x}
+                        y={p.y - p.radius - 1}
+                        textAnchor="middle"
+                        fontSize={3}
+                        fill="var(--text)"
+                        stroke="var(--bg)"
+                        strokeWidth={0.3}
+                      >
+                        {p.label}
+                      </text>
+                    </g>
+                  ))}
+                </svg>
+              </div>
+            )}
 
             <div
               style={{

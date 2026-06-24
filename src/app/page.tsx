@@ -36,6 +36,7 @@ export default function Dashboard() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
   const [xpGained, setXpGained] = useState(0);
+  const [photoData, setPhotoData] = useState<string | null>(null);
   const [totalXp, setTotalXp] = useState(0);
   const [newLevel, setNewLevel] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -86,6 +87,7 @@ export default function Dashboard() {
       setAnalyzing(true);
       try {
         const res = await api.analysis.analyze({ photoBase64, description });
+        setPhotoData(photoBase64);
         setResult(res.analysis);
         setXpGained(res.xpGained);
         setTotalXp(res.totalXp);
@@ -340,6 +342,7 @@ export default function Dashboard() {
         open={resultOpen}
         onClose={() => setResultOpen(false)}
         result={result}
+        photoBase64={photoData}
         xpGained={xpGained}
         totalXp={totalXp}
         level={newLevel || undefined}

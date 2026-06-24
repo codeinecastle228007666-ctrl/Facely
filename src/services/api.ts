@@ -162,6 +162,14 @@ export interface ProductLink {
   effect: string;
 }
 
+export interface ProblemPosition {
+  type: string;
+  label: string;
+  x: number;
+  y: number;
+  radius: number;
+}
+
 export interface AnalysisResult {
   skin_type: string;
   skin_score: number;
@@ -170,6 +178,7 @@ export interface AnalysisResult {
   daily_routine: string;
   mood: "позитивный" | "нейтральный" | "тревожный";
   product_links: ProductLink[];
+  problem_positions?: ProblemPosition[];
 }
 
 export interface AnalyzeResponse {
