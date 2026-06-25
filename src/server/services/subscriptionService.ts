@@ -1,20 +1,24 @@
 import { prisma } from "../db";
 import { XP_PER_PURCHASE, calculateLevel } from "../utils/levelSystem";
+import {
+  PRICES,
+  CHAT_PRICE,
+  SUBSCRIPTION_DAYS,
+  TIER_LABELS,
+  type Currency,
+  type TierId,
+} from "@/lib/pricing";
 
-const SUBSCRIPTION_PRICE = 500;
-const SUBSCRIPTION_DAYS = 30;
-
-// Продакшн-цены (в копейках для RUB, в ⭐ для Stars).
-// Тестовое значение 1⭐ использовалось только во время разработки.
-const PRICE_PER_ANALYSIS = process.env.PROVIDER_TOKEN
-  ? Number(process.env.PRICE_PER_ANALYSIS_RUB || 9900) // копейки: 9900 = 99 ₽
-  : Number(process.env.STARS_PRICE_PER_ANALYSIS || 50); // Stars: 50 ⭐ за 1 анализ
-const CHAT_PRICE = process.env.PROVIDER_TOKEN
-  ? Number(process.env.CHAT_PRICE_RUB || 4900)
-  : Number(process.env.STARS_PRICE_CHAT || 200);
-const PAYMENT_CURRENCY = process.env.PROVIDER_TOKEN ? "RUB" : "XTR";
 const PROVIDER_TOKEN = process.env.PROVIDER_TOKEN || "";
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
+
+// Цены хранятся централизованно в @/lib/pricing — никаких magic numbers здесь.
+const CURRENCY: Currency = PROVIDER_TOKEN ? "RUB" : "XTR";
+const PAYMENT_CURRENCY = CURRENCY;
+
+function priceFor(tier: TierId): number {
+  return PRICES[CURRENCY][tier];
+}
 
 export const subscriptionService = {
   async getStatus(userId: string) {
@@ -113,10 +117,12 @@ export const subscriptionService = {
 
   getPrices() {
     return {
-      analysis: PRICE_PER_ANALYSIS,
-      chat: CHAT_PRICE,
       currency: PAYMENT_CURRENCY,
       isStars: !PROVIDER_TOKEN,
+      analysis: priceFor("single"),
+      pack5: priceFor("pack5"),
+      monthly: priceFor("monthly"),
+      chat: CHAT_PRICE[CURRENCY],
     };
   },
 
@@ -124,18 +130,22 @@ export const subscriptionService = {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error("User not found");
 
-    // Пакет 5+ анализов получает 35% скидку — синхронизируем с UI-кнопкой в PurchaseModal.
-    const bulk = quantity >= 5;
-    const amount = Math.round(
-      PRICE_PER_ANALYSIS * quantity * (bulk ? 0.65 : 1),
-    );
+    // Для покупки одиночного пакета используем тариф-сетку из pricing.ts.
+    // quantity=1  → PRICES[currency].single
+    // quantity=5  → PRICES[currency].pack5
+    // quantity≥5 иной — fallback на 20% скидку от полной суммы.
+    const tier: TierId | null =
+      quantity === 1 ? "single" : quantity === 5 ? "pack5" : null;
+    const amount = tier ? priceFor(tier) : Math.round(priceFor("single") * quantity * 0.8);
     const isStars = !PROVIDER_TOKEN;
 
     const body: Record<string, unknown> = {
-      title: bulk
-        ? `${quantity} анализов кожи (пакет, экономия 35%)`
-        : `${quantity} анализ кожи`,
-      description: `AI-анализ кожи в Reveli — ${quantity} шт.`,
+      title: tier
+        ? TIER_LABELS[tier]
+        : `${quantity} анализов кожи`,
+      description: isStars
+        ? `AI-анализ кожи в Reveli — ${quantity} шт.`
+        : `Оплата картой в Telegram для ${quantity} анализов`,
       payload: `analysis_${quantity}_${user.id}`,
       provider_token: PROVIDER_TOKEN,
       currency: PAYMENT_CURRENCY,
@@ -179,13 +189,14 @@ export const subscriptionService = {
     if (!user) throw new Error("User not found");
 
     const isStars = !PROVIDER_TOKEN;
+    const amount = CHAT_PRICE[CURRENCY];
     const body: Record<string, unknown> = {
       title: "10 вопросов косметологу",
       description: "Пакет из 10 вопросов AI-косметологу в Reveli",
       payload: `chat_10_${user.id}`,
       provider_token: PROVIDER_TOKEN,
       currency: PAYMENT_CURRENCY,
-      prices: [{ label: "10 вопросов", amount: CHAT_PRICE }],
+      prices: [{ label: "10 вопросов", amount }],
     };
     if (isStars) {
       body.start_parameter = "chat";
@@ -238,20 +249,28 @@ export const subscriptionService = {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error("User not found");
 
-    const TIER_LABELS: Record<typeof tier, string> = {
-      single: "1 Анализ кожи",
-      pack5: "5 Анализов кожи",
-      monthly: "Безлимит на месяц",
-    };
+    const expectedAmount = PRICES.RUB[tier];
 
-    const expectedAmount =
-      tier === "single"
-        ? Number(process.env.CARD_AMOUNT_SINGLE || 150)
-        : tier === "pack5"
-        ? Number(process.env.CARD_AMOUNT_PACK5 || 500)
-        : Number(process.env.CARD_AMOUNT_MONTHLY || 1200);
+    // M6: 1-hour dedup. Same user claiming the same tier twice within an hour
+    // → silently return without spamming admin. (Also blocks header-spoofing
+    // exploits that flood the admin bot with "/I paid/click/click".)
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const recentClaim = await prisma.cardTransferClaim.findFirst({
+      where: {
+        userId,
+        tier,
+        claimedAt: { gte: new Date(Date.now() - ONE_HOUR_MS) },
+      },
+    });
+    if (recentClaim) {
+      return { success: true, deduped: true };
+    }
 
-    // Отправляем уведомление админу через Telegram Bot API
+    // Record claim BEFORE sending notification so concurrent races dedupe.
+    await prisma.cardTransferClaim.create({
+      data: { userId, tier, amount },
+    });
+
     if (process.env.FEEDBACK_CHAT_ID && BOT_TOKEN) {
       const amountTag =
         amount === expectedAmount ? "\u2705" : `\u26a0\ufe0f заявлено ${amount}\u20bd, ожидаем ${expectedAmount}\u20bd`;
@@ -268,7 +287,7 @@ export const subscriptionService = {
           chat_id: process.env.FEEDBACK_CHAT_ID,
           text: msg,
         }),
-      }).catch(() => {});
+      }).catch((e) => console.error(`[card-transfer] notify failed: ${e.message}`));
     }
 
     return { success: true };

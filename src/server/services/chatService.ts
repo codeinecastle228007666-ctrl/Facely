@@ -3,6 +3,9 @@ import { prisma } from "../db";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.DEEPSEEK_API_KEY || "";
 const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
 
+const ERROR_RESPONSE =
+  "Извините, произошла ошибка AI-косметолога. Пожалуйста, попробуйте позже — ваш вопрос не был засчитан.";
+
 export const chatService = {
   async getMessages(telegramId: string) {
     const user = await prisma.user.findUnique({ where: { telegramId } });
@@ -31,13 +34,7 @@ export const chatService = {
       throw new Error("no_chat_questions_left");
     }
 
-    if (!hasSubscription) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { freeChatQuestions: { decrement: 1 } },
-      });
-    }
-
+    // ── Build context for prompt (read-only) ─────────────────────────────
     const latestAnalysis = await prisma.skinAnalysis.findFirst({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
@@ -103,50 +100,77 @@ ${routineContext}
       select: { role: true, content: true },
     });
 
-    await prisma.chatMessage.create({
-      data: { userId: user.id, role: "user", content },
-    });
-
     const messages = [
       { role: "system", content: systemPrompt },
       ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
       { role: "user", content },
     ];
 
+    // ── Call Groq AI. If fails, do NOT charge user's balance. ─────────────
     let aiResponse = "";
-    try {
-      const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages,
-          max_tokens: 1000,
-          temperature: 0.7,
-        }),
-      });
+    let aiSucceeded = false;
 
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`Groq API error: ${res.status} - ${body}`);
+    if (!GROQ_API_KEY) {
+      console.error("[ChatService] GROQ_API_KEY not configured");
+      aiResponse = ERROR_RESPONSE;
+    } else {
+      try {
+        const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages,
+            max_tokens: 1000,
+            temperature: 0.7,
+          }),
+        });
+
+        if (!res.ok) {
+          const body = await res.text();
+          console.error(`[ChatService] Groq API error: ${res.status} - ${body.slice(0, 300)}`);
+          aiResponse = ERROR_RESPONSE;
+        } else {
+          const data = await res.json();
+          aiResponse = data.choices?.[0]?.message?.content || "Извините, не удалось получить ответ.";
+          aiSucceeded = true;
+        }
+      } catch (e: any) {
+        console.error("[ChatService] Groq fetch error:", e.message);
+        aiResponse = ERROR_RESPONSE;
       }
-
-      const data = await res.json();
-      aiResponse = data.choices?.[0]?.message?.content || "Извините, не удалось получить ответ.";
-    } catch (e: any) {
-      console.error("[ChatService] Groq error:", e.message, e.stack);
-      aiResponse = "Извините, произошла ошибка. Пожалуйста, попробуйте позже.";
     }
 
-    await prisma.chatMessage.create({
-      data: { userId: user.id, role: "assistant", content: aiResponse },
+    // ── Persist both messages + (conditionally) decrement charge in one
+    //    transaction. Decrement ONLY happens if AI succeeded, so users
+    //    don't lose charges on transient 5xx errors.
+    let newRemaining: number;
+    await prisma.$transaction(async (tx) => {
+      await tx.chatMessage.create({
+        data: { userId: user.id, role: "user", content },
+      });
+      await tx.chatMessage.create({
+        data: { userId: user.id, role: "assistant", content: aiResponse },
+      });
+
+      if (aiSucceeded && !hasSubscription) {
+        const updated = await tx.user.update({
+          where: { id: user.id },
+          data: { freeChatQuestions: { decrement: 1 } },
+          select: { freeChatQuestions: true },
+        });
+        newRemaining = updated.freeChatQuestions;
+      } else {
+        newRemaining = hasSubscription ? 999 : user.freeChatQuestions;
+      }
     });
 
-    const remaining = hasSubscription ? 999 : user.freeChatQuestions - 1;
-
-    return { response: aiResponse, remaining: Math.max(0, remaining) };
+    return {
+      response: aiResponse,
+      remaining: Math.max(0, newRemaining),
+    };
   },
 };

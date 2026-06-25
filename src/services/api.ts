@@ -2,6 +2,15 @@ import superjson from "superjson";
 
 const BASE = "/api/trpc";
 
+function getTelegramInitData(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  // Production: HMAC-verifiable initData from Telegram Mini App.
+  // Contains user info signed with bot token; server validates signature.
+  const tg = (window as any).Telegram?.WebApp;
+  if (tg?.initData) return tg.initData as string;
+  return undefined;
+}
+
 function getTelegramId(): string | undefined {
   if (typeof window === "undefined") return undefined;
   // Production: Telegram Mini App
@@ -16,6 +25,14 @@ function getTelegramId(): string | undefined {
 
 function headers(): Record<string, string> {
   const h: Record<string, string> = {};
+  // Always prefer initData when available — server validates HMAC.
+  const initData = getTelegramInitData();
+  if (initData) {
+    h["x-telegram-init-data"] = initData;
+    return h;
+  }
+  // Dev/staging fallback only: raw telegram id (server trusts this only when
+  // NODE_ENV !== "production" OR ALLOW_DEV_AUTH=true).
   const tid = getTelegramId();
   if (tid) h["x-telegram-id"] = tid;
   return h;
@@ -98,6 +115,8 @@ export const api = {
     prices: () =>
       query<{
         analysis: number;
+        pack5: number;
+        monthly: number;
         chat: number;
         currency: string;
         isStars: boolean;

@@ -4,55 +4,36 @@ import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CloseIcon } from "@/components/ui/Icons";
 import { api } from "@/services/api";
+import {
+  TIERS_META,
+  PRICES,
+  bulkSavingsCopy,
+  formatAmount,
+  pricePerAnalysis,
+  type TierId,
+  type Currency,
+} from "@/lib/pricing";
 
-type Tier = "single" | "pack5" | "monthly";
+type Tier = TierId;
 
-interface TierDef {
+interface TierView {
   id: Tier;
   icon: string;
   title: string;
   desc: string;
-  price: number;
   badge?: string;
   savings?: string;
+  amount: number;
+  perAnalysisLabel: string;
+  amountLabel: string;
 }
 
-const TIERS: TierDef[] = [
-  {
-    id: "single",
-    icon: "🌱",
-    title: "1 Анализ кожи",
-    desc: "Разовый анализ — тип кожи, проблемы и рекомендации",
-    price: Number(process.env.NEXT_PUBLIC_TIER_PRICE_SINGLE || "150"),
-  },
-  {
-    id: "pack5",
-    icon: "✨",
-    title: "5 Анализов кожи",
-    desc: "Для регулярного отслеживания динамики кожи",
-    price: Number(process.env.NEXT_PUBLIC_TIER_PRICE_PACK5 || "500"),
-    badge: "ПОПУЛЯРНО",
-    savings: "Экономия 35%",
-  },
-  {
-    id: "monthly",
-    icon: "👑",
-    title: "Безлимит на месяц",
-    desc: "Все анализы без ограничений + приоритетная поддержка",
-    price: Number(process.env.NEXT_PUBLIC_TIER_PRICE_MONTHLY || "1200"),
-  },
-];
-
+// CARD_NUMBER остаётся в env — это чувствительные данные (номер карты).
+// Передаётся в JS-бандл как NEXT_PUBLIC, поэтому допустим только
+// fallback-режим при отсутствии PROVIDER_TOKEN (см. @/lib/pricing).
 const CARD_NUMBER = process.env.NEXT_PUBLIC_CARD_NUMBER || "";
 const CARD_BANK = process.env.NEXT_PUBLIC_CARD_BANK || "Сбербанк";
-
-function pluralRubles(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "рубль";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "рубля";
-  return "рублей";
-}
+const CARD_HOLDER = process.env.NEXT_PUBLIC_CARD_HOLDER || "";
 
 interface PurchaseModalProps {
   open: boolean;
@@ -64,7 +45,10 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
   const [loading, setLoading] = useState<Tier | null>(null);
   const [prices, setPrices] = useState<{
     analysis: number;
-    currency: string;
+    pack5: number;
+    monthly: number;
+    chat: number;
+    currency: Currency;
     isStars: boolean;
   } | null>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
@@ -73,7 +57,19 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
   const [cardSubmitting, setCardSubmitting] = useState(false);
 
   useEffect(() => {
-    api.subscription.prices().then(setPrices).catch(() => {});
+    api.subscription
+      .prices()
+      .then((p) =>
+        setPrices({
+          analysis: p.analysis,
+          pack5: p.pack5,
+          monthly: p.monthly,
+          chat: p.chat,
+          currency: p.currency as Currency,
+          isStars: p.isStars,
+        }),
+      )
+      .catch(() => {});
   }, [open]);
 
   useEffect(() => {
@@ -98,11 +94,10 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
 
   const handleCardPaid = useCallback(async () => {
     if (!selectedTier) return;
-    const tierDef = TIERS.find((t) => t.id === selectedTier);
-    if (!tierDef) return;
+    const amount = PRICES.RUB[selectedTier];
     setCardSubmitting(true);
     try {
-      await api.subscription.reportCardTransfer({ amount: tierDef.price, tier: selectedTier });
+      await api.subscription.reportCardTransfer({ amount, tier: selectedTier });
       setCardPaid(true);
       setTimeout(() => {
         onSuccess?.();
@@ -145,14 +140,27 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
     }
   };
 
-  // Stars-цена для UI: 1 анализ = prices.analysis ★; пакет 5 = с 35% скидкой.
-  const starsPriceFor = (qty: number, bulk: boolean) => {
-    if (!prices) return qty;
-    const base = prices.analysis * qty;
-    return bulk ? Math.round(base * 0.65) : base;
-  };
+  const currency: Currency = prices?.currency ?? "XTR";
+  const canUseStars = !!prices?.isStars;
 
-  const selectedTierDef = selectedTier ? TIERS.find((t) => t.id === selectedTier) : undefined;
+  const tierViews: TierView[] = TIERS_META.map((m) => {
+    const amount = PRICES[currency][m.id];
+    return {
+      id: m.id,
+      icon: m.icon,
+      title: m.title,
+      desc: m.description,
+      badge: m.badge,
+      savings: bulkSavingsCopy(m.id) ?? undefined,
+      amount,
+      perAnalysisLabel: pricePerAnalysis(currency, m.id),
+      amountLabel: formatAmount(amount, currency),
+    };
+  });
+
+  const selectedTierDef = selectedTier
+    ? tierViews.find((t) => t.id === selectedTier)
+    : undefined;
 
   return (
     <AnimatePresence>
@@ -201,14 +209,8 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                 </div>
 
                 <div className="flex flex-col gap-3">
-                  {TIERS.map((tier, i) => {
+                  {tierViews.map((tier, i) => {
                     const isPopular = tier.id === "pack5";
-                    const perAnalysis =
-                      tier.id === "single"
-                        ? null
-                        : tier.id === "pack5"
-                        ? `за 5 анализов · ${Math.round(tier.price / 5)} ₽/анализ`
-                        : "все анализы за месяц";
                     return (
                       <motion.div
                         key={tier.id}
@@ -270,13 +272,11 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                         </div>
                         <div className="flex justify-between items-center" style={{ marginBottom: 12 }}>
                           <div style={{ fontSize: 22, fontWeight: 700 }}>
-                            {tier.price} ₽
+                            {tier.amountLabel}
                           </div>
-                          {perAnalysis && (
-                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                              {perAnalysis}
-                            </div>
-                          )}
+                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                            {tier.perAnalysisLabel}
+                          </div>
                         </div>
                         <div className="flex gap-2">
                           {prices?.isStars && tier.id !== "monthly" && (
@@ -299,10 +299,10 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                             >
                               {loading === tier.id
                                 ? "Открываем..."
-                                : `⭐ ${starsPriceFor(tier.id === "single" ? 1 : 5, tier.id === "pack5")}`}
+                                : `⭐ ${tier.amount}`}
                             </motion.button>
                           )}
-                          {CARD_NUMBER && (
+                          {(currency === "RUB" || CARD_NUMBER) && (
                             <motion.button
                               whileTap={{ scale: 0.97 }}
                               onClick={() => setSelectedTier(tier.id)}
@@ -425,7 +425,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                   >
                     <span>Сумма к оплате</span>
                     <span style={{ fontWeight: 700, opacity: 1, color: "#4CAF50" }}>
-                      {selectedTierDef?.price} {pluralRubles(selectedTierDef?.price ?? 0)}
+                      {selectedTierDef && formatAmount(selectedTierDef.amount, "RUB")}
                     </span>
                   </div>
                   <motion.button
@@ -455,28 +455,26 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                     fontSize: 12,
                     color: "var(--text-secondary)",
                     lineHeight: 1.6,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
                   }}
                 >
-                  <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
-                    📋 Инструкция
+                  <div style={{ fontWeight: 600, color: "var(--text)" }}>
+                    📋 Инструкция по переводу
                   </div>
                   <ol style={{ paddingLeft: 18, margin: 0 }}>
-                    <li style={{ marginBottom: 4 }}>
-                      Скопируйте номер карты и переведите{" "}
-                      <strong>
-                        {selectedTierDef?.price} {pluralRubles(selectedTierDef?.price ?? 0)}
-                      </strong>
-                    </li>
-                    <li style={{ marginBottom: 4 }}>
-                      В комментарии к переводу укажите:{" "}
-                      <strong>Reveli {selectedTier}</strong>
-                    </li>
-                    <li style={{ marginBottom: 4 }}>Нажмите «Я оплатил(а)» ниже</li>
                     <li>
-                      {selectedTier === "monthly"
-                        ? "Подписка активируется после проверки (в течение часа)"
-                        : "Анализы зачислятся после проверки (обычно в течение часа)"}
+                      Переведите{" "}
+                      <strong>
+                        {selectedTierDef &&
+                          formatAmount(selectedTierDef.amount, "RUB")}
+                      </strong>{" "}
+                      на карту {CARD_BANK}
+                      {CARD_HOLDER ? ` (${CARD_HOLDER})` : ""}
                     </li>
+                    <li>В комментарии к переводу: <code>Reveli {selectedTier}</code></li>
+                    <li>Нажмите «Я оплатил(а)» — админ зачислит в течение часа</li>
                   </ol>
                 </div>
 

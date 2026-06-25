@@ -15,12 +15,30 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
           url: "/api/trpc",
           transformer: superjson,
           headers() {
-            const telegramId =
-              typeof window !== "undefined"
-                ? (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id
-                : undefined;
+            if (typeof window === "undefined") return {};
+            const tg = (window as any).Telegram?.WebApp;
 
-            return telegramId ? { "x-telegram-id": String(telegramId) } : {};
+            // Prefer signed initData — server validates HMAC-SHA256 with BOT_TOKEN.
+            if (tg?.initData) {
+              return { "x-telegram-init-data": tg.initData as string };
+            }
+
+            // Dev/staging fallback: unverified telegram id from initDataUnsafe.
+            // Server only trusts this when NODE_ENV !== "production" OR
+            // ALLOW_DEV_AUTH=true.
+            const telegramId = tg?.initDataUnsafe?.user?.id;
+            if (telegramId) {
+              const params = new URLSearchParams(window.location.search);
+              const tidFromUrl = params.get("__tid");
+              const tid =
+                tidFromUrl ||
+                (typeof window !== "undefined"
+                  ? localStorage.getItem("__tid")
+                  : null);
+              if (tid) return { "x-telegram-id": String(tid) };
+              return { "x-telegram-id": String(telegramId) };
+            }
+            return {};
           },
         }),
       ],

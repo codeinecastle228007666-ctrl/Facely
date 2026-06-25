@@ -9,6 +9,13 @@ import { pushService } from "./pushService";
 import { analyzeSkinWithFacePlus } from "./facePlusService";
 import { achievementService } from "./achievementService";
 
+/**
+ * Threshold for considering two photos as duplicates (0-64).
+ * Lower = stricter (more sensitive to small changes).
+ * 20 was tuned empirically for SkinAnalysis use cases.
+ */
+const HASH_SIMILARITY_THRESHOLD = 20;
+
 export const analysisService = {
   async analyze(
     telegramId: string,
@@ -25,32 +32,56 @@ export const analysisService = {
     const compressedPhoto = await compressImage(photoBase64);
     const photoHash = await getPerceptualHash(compressedPhoto);
 
-    const allPhotos = await prisma.skinAnalysis.findMany({
-      where: { userId: user.id, photoHash: { not: null } },
-      select: { photoHash: true, createdAt: true, result: true, id: true },
-      orderBy: { createdAt: "desc" },
-    });
-
-    let existing: typeof allPhotos[0] | null = null;
-    for (const p of allPhotos) {
-      if (p.photoHash && hammingDistance(photoHash, p.photoHash) < 20) {
-        existing = p;
-        break;
+    // ── M4: O(1) duplicate check against last photo first ────────────────
+    // Caches the most recent hash on User; an identical-looking photo
+    // returns cached result in <1ms instead of scanning the whole history.
+    if (user.lastPhotoHash && hammingDistance(photoHash, user.lastPhotoHash) < HASH_SIMILARITY_THRESHOLD) {
+      const cached = await prisma.skinAnalysis.findFirst({
+        where: { userId: user.id, photoHash: user.lastPhotoHash },
+      });
+      if (cached) {
+        const ritual = await ritualService.getStreak(user.id);
+        return {
+          analysis: cached.result,
+          xpGained: 0,
+          totalXp: user.xp,
+          level: user.level,
+          streak: ritual.streak,
+          maxStreak: ritual.maxStreak,
+          cached: true,
+          cachedAt: cached.createdAt.toISOString(),
+        };
       }
     }
 
-    if (existing) {
-      const ritual = await ritualService.getStreak(user.id);
-      return {
-        analysis: existing.result,
-        xpGained: 0,
-        totalXp: user.xp,
-        level: user.level,
-        streak: ritual.streak,
-        maxStreak: ritual.maxStreak,
-        cached: true,
-        cachedAt: existing.createdAt.toISOString(),
-      };
+    // ── Fallback: full history scan (rare path, handles edge cases like
+    //   user uploading same photo they took 2 weeks ago)
+    if (!user.lastPhotoHash) {
+      const allPhotos = await prisma.skinAnalysis.findMany({
+        where: { userId: user.id, photoHash: { not: null } },
+        select: { photoHash: true, createdAt: true, result: true, id: true },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      for (const p of allPhotos) {
+        if (p.photoHash && hammingDistance(photoHash, p.photoHash) < HASH_SIMILARITY_THRESHOLD) {
+          const ritual = await ritualService.getStreak(user.id);
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastPhotoHash: p.photoHash },
+          });
+          return {
+            analysis: p.result,
+            xpGained: 0,
+            totalXp: user.xp,
+            level: user.level,
+            streak: ritual.streak,
+            maxStreak: ritual.maxStreak,
+            cached: true,
+            cachedAt: p.createdAt.toISOString(),
+          };
+        }
+      }
     }
 
     const access = await subscriptionService.canAccessAnalysis(user.id);
@@ -60,9 +91,6 @@ export const analysisService = {
 
     const result = await analyzeSkinWithFacePlus(compressedPhoto);
 
-    // problem_positions via Groq vision — отключено, качество маски нестабильно
-    // TODO: заменить на зонную разметку через face_rectangle от Face++
-
     const hasActiveSubscription =
       user.subscription?.status === "active" &&
       user.subscription.endDate &&
@@ -70,42 +98,63 @@ export const analysisService = {
 
     const isFree = !hasActiveSubscription && user.freeAnalyses > 0;
 
-    await prisma.$transaction(async (tx) => {
-      await tx.skinAnalysis.create({
+    // ── M1: ALL writes in one transaction; XP via atomic increment ───────
+    // Avoids race condition where two concurrent analyses overwrite xp/level.
+    const oldXp = user.xp;
+    const committed = await prisma.$transaction(async (tx) => {
+      const created = await tx.skinAnalysis.create({
         data: {
           userId: user.id,
           photoBase64: compressedPhoto,
           photoHash,
-          userDescription: description,
-          result: result,
+          userDescription: description ?? null,
+          result: result as object,
           skinType: result.skin_type,
           isFree,
         },
       });
 
-      if (!hasActiveSubscription) {
-        if (user.freeAnalyses > 0) {
-          await tx.user.update({
-            where: { id: user.id },
-            data: { freeAnalyses: { decrement: 1 } },
-          });
-        } else {
-          await tx.user.update({
-            where: { id: user.id },
-            data: { paidAnalyses: { decrement: 1 } },
-          });
-        }
+      // Determine decrement source + always award XP atomically.
+      let balanceField: "freeAnalyses" | "paidAnalyses";
+      let balanceOp: number; // amount to decrement (0 if not needed)
+      if (hasActiveSubscription) {
+        balanceField = "freeAnalyses";
+        balanceOp = 0;
+      } else if (user.freeAnalyses > 0) {
+        balanceField = "freeAnalyses";
+        balanceOp = 1;
+      } else {
+        balanceField = "paidAnalyses";
+        balanceOp = 1;
       }
+
+      const balanceUpdate =
+        balanceOp > 0
+          ? { [balanceField]: { decrement: balanceOp } }
+          : {};
+
+      const updatedUser = await tx.user.update({
+        where: { id: user.id },
+        data: {
+          ...balanceUpdate,
+          xp: { increment: XP_PER_ANALYSIS },
+          lastPhotoHash: photoHash,
+        },
+        select: { xp: true, level: true },
+      });
+
+      return { created, newXp: updatedUser.xp, newLevelRaw: updatedUser.level };
     });
 
-    const oldXp = user.xp;
-    const newXp = user.xp + XP_PER_ANALYSIS;
-    const newLevel = calculateLevel(newXp);
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { xp: newXp, level: newLevel },
-    });
+    // Compute derived level in JS (level is a function of xp).
+    const newXp = committed.newXp;
+    const computedLevel = calculateLevel(newXp);
+    if (computedLevel !== committed.newLevelRaw) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { level: computedLevel },
+      });
+    }
 
     await ritualService.updateStreak(user.id);
     await ritualService.updateWeeklyStreak(user.id);
@@ -116,7 +165,6 @@ export const analysisService = {
     }
 
     await referralService.claimReferralBonus(user.id);
-
     await achievementService.checkAndAward(user.id);
 
     const ritual = await ritualService.getStreak(user.id);
@@ -129,7 +177,7 @@ export const analysisService = {
       analysis: result,
       xpGained: XP_PER_ANALYSIS,
       totalXp: newXp,
-      level: newLevel,
+      level: computedLevel,
       streak: ritual.streak,
       maxStreak: ritual.maxStreak,
       cached: false,

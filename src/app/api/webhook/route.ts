@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
+import { PRICES, CHAT_PRICE } from "@/lib/pricing";
 
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
-const STAR_ANALYSIS_PRICE = 1;
-const STAR_CHAT_PRICE = 1;
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://facely-chi.vercel.app";
 
 async function telegramRequest(method: string, body: Record<string, unknown>) {
   return fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
@@ -13,15 +13,37 @@ async function telegramRequest(method: string, body: Record<string, unknown>) {
   });
 }
 
-function getExpectedStarsAmount(payload: string) {
+/**
+ * Returns the expected invoice amount for a given invoice payload,
+ * using the SAME pricing matrix that `subscriptionService.createStarsInvoice`
+ * uses to bill the user. If no tier matches the quantity, returns null so
+ * Telegram rejects the payment (better than crediting wrong amount).
+ *
+ *      payload         kind        expected amount (XTR stars)
+ *      analysis_1_xxx  analysis    PRICES.XTR.single (80)
+ *      analysis_5_xxx  analysis    PRICES.XTR.pack5   (320)
+ *      analysis_N_xxx  analysis    PRICES.XTR.single * N * 0.8  (round)
+ *      chat_10_xxx     chat        CHAT_PRICE.XTR     (400)
+ */
+function getExpectedStarsAmount(
+  payload: string,
+): { amount: number; kind: "analysis" | "chat" } | null {
   if (payload.startsWith("analysis_")) {
     const parts = payload.split("_");
-    const quantity = parseInt(parts[1], 10) || 1;
-    return quantity * STAR_ANALYSIS_PRICE;
+    if (parts.length < 3) return null;
+    const quantity = parseInt(parts[1], 10);
+    if (!Number.isFinite(quantity) || quantity < 1) return null;
+
+    let amount: number;
+    if (quantity === 1) amount = PRICES.XTR.single;
+    else if (quantity === 5) amount = PRICES.XTR.pack5;
+    else if (quantity > 5) amount = Math.round(PRICES.XTR.single * quantity * 0.8);
+    else return null;
+    return { amount, kind: "analysis" };
   }
 
   if (payload.startsWith("chat_")) {
-    return STAR_CHAT_PRICE;
+    return { amount: CHAT_PRICE.XTR, kind: "chat" };
   }
 
   return null;
@@ -37,20 +59,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "invalid json" }, { status: 400 });
     }
 
+    // ── pre_checkout_query: validate amount BEFORE Telegram charges user.────
     const preCheckoutQuery = update?.pre_checkout_query;
     if (preCheckoutQuery) {
       const payload = preCheckoutQuery.invoice_payload || "";
       const totalAmount = preCheckoutQuery.total_amount || 0;
       const currency = preCheckoutQuery.currency || "";
-      const expectedAmount = getExpectedStarsAmount(payload);
+      const expected = getExpectedStarsAmount(payload);
 
-      if (currency !== "XTR" || expectedAmount === null || totalAmount !== expectedAmount) {
+      if (currency !== "XTR" || expected === null || totalAmount !== expected.amount) {
         const reason =
           currency !== "XTR"
             ? "Unsupported currency"
-            : expectedAmount === null
+            : expected === null
               ? "Unknown invoice payload"
-              : "Payment amount mismatch";
+              : `Payment amount mismatch (got ${totalAmount}, expected ${expected.amount})`;
 
         await telegramRequest("answerPreCheckoutQuery", {
           pre_checkout_query_id: preCheckoutQuery.id,
@@ -72,6 +95,7 @@ export async function POST(req: NextRequest) {
     const msg = update?.message;
     const payment = msg?.successful_payment;
 
+    // ── /start command (with optional referral code) ───────────────────────
     if (msg?.text?.startsWith("/start")) {
       const parts = msg.text.split(" ");
       const refCode = parts[1] || "";
@@ -79,8 +103,8 @@ export async function POST(req: NextRequest) {
       const firstName = msg.from?.first_name || "";
 
       const webAppUrl = refCode && /^\d{5,}$/.test(refCode)
-        ? `https://facely-chi.vercel.app/?ref=${refCode}`
-        : "https://facely-chi.vercel.app";
+        ? `${APP_URL}/?ref=${refCode}`
+        : APP_URL;
 
       let replyText = `Привет, ${firstName}! 👋\n\nДобро пожаловать в Reveli — AI-анализ кожи лица.`;
       if (refCode && /^\d{5,}$/.test(refCode)) {
@@ -97,7 +121,7 @@ export async function POST(req: NextRequest) {
             inline_keyboard: [[{ text: "🚀 Открыть Reveli", web_app: { url: webAppUrl } }]],
           },
         }),
-      });
+      }).catch((e) => console.error(`[Webhook] /start reply failed: ${e.message}`));
 
       return NextResponse.json({ ok: true });
     }
@@ -115,56 +139,69 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    console.log(`[Webhook] Stars payment: payload=${payload}, amount=${totalAmount}`);
-
-    if (payload.startsWith("analysis_")) {
-      const parts = payload.split("_");
-      const userId = parts.slice(2).join("_");
-      const quantity = parseInt(parts[1]) || 1;
-
-      const expectedAmount = quantity * STAR_ANALYSIS_PRICE;
-      if (totalAmount !== expectedAmount) {
-        console.log(`[Webhook] Amount mismatch: got ${totalAmount}, expected ${expectedAmount}`);
-        return NextResponse.json({ ok: true });
-      }
-
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user) {
-        console.log(`[Webhook] User not found: ${userId}`);
-        return NextResponse.json({ ok: true });
-      }
-
-      await prisma.user.update({
-        where: { id: userId },
-        data: { paidAnalyses: { increment: quantity } },
-      });
-
-      console.log(`[Webhook] Credited ${quantity} analysis(es) to user ${userId}`);
+    const expected = getExpectedStarsAmount(payload);
+    if (!expected || totalAmount !== expected.amount) {
+      console.log(`[Webhook] Amount mismatch for ${payload}: got ${totalAmount}, expected ${expected?.amount ?? "?"}`);
+      return NextResponse.json({ ok: true });
     }
 
-    if (payload.startsWith("chat_")) {
-      const parts = payload.split("_");
-      const userId = parts.slice(2).join("_");
-      const quantity = parseInt(parts[1]) || 10;
+    // ── Idempotency: refuse to credit the same invoice_payload twice. ─────
+    // Telegram may retry webhook delivery; without this guard we'd add paid
+    // analyses TWICE on retry. The unique index on ProcessedInvoice.payload
+    // protects us at DB level.
+    try {
+      if (expected.kind === "analysis") {
+        const parts = payload.split("_");
+        const userId = parts.slice(2).join("_");
+        const quantity = parseInt(parts[1], 10);
 
-      const expectedAmount = STAR_CHAT_PRICE;
-      if (totalAmount !== expectedAmount) {
-        console.log(`[Webhook] Amount mismatch for chat: got ${totalAmount}, expected ${expectedAmount}`);
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+          console.log(`[Webhook] User not found: ${userId}`);
+          return NextResponse.json({ ok: true });
+        }
+
+        await prisma.$transaction([
+          prisma.processedInvoice.create({
+            data: { payload, userId, kind: "analysis", amount: totalAmount, currency },
+          }),
+          prisma.user.update({
+            where: { id: userId },
+            data: { paidAnalyses: { increment: quantity } },
+          }),
+        ]);
+        console.log(`[Webhook] Credited ${quantity} analysis(es) to user ${userId}`);
+      } else {
+        const parts = payload.split("_");
+        const userId = parts.slice(2).join("_");
+        const quantity = parseInt(parts[1], 10) || 10;
+
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+          console.log(`[Webhook] User not found for chat: ${userId}`);
+          return NextResponse.json({ ok: true });
+        }
+
+        await prisma.$transaction([
+          prisma.processedInvoice.create({
+            data: { payload, userId, kind: "chat", amount: totalAmount, currency },
+          }),
+          prisma.user.update({
+            where: { id: userId },
+            data: { freeChatQuestions: { increment: quantity } },
+          }),
+        ]);
+        console.log(`[Webhook] Credited ${quantity} chat questions to user ${userId}`);
+      }
+    } catch (e: any) {
+      // P2002 = unique constraint violation on ProcessedInvoice.payload.
+      // Already processed → ignore retry.
+      if (e?.code === "P2002") {
+        console.log(`[Webhook] Duplicate invoice ignored: ${payload}`);
         return NextResponse.json({ ok: true });
       }
-
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user) {
-        console.log(`[Webhook] User not found for chat: ${userId}`);
-        return NextResponse.json({ ok: true });
-      }
-
-      await prisma.user.update({
-        where: { id: userId },
-        data: { freeChatQuestions: { increment: quantity } },
-      });
-
-      console.log(`[Webhook] Credited ${quantity} chat questions to user ${userId}`);
+      console.error(`[Webhook] Credit error for ${payload}: ${e.message}`);
+      return NextResponse.json({ ok: false, error: "credit_failed" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
