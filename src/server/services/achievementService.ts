@@ -8,9 +8,17 @@ const ACHIEVEMENT_DEFS = [
   { key: "level_10", title: "Уровень 10", description: "Достигни 10-го уровня", icon: "⭐", xpReward: 40 },
   { key: "level_25", title: "Уровень 25", description: "Достигни 25-го уровня", icon: "🌟", xpReward: 80 },
   { key: "xp_100", title: "100 XP", description: "Заработай 100 XP", icon: "✨", xpReward: 15 },
-  { key: "hydration_master", title: "Повелитель влаги", description: "Сделай 75 анализов кожи — AI научится узнавать тебя точнее и подбирать уход под твой тип", icon: "💧", xpReward: 25, target: 75 },
-  { key: "consistent_care", title: "Дисциплинированный уход", description: "Удерживай регулярный анализ 5 дней подряд", icon: "🔥", xpReward: 15, target: 5 },
+  { key: "hydration_master", title: "Повелитель влаги", description: "Сделай 75 анализов кожи — AI научится узнавать тебя точнее и подбирать уход под твой тип", icon: "💧", xpReward: 25 },
+  { key: "consistent_care", title: "Дисциплинированный уход", description: "Удерживай регулярный анализ 5 дней подряд", icon: "🔥", xpReward: 15 },
 ];
+
+// Progress targets are NOT stored in the Achievement row (Prisma schema has no
+// `target` column) — this map is the single source of truth, used by
+// getAchievements() to attach progress metadata to qualifying achievements.
+const ACHIEVEMENT_PROGRESS_TARGETS: Record<string, { current: (user: { _count: { analyses: number }; rituals: Array<{ streak: number } | null> }) => number; target: number }> = {
+  hydration_master: { current: (u) => u._count.analyses, target: 75 },
+  consistent_care: { current: (u) => u.rituals[0]?.streak ?? 0, target: 5 },
+};
 
 export const achievementService = {
   async ensureDefinitions() {
@@ -86,10 +94,6 @@ export const achievementService = {
     });
     if (!user) throw new Error("User not found");
 
-    const ritual = Array.isArray(user.rituals) ? user.rituals[0] : user.rituals;
-    const streak = ritual?.streak ?? 0;
-    const analyses = user._count.analyses;
-
     const achievements = await prisma.achievement.findMany();
     const userAchievements = await prisma.userAchievement.findMany({
       where: { userId: user.id },
@@ -101,18 +105,18 @@ export const achievementService = {
       return sum + (ach?.xpReward ?? 0);
     }, 0);
 
-    const PROGRESS_BY_KEY: Record<string, { current: number; target: number }> = {
-      hydration_master: { current: analyses, target: 75 },
-      consistent_care: { current: streak, target: 5 },
-    };
-
     return {
-      achievements: achievements.map((a) => ({
-        ...a,
-        unlocked: earnedMap.has(a.id),
-        unlockedAt: earnedMap.get(a.id)?.toISOString() ?? null,
-        progress: PROGRESS_BY_KEY[a.key],
-      })),
+      achievements: achievements.map((a) => {
+        const targetDef = ACHIEVEMENT_PROGRESS_TARGETS[a.key];
+        return {
+          ...a,
+          unlocked: earnedMap.has(a.id),
+          unlockedAt: earnedMap.get(a.id)?.toISOString() ?? null,
+          progress: targetDef
+            ? { current: targetDef.current(user), target: targetDef.target }
+            : undefined,
+        };
+      }),
       totalXpFromAchievements,
     };
   },

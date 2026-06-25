@@ -274,9 +274,11 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                           <div style={{ fontSize: 22, fontWeight: 700 }}>
                             {tier.amountLabel}
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                            {tier.perAnalysisLabel}
-                          </div>
+                          {tier.perAnalysisLabel !== tier.amountLabel && (
+                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                              {tier.perAnalysisLabel}
+                            </div>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           {prices?.isStars && tier.id !== "monthly" && (
