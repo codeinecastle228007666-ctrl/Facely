@@ -1,4 +1,4 @@
-import { GROQ_SKIN_PROMPT, type GroqSkinInterpretation } from "@/server/utils/aiPrompt";
+import type { ProblemPosition } from "@/services/api";
 
 interface FacePlusItem {
   confidence: number;
@@ -53,20 +53,6 @@ const PROBLEM_MAP: Record<string, string> = {
   eye_pouch: "мешки под глазами",
   eyelids: "отёчность век",
 };
-
-// Reverse map: human-readable Russian problem name → internal key.
-// Used by Groq refinement to map model output back into our pipeline.
-const PROBLEM_NAME_TO_KEY: Record<string, string> = Object.fromEntries(
-  Object.entries(PROBLEM_MAP).map(([k, v]) => [v, k]),
-);
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.DEEPSEEK_API_KEY || "";
-const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
-const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
-// 15 sec — gives Groq room for image processing without breaking the
-// analyse flow. Face++ call already done, so this only delays total
-// response by Groq's latency.
-const GROQ_TIMEOUT_MS = 15000;
 
 /**
  * ── Scoring model ──────────────────────────────────────────────────────
@@ -135,17 +121,12 @@ function weightedSkinScore(features: Record<string, { value: number; confidence:
 /**
  * Resolve skin type only when the model is confident.
  */
-function determineSkinType(skinType: FacePlusResult["skin_type"] | undefined | null, groqOverride?: string | null): string {
-  // Groq's interpretation wins if provided — it has seen the actual photo
-  // and has nuance the structured Face++ details lack.
-  if (groqOverride && SKIN_TYPE_MAP_SET.has(groqOverride)) return groqOverride;
+function determineSkinType(skinType: FacePlusResult["skin_type"] | undefined | null): string {
   const top = skinType?.skin_type ?? 3;
   const conf = skinType?.details?.[String(top)]?.confidence ?? 0;
   const name = SKIN_TYPE_MAP[top] || "нормальная";
   return conf >= MIN_CONFIDENCE ? name : "неопределён";
 }
-
-const SKIN_TYPE_MAP_SET = new Set(Object.values(SKIN_TYPE_MAP));
 
 const PROBLEM_DESC: Record<string, string> = {
   acne: "Воспалительные элементы на коже: чёрные точки, папулы, пустулы. Могут быть вызваны гормональными изменениями, неправильным уходом или питанием.",
@@ -311,157 +292,6 @@ function generateProductLinks(
   return links;
 }
 
-// ─── Groq vision refinement ──────────────────────────────────────────
-// Pattern copied from inventoryService.ts OCR flow (Groq llama-4-scout).
-// Photo + Face++ raw vitals (as text) → JSON refinement.
-
-async function refineWithGroq(
-  imageBase64: string,
-  facePlusRaw: FacePlusResult,
-): Promise<GroqSkinInterpretation | null> {
-  if (!GROQ_API_KEY) return null;
-  try {
-    // Compact summary of Face++ vitals to feed Groq alongside the photo.
-    // Without this, the model hallucinates — with it, the model grounds
-    // its judgment in actual measurements.
-    const vitals = [
-      `acne=${facePlusRaw.acne?.value ?? 0} (c=${(facePlusRaw.acne?.confidence ?? 0).toFixed(2)})`,
-      `dark_circle=${facePlusRaw.dark_circle?.value ?? 0} (c=${(facePlusRaw.dark_circle?.confidence ?? 0).toFixed(2)})`,
-      `skin_spot=${facePlusRaw.skin_spot?.value ?? 0} (c=${(facePlusRaw.skin_spot?.confidence ?? 0).toFixed(2)})`,
-      `pore_avg=${avgPores(facePlusRaw)}`,
-      `wrinkle_max=${maxWrinkles(facePlusRaw)}`,
-      `blackhead=${facePlusRaw.blackhead?.value ?? 0} (c=${(facePlusRaw.blackhead?.confidence ?? 0).toFixed(2)})`,
-      `eye_pouch=${facePlusRaw.eye_pouch?.value ?? 0} (c=${(facePlusRaw.eye_pouch?.confidence ?? 0).toFixed(2)})`,
-      `eyelid_avg=${avgEyelids(facePlusRaw)}`,
-      `skin_type_top=${facePlusRaw.skin_type?.skin_type ?? "?"}`,
-    ].join("\n");
-
-    const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-      },
-      signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),
-      body: JSON.stringify({
-        model: GROQ_VISION_MODEL,
-        max_tokens: 600,
-        temperature: 0.1,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: GROQ_SKIN_PROMPT + "\n\nМе (Face++) витальные метрики:\n" + vitals },
-              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
-            ],
-          },
-        ],
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text().catch(() => "");
-      console.error(`[GroqSkin] API error ${res.status}: ${err.slice(0, 300)}`);
-      return null;
-    }
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content || "";
-    const jsonMatch = raw.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) {
-      console.error(`[GroqSkin] No JSON in response:`, raw.slice(0, 500));
-      return null;
-    }
-    return JSON.parse(jsonMatch[0]) as GroqSkinInterpretation;
-  } catch (e: any) {
-    console.error(`[GroqSkin] ${e.message ?? e}`);
-    return null;
-  }
-}
-
-function avgPores(r: FacePlusResult): number {
-  const v = [r.pores_left_cheek, r.pores_right_cheek, r.pores_forehead, r.pores_jaw]
-    .map((x) => x?.value ?? 0);
-  return Math.round(v.reduce((a, b) => a + b, 0) / Math.max(1, v.length));
-}
-
-function maxWrinkles(r: FacePlusResult): number {
-  return Math.max(
-    r.nasolabial_fold?.value ?? 0,
-    r.forehead_wrinkle?.value ?? 0,
-    r.glabella_wrinkle?.value ?? 0,
-    r.crows_feet?.value ?? 0,
-    r.eye_finelines?.value ?? 0,
-  );
-}
-
-function avgEyelids(r: FacePlusResult): number {
-  return Math.round(
-    ((r.left_eyelids?.value ?? 0) + (r.right_eyelids?.value ?? 0)) / 2,
-  );
-}
-
-/**
- * Merge Groq refinement into Face++ problems/skin_type. Returns new arrays
- * — does NOT mutate input. Severity overrides REPLACE Face++ severity for
- * matching problem name. Additional problems are appended (only if their
- * name matches PROBLEM_MAP — arbitrary AI-invented names are silently
- * dropped to prevent UI breakage).
- */
-function applyGroqInterpretation(
-  baseProblems: { name: string; severity: "лёгкое" | "умеренное" | "выраженное" }[],
-  baseRecommendations: string[],
-  groq: GroqSkinInterpretation | null,
-): { problems: typeof baseProblems; recommendations: string[] } {
-  if (!groq) {
-    return { problems: baseProblems, recommendations: baseRecommendations };
-  }
-  const merged = [...baseProblems];
-
-  // 1. Apply severity overrides (replace existing entry by problem name).
-  if (Array.isArray(groq.severity_overrides)) {
-    for (const ov of groq.severity_overrides) {
-      if (!ov?.name || !(ov.severity in { лёгкое: 0, умеренное: 0, выраженное: 0 })) continue;
-      const idx = merged.findIndex((p) => p.name === ov.name);
-      if (idx >= 0) {
-        // Only escalate, never downgrade — Groq is asked to refine
-        // both ways but a downgrade here could regress a working fix.
-        if (severityRank(ov.severity) > severityRank(merged[idx].severity)) {
-          merged[idx] = { name: ov.name, severity: ov.severity };
-        }
-      } else {
-        // Override for a problem Face++ didn't surface — treat as new add.
-        merged.push({ name: ov.name, severity: ov.severity });
-      }
-    }
-  }
-
-  // 2. Append additional problems Groq saw but Face++ didn't.
-  if (Array.isArray(groq.additional_problems)) {
-    for (const ap of groq.additional_problems) {
-      if (!ap?.name) continue;
-      if (merged.some((p) => p.name === ap.name)) continue;
-      if (!PROBLEM_NAME_TO_KEY[ap.name]) continue; // unknown name → drop
-      merged.push({ name: ap.name, severity: ap.severity });
-    }
-  }
-
-  // 3. Append recommendations for any newly-added problems.
-  const newProblemKeys = merged
-    .filter((p) => !baseProblems.some((b) => b.name === p.name))
-    .map((p) => PROBLEM_NAME_TO_KEY[p.name])
-    .filter(Boolean);
-  const extraRecs = newProblemKeys.flatMap((k) => RECOMMENDATIONS_MAP[k] ?? []);
-
-  return {
-    problems: merged,
-    recommendations: [...baseRecommendations, ...extraRecs],
-  };
-}
-
-function severityRank(s: "лёгкое" | "умеренное" | "выраженное"): number {
-  return { лёгкое: 1, умеренное: 2, выраженное: 3 }[s];
-}
-
 export type AnalysisVerdict = {
   skin_type: string;
   problems: string[];
@@ -475,17 +305,26 @@ export type AnalysisVerdict = {
     effect: string;
   }>;
   /**
+   * Visual overlay positions (red circles) drawn on the user's photo
+   * in ResultModal. Populated by `analyzeProblemPositions` in
+   * analysisService.ts AFTER `analyzeSkinWithFacePlus` returns —
+   * declared here so the contract is type-discoverable across both
+   * files without `as any`.
+   */
+  problem_positions?: ProblemPosition[];
+  /**
    * Internal: full Face++ response passed back to the service layer so
    * it can persist into SkinAnalysis.rawFacePlus. Stripped before
    * sending to the client.
+   *
+   * NOTE on Groq: the June-25 Groq "severity refinement" attempt was
+   * rolled back due to JSON parse instability (model returned malformed
+   * JSON). The Jun-24 Groq `analyzeProblemPositions()` flow is restored
+   * separately in analysisService.ts — it draws the visual overlay
+   * (`result.problem_positions`) and works reliably because the prompt
+   * asks only for coordinate triples, not multi-property JSON.
    */
   _rawResponse: FacePlusResult;
-  /**
-   * Internal: Groq vision interpretation (or null if Groq not
-   * configured / failed). Persisted alongside _rawResponse for
-   * future debugging / backfill. Stripped before sending to client.
-   */
-  _groqInterpretation: GroqSkinInterpretation | null;
 };
 
 export async function analyzeSkinWithFacePlus(
@@ -609,21 +448,11 @@ export async function analyzeSkinWithFacePlus(
     if (recs) recommendations.push(...recs);
   }
 
-  // ── Groq vision refinement (graceful degradation if not configured).
-  // Combines Face++ structure with semantic photo understanding so the
-  // user sees problems that a 0/60/100 categorical API alone misses —
-  // "mild redness after workout" vs "rosacea-prone" look the same to
-  // Face++ but not to a vision LLM.
-  const groqInterpretation = await refineWithGroq(cleanBase64, r);
-  const merged = applyGroqInterpretation(problemEntries, recommendations, groqInterpretation);
-  const mergedProblems = merged.problems;
-  const mergedRecommendations = merged.recommendations;
+  const skinType = determineSkinType(r.skin_type);
+  const skinScore = weightedSkinScore(features, problemEntries);
+  const problems = problemEntries.map((p) => `${p.name} (${p.severity})`);
 
-  const skinType = determineSkinType(r.skin_type, groqInterpretation?.skin_type);
-  const skinScore = weightedSkinScore(features, mergedProblems);
-  const problems = mergedProblems.map((p) => `${p.name} (${p.severity})`);
-
-  const hasAcne = mergedProblems.some((p) => p.name === "акне");
+  const hasAcne = problemEntries.some((p) => p.name === "акне");
 
   const mood = determineMood(problems);
   const dailyRoutine = buildRoutine(skinType, problems, hasAcne);
@@ -633,11 +462,10 @@ export async function analyzeSkinWithFacePlus(
     skin_type: skinType,
     problems,
     skin_score: skinScore,
-    recommendations: mergedRecommendations,
+    recommendations,
     daily_routine: dailyRoutine,
     mood,
     product_links: productLinks,
     _rawResponse: r,
-    _groqInterpretation: groqInterpretation,
   };
 }
