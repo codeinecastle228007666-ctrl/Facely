@@ -49,6 +49,9 @@ model SkinAnalysis {
   photoHash       String?
   userDescription String?
   result          Json?
+  /// Verbatim Face++ /skinanalyze response. Lets us re-score old records
+  /// when scoring logic improves (avoids paying the Face++ quota again).
+  rawFacePlus     Json?
   skinType        String?
   isFree          Boolean  @default(true)
   createdAt       DateTime @default(now())

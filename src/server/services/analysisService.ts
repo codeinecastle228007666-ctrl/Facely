@@ -90,6 +90,11 @@ export const analysisService = {
     }
 
     const result = await analyzeSkinWithFacePlus(compressedPhoto);
+    // ── Strip internal _rawResponse (only used for persistence) from the
+    //    cooked result we send to clients and store in `result`. Keeping
+    //    _rawResponse separately lets us persist the verbatim Face++
+    //    JSON for re-scoring later without re-paying the Face++ quota.
+    const { _rawResponse, ...clientResult } = result;
 
     const hasActiveSubscription =
       user.subscription?.status === "active" &&
@@ -98,7 +103,7 @@ export const analysisService = {
 
     const isFree = !hasActiveSubscription && user.freeAnalyses > 0;
 
-    // ── M1: ALL writes in one transaction; XP via atomic increment ───────
+    // ── M1: ALL writes in one transaction; XP via atomic increment ────────
     // Avoids race condition where two concurrent analyses overwrite xp/level.
     const oldXp = user.xp;
     const committed = await prisma.$transaction(async (tx) => {
@@ -108,8 +113,9 @@ export const analysisService = {
           photoBase64: compressedPhoto,
           photoHash,
           userDescription: description ?? null,
-          result: result as object,
-          skinType: result.skin_type,
+          result: clientResult as object,
+          rawFacePlus: _rawResponse as object,
+          skinType: clientResult.skin_type,
           isFree,
         },
       });
@@ -174,7 +180,7 @@ export const analysisService = {
     }
 
     return {
-      analysis: result,
+      analysis: clientResult,
       xpGained: XP_PER_ANALYSIS,
       totalXp: newXp,
       level: computedLevel,
@@ -248,8 +254,11 @@ export const analysisService = {
 
     const differences: Record<string, { from: number; to: number; diff: number; improved: boolean }> = {};
     const fields = ["acne", "dark_circle", "pore", "spot", "wrinkle"];
+    // Match the exact spelling used by facePlusService.PROBLEM_MAP so
+    // `p1map.get(name)` actually returns the parsed severity instead of
+    // silently dropping the row.
     const FIELD_KEYS: Record<string, string> = {
-      acne: "акне", dark_circle: "темные круги", pore: "поры", spot: "пигментация", wrinkle: "морщины",
+      acne: "акне", dark_circle: "тёмные круги", pore: "поры", spot: "пигментация", wrinkle: "морщины",
     };
 
     for (const f of fields) {

@@ -52,10 +52,100 @@ const PROBLEM_MAP: Record<string, string> = {
   eyelids: "отёчность век",
 };
 
-const SEVERITY_LABELS: Record<number, string> = {
-  60: "лёгкое",
-  100: "выраженное",
+/**
+ * ── Scoring model ──────────────────────────────────────────────────────
+ * Each Face++ feature has its own severity "value" (0–100; usually
+ * 0 / 60 / 100) AND a "confidence" (0–1). The old code averaged values
+ * across 8 features blindly, which made one severe problem average
+ * out as "excellent". New model:
+ *
+ *   badness_i    = confidence < MIN_CONFIDENCE ? 0 : value/100
+ *   goodness_i   = 1 - badness_i
+ *   skin_score   = round( Σ(weight_i × goodness_i) / Σ(weight_i) × 100 )
+ *
+ * If no feature is informative (all conf < 0.4) → default to 100
+ * (no informed signal = no problem detected).
+ */
+const FEATURE_WEIGHTS: Record<string, number> = {
+  acne: 0.22,        // most user-visible
+  spot: 0.18,        // pigmentation, fades visibly with care
+  wrinkle: 0.18,     // aging
+  dark_circle: 0.12,
+  pore: 0.10,
+  blackhead: 0.08,
+  eye_pouch: 0.06,
+  eyelids: 0.06,
 };
+// sum = 1.00
+
+const MIN_CONFIDENCE = 0.4;
+// Below this confidence, treat the value as noise.
+// (Face++ returns confidences from 0.005 to 0.999; threshold tuned
+// empirically — anything below ~0.4 has no visible signal.)
+
+/**
+ * Severity thresholds on the Face++ `value` axis (0–100).
+ * Old code labelled value=60 as "умеренное" — that was wrong; 60 is
+ * their "mild" tier. New mapping:
+ *   value ≥ 90 → выраженное (severe)
+ *   value ≥ 60 → умеренное (moderate)
+ *   value ≥ 30 → лёгкое   (mild)
+ *   else       → no problem
+ *
+ * Combined with MIN_CONFIDENCE this gives stable, honest labels.
+ */
+function severityFromValue(value: number): "лёгкое" | "умеренное" | "выраженное" | null {
+  if (value >= 90) return "выраженное";
+  if (value >= 60) return "умеренное";
+  if (value >= 30) return "лёгкое";
+  return null;
+}
+
+function badness(value: number, confidence: number): number {
+  if (confidence < MIN_CONFIDENCE) return 0;
+  return Math.max(0, Math.min(1, value / 100));
+}
+
+function weightedSkinScore(features: Record<string, { value: number; confidence: number }>, problems: { severity: "лёгкое" | "умеренное" | "выраженное" }[] = []): number {
+  let totalW = 0;
+  let goodnessSum = 0;
+  for (const [key, { value, confidence }] of Object.entries(features)) {
+    const w = FEATURE_WEIGHTS[key];
+    if (!w) continue;
+    const b = badness(value, confidence);
+    totalW += w;
+    goodnessSum += w * (1 - b);
+  }
+  if (totalW === 0) return 100; // no informed signal
+
+  // ── Score-floor: prevent the green-circle-while-problem-listed lie.
+  //    Even a well-weighted formula can yield ~85 with one moderate feature
+  //    (e.g. acne=70 conf=0.6 → 85). User sees green + "умеренное" → still
+  //    contradictory. Cap the score so it matches what the problem list says:
+  //      any выраженное  → ≤ 49 (red)
+  //      any умеренное   → ≤ 69 (orange "Требует внимания")
+  //      only лёгкое(s)  → ≤ 84 (yellow border — not yet "Отличное")
+  let score = Math.round((goodnessSum / totalW) * 100);
+  const hasSevere = problems.some((p) => p.severity === "выраженное");
+  const hasModerate = problems.some((p) => p.severity === "умеренное");
+  const hasMild = problems.some((p) => p.severity === "лёгкое");
+  if (hasSevere) score = Math.min(score, 49);
+  else if (hasModerate) score = Math.min(score, 69);
+  else if (hasMild) score = Math.min(score, 84);
+  return Math.max(0, Math.min(100, score));
+}
+
+/**
+ * Resolve skin type only when the model is confident.
+ * Without this check, two similar photos can flip between 2-3 types
+ * when confidence ≈ 0.3 — users perceive it as "unstable".
+ */
+function determineSkinType(skinType: FacePlusResult["skin_type"] | undefined | null): string {
+  const top = skinType?.skin_type ?? 3;
+  const conf = skinType?.details?.[String(top)]?.confidence ?? 0;
+  const name = SKIN_TYPE_MAP[top] || "нормальная";
+  return conf >= MIN_CONFIDENCE ? name : "неопределён";
+}
 
 const PROBLEM_DESC: Record<string, string> = {
   acne: "Воспалительные элементы на коже: чёрные точки, папулы, пустулы. Могут быть вызваны гормональными изменениями, неправильным уходом или питанием.",
@@ -221,13 +311,7 @@ function generateProductLinks(
   return links;
 }
 
-function scaleValue(v: number): number {
-  return Math.max(0, Math.min(100, v));
-}
-
-export async function analyzeSkinWithFacePlus(
-  imageBase64: string,
-): Promise<{
+export type AnalysisVerdict = {
   skin_type: string;
   problems: string[];
   skin_score: number;
@@ -239,7 +323,17 @@ export async function analyzeSkinWithFacePlus(
     reason: string;
     effect: string;
   }>;
-}> {
+  /**
+   * Internal: full Face++ response passed back to the service layer so
+   * it can persist into SkinAnalysis.rawFacePlus. Stripped before
+   * sending to the client.
+   */
+  _rawResponse: FacePlusResult;
+};
+
+export async function analyzeSkinWithFacePlus(
+  imageBase64: string,
+): Promise<AnalysisVerdict> {
   const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
 
   const sizeKB = Math.round((cleanBase64.length * 3) / 4 / 1024);
@@ -300,72 +394,80 @@ export async function analyzeSkinWithFacePlus(
 
   const r = data.result;
 
-  // Map Face++ result to our scoring system (0-100)
-  const acneScore = scaleValue(r.acne?.value ?? 0);
-  const darkCircleScore = scaleValue(r.dark_circle?.value ?? 0);
-  const spotScore = scaleValue(r.skin_spot?.value ?? 0);
-  const blackheadScore = scaleValue(r.blackhead?.value ?? 0);
-  const eyePouchScore = scaleValue(r.eye_pouch?.value ?? 0);
+  // Aggregate pore score across all pore locations (4 measurements).
+  // Picking the highest-confidence pore is more informative than averaging
+  // — if 3 of 4 zones have noise (conf<0.1) and 1 is clear (conf≈0.9),
+  // an average (~0.3) would fall below MIN_CONFIDENCE and the face would
+  // be silently treated as "no pore signal".
+  const poreEntries = [
+    r.pores_left_cheek,
+    r.pores_right_cheek,
+    r.pores_forehead,
+    r.pores_jaw,
+  ].map((v) => v ?? { confidence: 0, value: 0 });
+  const bestPore = poreEntries.reduce((best, cur) =>
+    cur.confidence > best.confidence ? cur : best,
+  );
+  const poreConfidence = bestPore.confidence;
+  const poreValue = bestPore.value;
 
-  // Average pore score across all pore locations
-  const poreValues = [
-    r.pores_left_cheek?.value ?? 0,
-    r.pores_right_cheek?.value ?? 0,
-    r.pores_forehead?.value ?? 0,
-    r.pores_jaw?.value ?? 0,
-  ];
-  const poreScore = poreValues.reduce((a, b) => a + scaleValue(b), 0) / poreValues.length;
-
-  // Wrinkle: take max across all wrinkle types
+  // Aggregate wrinkle as max across types (worst area matters most).
   const wrinkleValues = [
-    r.nasolabial_fold?.value ?? 0,
-    r.forehead_wrinkle?.value ?? 0,
-    r.glabella_wrinkle?.value ?? 0,
-    r.crows_feet?.value ?? 0,
-    r.eye_finelines?.value ?? 0,
-  ];
-  const wrinkleScore = Math.max(...wrinkleValues.map(scaleValue));
+    r.nasolabial_fold,
+    r.forehead_wrinkle,
+    r.glabella_wrinkle,
+    r.crows_feet,
+    r.eye_finelines,
+  ].map((v) => v ?? { confidence: 0, value: 0 });
+  const wrinkleEntry = wrinkleValues.reduce((worst, cur) =>
+    cur.value > worst.value ? cur : worst,
+  );
 
-  // Eyelids: average of both
-  const eyelidScore = (scaleValue(r.left_eyelids?.value ?? 0) + scaleValue(r.right_eyelids?.value ?? 0)) / 2;
+  // Aggregate eyelids as average across both eyes.
+  const eyelidConfidence =
+    ((r.left_eyelids?.confidence ?? 0) + (r.right_eyelids?.confidence ?? 0)) / 2;
+  const eyelidValue =
+    ((r.left_eyelids?.value ?? 0) + (r.right_eyelids?.value ?? 0)) / 2;
 
-  // Build score map (excluding mole — not a skin problem)
-  const scores: Record<string, number> = {
-    acne: acneScore,
-    dark_circle: darkCircleScore,
-    pore: poreScore,
-    spot: spotScore,
-    wrinkle: wrinkleScore,
-    blackhead: blackheadScore,
-    eye_pouch: eyePouchScore,
-    eyelids: eyelidScore,
+  // Build feature bag for weighted scoring.
+  const features: Record<string, { value: number; confidence: number }> = {
+    acne: { value: r.acne?.value ?? 0, confidence: r.acne?.confidence ?? 0 },
+    dark_circle: { value: r.dark_circle?.value ?? 0, confidence: r.dark_circle?.confidence ?? 0 },
+    pore: { value: poreValue, confidence: poreConfidence },
+    spot: { value: r.skin_spot?.value ?? 0, confidence: r.skin_spot?.confidence ?? 0 },
+    wrinkle: { value: wrinkleEntry.value, confidence: wrinkleEntry.confidence },
+    blackhead: { value: r.blackhead?.value ?? 0, confidence: r.blackhead?.confidence ?? 0 },
+    eye_pouch: { value: r.eye_pouch?.value ?? 0, confidence: r.eye_pouch?.confidence ?? 0 },
+    eyelids: { value: eyelidValue, confidence: eyelidConfidence },
   };
 
-  const skinType = SKIN_TYPE_MAP[r.skin_type?.skin_type] || "нормальная";
-
-  const problems: string[] = [];
+  // Build problem list with confidence-gated severity.
+  // We collect (name, severity) first so the score-floor can use it.
+  const problemEntries: { name: string; severity: "лёгкое" | "умеренное" | "выраженное" }[] = [];
   const recommendations: string[] = [];
-
-  for (const [key, score] of Object.entries(scores)) {
-    if (score > 50) {
-      const problemName = PROBLEM_MAP[key];
-      const severity = score === 100 ? "выраженное" : "умеренное";
-      if (problemName) {
-        problems.push(`${problemName} (${severity})`);
-        const recs = RECOMMENDATIONS_MAP[key];
-        if (recs) {
-          recommendations.push(...recs);
-        }
-      }
-    }
+  for (const [key, { value, confidence }] of Object.entries(features)) {
+    if (confidence < MIN_CONFIDENCE) continue;
+    const sev = severityFromValue(value);
+    if (sev === null) continue;
+    const problemName = PROBLEM_MAP[key];
+    if (!problemName) continue;
+    problemEntries.push({ name: problemName, severity: sev });
+    const recs = RECOMMENDATIONS_MAP[key];
+    if (recs) recommendations.push(...recs);
   }
 
-  const mood = determineMood(problems);
-  const dailyRoutine = buildRoutine(skinType, problems, acneScore > 50);
-  const productLinks = generateProductLinks(problems);
+  const skinType = determineSkinType(r.skin_type);
+  const skinScore = weightedSkinScore(features, problemEntries);
+  const problems = problemEntries.map((p) => `${p.name} (${p.severity})`);
 
-  const avgScore = Object.values(scores).reduce((a, b) => a + b, 0) / Object.values(scores).length;
-  const skinScore = Math.round(Math.max(0, 100 - avgScore));
+  // `hasAcne` reads directly from problemEntries (single source of truth):
+  // if acne appears anywhere in the problems list (лёгкое / умеренное /
+  // выраженное), the routine should recommend salicylic-acid cleansing.
+  const hasAcne = problemEntries.some((p) => p.name === "акне");
+
+  const mood = determineMood(problems);
+  const dailyRoutine = buildRoutine(skinType, problems, hasAcne);
+  const productLinks = generateProductLinks(problems);
 
   return {
     skin_type: skinType,
@@ -375,5 +477,6 @@ export async function analyzeSkinWithFacePlus(
     daily_routine: dailyRoutine,
     mood,
     product_links: productLinks,
+    _rawResponse: r,
   };
 }
