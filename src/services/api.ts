@@ -149,6 +149,7 @@ export const api = {
     getMessages: () => query<ChatMessageResult[]>("chat.getMessages"),
     sendMessage: (data: { content: string }) =>
       mutation<{ response: string; remaining: number }>("chat.sendMessage", data),
+    clearHistory: () => mutation<{ deleted: number }>("chat.clearHistory"),
   },
   achievement: {
     list: () => query<AchievementListResult>("achievement.list"),

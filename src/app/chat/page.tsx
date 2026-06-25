@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { TabBar } from "@/components/ui/TabBar";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useUser } from "@/hooks/useUser";
 import { api, type ChatMessageResult } from "@/services/api";
 import { motion, AnimatePresence } from "framer-motion";
@@ -54,6 +55,13 @@ export default function ChatPage() {
   const endRef = useRef<HTMLDivElement>(null);
   const [savedRoutines, setSavedRoutines] = useState<Set<string>>(new Set());
   const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmReplaceRoutineOpen, setConfirmReplaceRoutineOpen] = useState(false);
+  const [pendingRoutineSave, setPendingRoutineSave] = useState<{
+    msgId: string;
+    content: string;
+  } | null>(null);
 
   useEffect(() => {
     if (saveToast) { const t = setTimeout(() => setSaveToast(null), 3000); return () => clearTimeout(t); }
@@ -110,8 +118,9 @@ export default function ChatPage() {
     try {
       const existing = await api.routine.get();
       if (existing && existing.steps.length > 0) {
-        const ok = window.confirm("У вас уже настроена рутина. Заменить её на новую из ответа AI?");
-        if (!ok) return;
+        setPendingRoutineSave({ msgId, content });
+        setConfirmReplaceRoutineOpen(true);
+        return;
       }
       await api.routine.save({
         steps: steps.map((s) => ({
@@ -124,6 +133,68 @@ export default function ChatPage() {
       setSaveToast("Рутина сохранена! Смотрите на главной в разделе «Рутина ухода»");
     } catch {
       setSaveToast("Не удалось сохранить рутину");
+    }
+  }, []);
+
+  // Same race-condition guard pattern as handleClearHistory — without it,
+  // rapid double-clicks on the "Заменить" confirm button during React's
+  // state-update window would invoke api.routine.save() twice, which deletes
+  // then recreates routine steps and could leave inconsistent stepOrder rows.
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const executePendingRoutineSave = useCallback(async () => {
+    if (savingRef.current || !pendingRoutineSave) return;
+    savingRef.current = true;
+    setSaving(true);
+    const { msgId, content } = pendingRoutineSave;
+    const steps = parseRoutineFromText(content);
+    setConfirmReplaceRoutineOpen(false);
+    setPendingRoutineSave(null);
+    if (!steps) {
+      savingRef.current = false;
+      setSaving(false);
+      return;
+    }
+    try {
+      await api.routine.save({
+        steps: steps.map((s) => ({
+          productName: s.productName,
+          timeOfDay: s.timeOfDay,
+          stepOrder: s.stepOrder,
+        })),
+      });
+      setSavedRoutines((prev) => new Set(prev).add(msgId));
+      setSaveToast("Рутина заменена! Смотрите в разделе «Рутина ухода»");
+    } catch {
+      setSaveToast("Не удалось сохранить рутину");
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }, [pendingRoutineSave]);
+
+  // Local ref guard against double-fire during React state-update window.
+  // Idempotent on server (deleteMany of empty set is a no-op), but avoids
+  // wasted round-trips and prevents any future side-effects from racing.
+  const deletingRef = useRef(false);
+  const handleClearHistory = useCallback(async () => {
+    if (deletingRef.current) return;
+    deletingRef.current = true;
+    setDeleting(true);
+    try {
+      const res = await api.chat.clearHistory();
+      setMessages([]);
+      setSavedRoutines(new Set()); // clear stale "saved" indicators for deleted messages
+      setConfirmDeleteOpen(false);
+      setSaveToast(`История чата удалена (${res.deleted} сообщений)`);
+    } catch (e) {
+      setSaveToast(
+        "Не удалось очистить историю: " +
+          (e instanceof Error ? e.message : "неизвестная ошибка"),
+      );
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
     }
   }, []);
 
@@ -151,12 +222,16 @@ export default function ChatPage() {
           </div>
         </div>
         <button
-          onClick={() => { setMessages([]); }}
+          onClick={() => setConfirmDeleteOpen(true)}
+          disabled={messages.length === 0}
+          aria-label="Очистить историю чата"
           style={{
             width: 32, height: 32, borderRadius: 10,
             background: "var(--bg)", border: "none",
-            cursor: "pointer", display: "flex",
+            cursor: messages.length === 0 ? "default" : "pointer",
+            display: "flex",
             alignItems: "center", justifyContent: "center",
+            opacity: messages.length === 0 ? 0.4 : 1,
           }}
           title="Очистить историю"
         >
@@ -382,6 +457,34 @@ export default function ChatPage() {
       </div>
 
       <TabBar />
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Удалить историю чата?"
+        message="Все сообщения будут удалены без возможности восстановления. Это не повлияет на баланс бесплатных вопросов."
+        count={messages.length}
+        confirmText="Удалить"
+        cancelText="Отмена"
+        variant="danger"
+        loading={deleting}
+        onConfirm={handleClearHistory}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmReplaceRoutineOpen}
+        title="Заменить рутину?"
+        message="У вас уже настроена рутина ухода. Заменить её на новую из ответа AI?"
+        confirmText="Заменить"
+        cancelText="Отмена"
+        variant="default"
+        loading={saving}
+        onConfirm={executePendingRoutineSave}
+        onCancel={() => {
+          setConfirmReplaceRoutineOpen(false);
+          setPendingRoutineSave(null);
+        }}
+      />
     </div>
   );
 }

@@ -12,4 +12,8 @@ export const chatRouter = router({
     .mutation(async ({ ctx, input }) => {
       return chatService.sendMessage(ctx.telegramId, input.content);
     }),
+
+  clearHistory: protectedProcedure.mutation(async ({ ctx }) => {
+    return chatService.clearHistory(ctx.telegramId);
+  }),
 });

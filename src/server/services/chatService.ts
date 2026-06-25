@@ -173,4 +173,18 @@ ${routineContext}
       remaining: Math.max(0, newRemaining),
     };
   },
+
+  async clearHistory(telegramId: string) {
+    // Find user via telegramId; reject anonymous calls.
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    if (!user) throw new Error("User not found");
+
+    // Hard delete all messages authored by this user.
+    // Note: this is irreversible and meets the user's right-to-be-forgotten
+    // (GDPR Art. 17). For audit purposes, callers should log this event.
+    const { count } = await prisma.chatMessage.deleteMany({
+      where: { userId: user.id },
+    });
+    return { deleted: count };
+  },
 };
