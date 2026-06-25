@@ -3,6 +3,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import type { AnalysisHistoryItem } from "@/services/api";
+import { pluralRu } from "@/lib/pluralRu";
 
 interface LastAnalysisCardProps {
   item: AnalysisHistoryItem | null;
@@ -41,7 +42,7 @@ export const LastAnalysisCard: React.FC<LastAnalysisCardProps> = ({ item }) => {
       <div style={{ flex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
           <span style={{ fontSize: 14, fontWeight: 600 }}>
-            {daysAgo === 0 ? "Сегодня" : daysAgo === 1 ? "Вчера" : `${daysAgo} дня назад`}
+            {daysAgo === 0 ? "Сегодня" : daysAgo === 1 ? "Вчера" : `${daysAgo} ${pluralRu(daysAgo, ["день", "дня", "дней"])} назад`}
           </span>
           {item.skinType && (
             <span style={{ fontSize: 11, padding: "1px 10px", borderRadius: 12, background: "var(--primary-light)", color: "var(--primary-dark)", fontWeight: 500 }}>
@@ -52,7 +53,7 @@ export const LastAnalysisCard: React.FC<LastAnalysisCardProps> = ({ item }) => {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
             {item.result.problems.length > 0
-              ? `${item.result.problems.length} ${item.result.problems.length === 1 ? "проблема" : "проблем"}`
+              ? `${item.result.problems.length} ${pluralRu(item.result.problems.length, ["проблема", "проблемы", "проблем"])}`
               : "Без проблем"}
           </span>
           <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 10, background: mc.bg, color: mc.text, fontWeight: 500 }}>

@@ -4,6 +4,7 @@ import React, { Suspense, useState, useEffect, useRef, useCallback } from "react
 import { useSearchParams, useRouter } from "next/navigation";
 import { api, type AnalysisHistoryItem, type ComparisonResult } from "@/services/api";
 import { motion, AnimatePresence } from "framer-motion";
+import { pluralRu } from "@/lib/pluralRu";
 
 function CompareFallback() {
   return (
@@ -259,8 +260,38 @@ function CompareContent() {
       </div>
 
       {photo1 && photo2 && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 20, position: "relative" }}>
           <ImageSlider before={photo1} after={photo2} />
+          <AnimatePresence>
+            {loading && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                style={{
+                  position: "absolute", inset: 0,
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center", gap: 12,
+                  background: "rgba(255,255,255,0.65)",
+                  backdropFilter: "blur(6px)",
+                  borderRadius: 20, zIndex: 20,
+                }}
+              >
+                <div style={{
+                  width: 40, height: 40, borderRadius: "50%",
+                  border: "3px solid var(--border)",
+                  borderTopColor: "var(--primary)",
+                  animation: "spin 0.8s linear infinite",
+                }} />
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>
+                  Сравниваем фото...
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                  Анализируем {pluralRu(2, ["изменение", "изменения", "изменений"])} между анализами
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 

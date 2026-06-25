@@ -217,13 +217,37 @@ export const subscriptionService = {
     return { subscription: sub, xpGained: xpGain, totalXp: newXp, level: newLevel };
   },
 
-  async reportCardTransfer(userId: string, amount: number) {
+  async reportCardTransfer(
+    userId: string,
+    amount: number,
+    tier: "single" | "pack5" | "monthly" = "single",
+  ) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error("User not found");
 
+    const TIER_LABELS: Record<typeof tier, string> = {
+      single: "1 Анализ кожи",
+      pack5: "5 Анализов кожи",
+      monthly: "Безлимит на месяц",
+    };
+
+    const expectedAmount =
+      tier === "single"
+        ? Number(process.env.CARD_AMOUNT_SINGLE || 150)
+        : tier === "pack5"
+        ? Number(process.env.CARD_AMOUNT_PACK5 || 500)
+        : Number(process.env.CARD_AMOUNT_MONTHLY || 1200);
+
     // Отправляем уведомление админу через Telegram Bot API
     if (process.env.FEEDBACK_CHAT_ID && BOT_TOKEN) {
-      const msg = `💳 Перевод на карту\nОт: ${user.name || user.telegramId}\nСумма: ${amount} ₽\nID: ${user.id}`;
+      const amountTag =
+        amount === expectedAmount ? "\u2705" : `\u26a0\ufe0f заявлено ${amount}\u20bd, ожидаем ${expectedAmount}\u20bd`;
+      const msg =
+        `\ud83d\udcb3 Перевод на карту\n` +
+        `От: ${user.name || user.telegramId}\n` +
+        `Тариф: ${TIER_LABELS[tier]}\n` +
+        `Сумма: ${amount} ₽ ${amountTag}\n` +
+        `ID: ${user.id}`;
       fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

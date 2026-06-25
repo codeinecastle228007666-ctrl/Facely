@@ -115,7 +115,7 @@ export const api = {
       mutation<{ success: boolean }>("subscription.confirmStarsPayment", data),
     createChatStarsInvoice: () =>
       mutation<{ url: string; currency: string; amount: number }>("subscription.createChatStarsInvoice"),
-    reportCardTransfer: (data: { amount: number }) =>
+    reportCardTransfer: (data: { amount: number; tier?: "single" | "pack5" | "monthly" }) =>
       mutation<{ success: boolean }>("subscription.reportCardTransfer", data),
   },
   referral: {
@@ -264,6 +264,7 @@ export interface AchievementItem {
   xpReward: number;
   unlocked: boolean;
   unlockedAt: string | null;
+  progress?: { current: number; target: number };
 }
 
 export interface AchievementListResult {

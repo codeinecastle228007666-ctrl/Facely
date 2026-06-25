@@ -10,6 +10,7 @@ import { PurchaseModal } from "@/components/purchase/PurchaseModal";
 import { ReportsSection } from "@/components/dashboard/ReportsSection";
 import { FeedbackModal } from "@/components/dashboard/FeedbackModal";
 import { BalanceCard } from "@/components/dashboard/BalanceCard";
+import { AchievementsInline } from "@/components/dashboard/AchievementsInline";
 import { useUser } from "@/hooks/useUser";
 import { getLevelPerks } from "@/server/utils/levelSystem";
 import { ProfileSkeleton } from "@/components/ui/Skeleton";
@@ -54,6 +55,8 @@ export default function ProfilePage() {
           paidAnalyses={user?.paidAnalyses ?? 0}
           subscriptionActive={hasSub}
         />
+
+        <AchievementsInline onViewAll={() => setAchievementsOpen(true)} />
 
         {/* Store section */}
         <motion.div

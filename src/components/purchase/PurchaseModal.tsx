@@ -2,18 +2,49 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CloseIcon, CheckIcon } from "@/components/ui/Icons";
+import { CloseIcon } from "@/components/ui/Icons";
 import { api } from "@/services/api";
 
-interface PurchaseModalProps {
-  open: boolean;
-  onClose: () => void;
-  onSuccess?: () => void;
+type Tier = "single" | "pack5" | "monthly";
+
+interface TierDef {
+  id: Tier;
+  icon: string;
+  title: string;
+  desc: string;
+  price: number;
+  badge?: string;
+  savings?: string;
 }
+
+const TIERS: TierDef[] = [
+  {
+    id: "single",
+    icon: "🌱",
+    title: "1 Анализ кожи",
+    desc: "Разовый анализ — тип кожи, проблемы и рекомендации",
+    price: Number(process.env.NEXT_PUBLIC_TIER_PRICE_SINGLE || "150"),
+  },
+  {
+    id: "pack5",
+    icon: "✨",
+    title: "5 Анализов кожи",
+    desc: "Для регулярного отслеживания динамики кожи",
+    price: Number(process.env.NEXT_PUBLIC_TIER_PRICE_PACK5 || "500"),
+    badge: "ПОПУЛЯРНО",
+    savings: "Экономия 35%",
+  },
+  {
+    id: "monthly",
+    icon: "👑",
+    title: "Безлимит на месяц",
+    desc: "Все анализы без ограничений + приоритетная поддержка",
+    price: Number(process.env.NEXT_PUBLIC_TIER_PRICE_MONTHLY || "1200"),
+  },
+];
 
 const CARD_NUMBER = process.env.NEXT_PUBLIC_CARD_NUMBER || "";
 const CARD_BANK = process.env.NEXT_PUBLIC_CARD_BANK || "Сбербанк";
-const CARD_AMOUNT = Number(process.env.NEXT_PUBLIC_CARD_AMOUNT || "100");
 
 function pluralRubles(n: number): string {
   const mod10 = n % 10;
@@ -23,18 +54,20 @@ function pluralRubles(n: number): string {
   return "рублей";
 }
 
-export const PurchaseModal: React.FC<PurchaseModalProps> = ({
-  open,
-  onClose,
-  onSuccess,
-}) => {
-  const [loading, setLoading] = useState<string | null>(null);
+interface PurchaseModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSuccess?: () => void;
+}
+
+export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onSuccess }) => {
+  const [loading, setLoading] = useState<Tier | null>(null);
   const [prices, setPrices] = useState<{
     analysis: number;
     currency: string;
     isStars: boolean;
   } | null>(null);
-  const [cardFlow, setCardFlow] = useState(false);
+  const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
   const [cardCopied, setCardCopied] = useState(false);
   const [cardPaid, setCardPaid] = useState(false);
   const [cardSubmitting, setCardSubmitting] = useState(false);
@@ -45,26 +78,13 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
 
   useEffect(() => {
     if (!open) {
-      setCardFlow(false);
+      setSelectedTier(null);
       setCardCopied(false);
       setCardPaid(false);
       setCardSubmitting(false);
+      setLoading(null);
     }
   }, [open]);
-
-  const formatPrice = (amount: number) => {
-    if (!prices) return "1";
-    if (prices.isStars) return String(amount);
-    return (amount / 100).toLocaleString("ru-RU", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    });
-  };
-
-  const formatCurrency = () => {
-    if (!prices) return "⭐";
-    return prices.isStars ? "⭐" : "₽";
-  };
 
   const copyCardNumber = useCallback(async () => {
     try {
@@ -77,9 +97,12 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
   }, []);
 
   const handleCardPaid = useCallback(async () => {
+    if (!selectedTier) return;
+    const tierDef = TIERS.find((t) => t.id === selectedTier);
+    if (!tierDef) return;
     setCardSubmitting(true);
     try {
-      await api.subscription.reportCardTransfer({ amount: CARD_AMOUNT });
+      await api.subscription.reportCardTransfer({ amount: tierDef.price, tier: selectedTier });
       setCardPaid(true);
       setTimeout(() => {
         onSuccess?.();
@@ -90,21 +113,29 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
     } finally {
       setCardSubmitting(false);
     }
-  }, [onSuccess, onClose]);
+  }, [selectedTier, onSuccess, onClose]);
 
-  const handleStarsPurchase = async () => {
+  const handleStarsPurchase = async (tier: Tier) => {
     const tg = (window as any).Telegram?.WebApp;
     if (!tg) {
       alert("Доступно только в Telegram");
       return;
     }
-    setLoading("analysis_1");
+    if (tier === "monthly") {
+      alert("Безлимит пока оплачивается переводом на карту. Telegram Stars для подписки — скоро.");
+      return;
+    }
+    const quantity = tier === "single" ? 1 : 5;
+    setLoading(tier);
     try {
-      const res = await api.subscription.createStarsInvoice({ quantity: 1 });
+      const res = await api.subscription.createStarsInvoice({ quantity });
       tg.openInvoice(res.url, async (status: string) => {
         if (status === "paid") {
           alert("Оплата прошла! Анализы будут зачислены в течение минуты.");
-          setTimeout(() => { onSuccess?.(); onClose(); }, 1000);
+          setTimeout(() => {
+            onSuccess?.();
+            onClose();
+          }, 1000);
         }
         setLoading(null);
       });
@@ -113,6 +144,8 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
       setLoading(null);
     }
   };
+
+  const selectedTierDef = selectedTier ? TIERS.find((t) => t.id === selectedTier) : undefined;
 
   return (
     <AnimatePresence>
@@ -148,216 +181,329 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center" style={{ marginBottom: 24 }}>
-              <h3 style={{ fontSize: 18, fontWeight: 600 }}>Пополнить баланс</h3>
-              <button onClick={onClose}>
-                <CloseIcon size={22} />
-              </button>
-            </div>
+            {selectedTier === null ? (
+              <>
+                <div className="flex justify-between items-center" style={{ marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 600 }}>Пополнить баланс</h3>
+                  <button onClick={onClose}>
+                    <CloseIcon size={22} />
+                  </button>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 18, lineHeight: 1.5 }}>
+                  Выберите тариф — чем больше анализов, тем больше экономия.
+                </div>
 
-            {!cardFlow ? (
-              <div className="flex flex-col gap-3">
-                {prices?.isStars && (
-                  <motion.button
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.08 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleStarsPurchase}
-                    disabled={loading === "analysis_1"}
-                    style={{
-                      width: "100%", padding: "18px", borderRadius: 18,
-                      border: "2px solid #FFD700", background: "rgba(255, 215, 0, 0.08)",
-                      textAlign: "left", cursor: loading === "analysis_1" ? "wait" : "pointer",
-                      opacity: loading === "analysis_1" ? 0.7 : 1, position: "relative",
-                    }}
-                  >
-                    <span style={{ position: "absolute", top: -8, right: 16, fontSize: 10, fontWeight: 600, padding: "2px 10px", borderRadius: 20, background: "#FFD700", color: "white" }}>
-                      Telegram Stars
-                    </span>
-                    <div className="flex justify-between items-center" style={{ marginBottom: 8 }}>
-                      <div>
-                        <div style={{ fontSize: 16, fontWeight: 600 }}>1 анализ</div>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Разовый анализ кожи</div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 20, fontWeight: 700 }}>{formatPrice(prices?.analysis ?? 1)}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>⭐</div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      {["1 анализ кожи", "Полный отчёт", "Рекомендации"].map((f, fi) => (
-                        <div key={fi} className="flex items-center gap-2">
-                          <CheckIcon size={16} />
-                          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{f}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </motion.button>
-                )}
-
-                {CARD_NUMBER && (
-                  <motion.button
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.12 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setCardFlow(true)}
-                    style={{
-                      width: "100%", padding: "18px", borderRadius: 18,
-                      border: "2px solid #4CAF50", background: "rgba(76, 175, 80, 0.06)",
-                      textAlign: "left", cursor: "pointer", position: "relative",
-                    }}
-                  >
-                    <span style={{ position: "absolute", top: -8, right: 16, fontSize: 10, fontWeight: 600, padding: "2px 10px", borderRadius: 20, background: "#4CAF50", color: "white" }}>
-                      Перевод на карту
-                    </span>
-                    <div className="flex justify-between items-center" style={{ marginBottom: 8 }}>
-                      <div>
-                        <div style={{ fontSize: 16, fontWeight: 600 }}>1 анализ</div>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Оплата переводом на карту {CARD_BANK}</div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 20, fontWeight: 700 }}>{CARD_AMOUNT}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>₽</div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      {["1 анализ кожи", "Полный отчёт", "Рекомендации"].map((f, fi) => (
-                        <div key={fi} className="flex items-center gap-2">
-                          <CheckIcon size={16} />
-                          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{f}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </motion.button>
-                )}
-
-                {[
-                  { id: "analysis_5", title: "5 анализов", subtitle: "Для регулярного ухода", price: "400₽", desc: "5 анализов кожи, детальный разбор, персональная рутина", badge: "Скоро", color: "#FFB4A2", bgColor: "rgba(255, 180, 162, 0.1)" },
-                  { id: "subscription", title: "PRO подписка", subtitle: "Полный уход на месяц", price: "500₽/мес", desc: "Безлимит анализов, еженедельный отчёт, приоритетная поддержка", badge: "Скоро", color: "#A8D8EA", bgColor: "rgba(168, 216, 234, 0.1)" },
-                ].map((opt, i) => (
-                  <motion.button
-                    key={opt.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: (i + 1) * 0.08 }}
-                    style={{
-                      width: "100%", padding: "18px", borderRadius: 18,
-                      border: "2px solid var(--border)", background: opt.bgColor,
-                      textAlign: "left", cursor: "not-allowed", opacity: 0.6, position: "relative",
-                    }}
-                    disabled
-                  >
-                    <span style={{ position: "absolute", top: -8, right: 16, fontSize: 10, fontWeight: 600, padding: "2px 10px", borderRadius: 20, background: opt.color, color: "white" }}>
-                      {opt.badge}
-                    </span>
-                    <div className="flex justify-between items-center" style={{ marginBottom: 8 }}>
-                      <div>
-                        <div style={{ fontSize: 16, fontWeight: 600 }}>{opt.title}</div>
-                        <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{opt.subtitle}</div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-muted)" }}>{opt.price}</div>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
-                      {opt.desc}
-                    </div>
-                  </motion.button>
-                ))}
-              </div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col gap-3"
-              >
-                {cardPaid ? (
-                  <div style={{ textAlign: "center", padding: "24px 0" }}>
-                    <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-                    <div style={{ fontSize: 16, fontWeight: 600 }}>Заявка принята!</div>
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 6 }}>
-                      Анализы будут зачислены после проверки платежа (обычно в течение часа).
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => setCardFlow(false)}
-                      style={{ alignSelf: "flex-start", fontSize: 13, color: "var(--primary-dark)", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: "4px 0" }}
-                    >
-                      ← Назад
-                    </button>
-
-                    <div style={{
-                      padding: "20px 16px", borderRadius: 16,
-                      background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
-                      color: "white",
-                    }}>
-                      <div style={{ fontSize: 11, fontWeight: 500, opacity: 0.7, marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>
-                        {CARD_BANK}
-                      </div>
-                      <div style={{
-                        fontSize: 22, fontWeight: 700, letterSpacing: 2,
-                        fontFamily: "'SF Mono', 'Fira Code', 'Courier New', monospace",
-                        marginBottom: 16, wordBreak: "break-all",
-                      }}>
-                        {CARD_NUMBER.replace(/(\d{4})(?=\d)/g, "$1 ")}
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, opacity: 0.6, marginBottom: 16 }}>
-                        <span>Сумма к оплате</span>
-                        <span style={{ fontWeight: 700, opacity: 1, color: "#4CAF50" }}>{CARD_AMOUNT} {pluralRubles(CARD_AMOUNT)}</span>
-                      </div>
-                      <motion.button
-                        whileTap={{ scale: 0.96 }}
-                        onClick={copyCardNumber}
+                <div className="flex flex-col gap-3">
+                  {TIERS.map((tier, i) => {
+                    const isPopular = tier.id === "pack5";
+                    const perAnalysis =
+                      tier.id === "single"
+                        ? null
+                        : tier.id === "pack5"
+                        ? `за 5 анализов · ${Math.round(tier.price / 5)} ₽/анализ`
+                        : "все анализы за месяц";
+                    return (
+                      <motion.div
+                        key={tier.id}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.06 }}
                         style={{
-                          width: "100%", padding: "10px", borderRadius: 12,
-                          background: cardCopied ? "#4CAF50" : "rgba(255,255,255,0.12)",
-                          border: "1px solid rgba(255,255,255,0.2)",
-                          color: "white", fontSize: 13, fontWeight: 600,
-                          cursor: "pointer",
+                          padding: 18,
+                          borderRadius: 18,
+                          background: isPopular ? "rgba(255, 215, 0, 0.06)" : "var(--bg-card)",
+                          border: isPopular ? "2px solid #FFD700" : "1px solid var(--border)",
+                          position: "relative",
+                          boxShadow: "var(--shadow)",
                         }}
                       >
-                        {cardCopied ? "Номер скопирован!" : "Скопировать номер карты"}
-                      </motion.button>
-                    </div>
+                        {tier.badge && (
+                          <span
+                            style={{
+                              position: "absolute",
+                              top: 10,
+                              right: 10,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              letterSpacing: 0.5,
+                              padding: "3px 10px",
+                              borderRadius: 20,
+                              background: "#FFD700",
+                              color: "white",
+                              zIndex: 2,
+                            }}
+                          >
+                            {tier.badge}
+                          </span>
+                        )}
+                        <div className="flex items-start gap-3" style={{ marginBottom: 12 }}>
+                          <span style={{ fontSize: 28, lineHeight: 1 }}>{tier.icon}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 15, fontWeight: 600 }}>{tier.title}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2, lineHeight: 1.4 }}>
+                              {tier.desc}
+                            </div>
+                            {tier.savings && (
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  color: "#7EC4D8",
+                                  marginTop: 6,
+                                  background: "rgba(126, 196, 216, 0.12)",
+                                  padding: "2px 8px",
+                                  borderRadius: 6,
+                                  display: "inline-block",
+                                }}
+                              >
+                                {tier.savings}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center" style={{ marginBottom: 12 }}>
+                          <div style={{ fontSize: 22, fontWeight: 700 }}>
+                            {tier.price} ₽
+                          </div>
+                          {perAnalysis && (
+                            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                              {perAnalysis}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          {prices?.isStars && tier.id !== "monthly" && (
+                            <motion.button
+                              whileTap={{ scale: 0.97 }}
+                              onClick={() => handleStarsPurchase(tier.id)}
+                              disabled={loading === tier.id}
+                              style={{
+                                flex: 1,
+                                padding: "12px",
+                                borderRadius: 12,
+                                border: "none",
+                                background: "linear-gradient(135deg, #FFD700, #FFA500)",
+                                color: "white",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                cursor: loading === tier.id ? "wait" : "pointer",
+                                opacity: loading === tier.id ? 0.7 : 1,
+                              }}
+                            >
+                              {loading === tier.id
+                                ? "Открываем..."
+                                : `⭐ ${tier.id === "single" ? "1 Star" : "5 Stars"}`}
+                            </motion.button>
+                          )}
+                          {CARD_NUMBER && (
+                            <motion.button
+                              whileTap={{ scale: 0.97 }}
+                              onClick={() => setSelectedTier(tier.id)}
+                              style={{
+                                flex: 1,
+                                padding: "12px",
+                                borderRadius: 12,
+                                border: "1px solid #4CAF50",
+                                background: "rgba(76, 175, 80, 0.08)",
+                                color: "#2E7D32",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: 6,
+                              }}
+                            >
+                              💳 Картой
+                            </motion.button>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
 
-                    <div style={{
-                      padding: "14px 16px", borderRadius: 14,
-                      background: "var(--bg)", fontSize: 12,
-                      color: "var(--text-secondary)", lineHeight: 1.6,
-                    }}>
-                      <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>📋 Инструкция</div>
-                      <ol style={{ paddingLeft: 18, margin: 0 }}>
-                        <li style={{ marginBottom: 4 }}>Скопируйте номер карты и переведите <strong>{CARD_AMOUNT} {pluralRubles(CARD_AMOUNT)}</strong></li>
-                        <li style={{ marginBottom: 4 }}>В комментарии к переводу укажите: <strong>Reveli анализ</strong></li>
-                        <li style={{ marginBottom: 4 }}>Нажмите «Я оплатил(а)» ниже</li>
-                        <li>Анализы зачислятся после проверки (обычно в течение часа)</li>
-                      </ol>
-                    </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-muted)",
+                    textAlign: "center",
+                    marginTop: 16,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Оплата переводом на карту проверяется вручную — обычно в течение часа.
+                  <br />
+                  Если есть вопросы — напишите в поддержку.
+                </div>
+              </>
+            ) : cardPaid ? (
+              <div style={{ textAlign: "center", padding: "24px 0" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>Заявка принята!</div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 6, lineHeight: 1.5 }}>
+                  {selectedTierDef?.title} будет активирован после проверки платежа (обычно в течение часа).
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => setSelectedTier(null)}
+                  style={{
+                    alignSelf: "flex-start",
+                    fontSize: 13,
+                    color: "var(--primary-dark)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    padding: "4px 0",
+                  }}
+                >
+                  ← К тарифам
+                </button>
 
-                    <motion.button
-                      whileTap={{ scale: 0.97 }}
-                      onClick={handleCardPaid}
-                      disabled={cardSubmitting}
-                      style={{
-                        width: "100%", padding: "16px", borderRadius: 16,
-                        background: cardSubmitting ? "var(--border)" : "linear-gradient(135deg, #4CAF50, #2E7D32)",
-                        color: "white", fontSize: 15, fontWeight: 600, border: "none",
-                        cursor: cardSubmitting ? "default" : "pointer",
-                      }}
-                    >
-                      {cardSubmitting ? "Отправляем..." : "Я оплатил(а)"}
-                    </motion.button>
+                <div
+                  style={{
+                    padding: "20px 16px",
+                    borderRadius: 16,
+                    background:
+                      "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
+                    color: "white",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      opacity: 0.7,
+                      marginBottom: 4,
+                      textTransform: "uppercase",
+                      letterSpacing: 1,
+                    }}
+                  >
+                    {CARD_BANK}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 600,
+                      marginBottom: 4,
+                      opacity: 0.85,
+                    }}
+                  >
+                    {selectedTierDef?.title}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 700,
+                      letterSpacing: 2,
+                      fontFamily: "'SF Mono', 'Fira Code', 'Courier New', monospace",
+                      marginBottom: 16,
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {CARD_NUMBER.replace(/(\d{4})(?=\d)/g, "$1 ")}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 12,
+                      opacity: 0.6,
+                      marginBottom: 16,
+                    }}
+                  >
+                    <span>Сумма к оплате</span>
+                    <span style={{ fontWeight: 700, opacity: 1, color: "#4CAF50" }}>
+                      {selectedTierDef?.price} {pluralRubles(selectedTierDef?.price ?? 0)}
+                    </span>
+                  </div>
+                  <motion.button
+                    whileTap={{ scale: 0.96 }}
+                    onClick={copyCardNumber}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      borderRadius: 12,
+                      background: cardCopied ? "#4CAF50" : "rgba(255,255,255,0.12)",
+                      border: "1px solid rgba(255,255,255,0.2)",
+                      color: "white",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {cardCopied ? "Номер скопирован!" : "Скопировать номер карты"}
+                  </motion.button>
+                </div>
 
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
-                      Если возникнут вопросы — напишите в поддержку
-                    </div>
-                  </>
-                )}
-              </motion.div>
+                <div
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: 14,
+                    background: "var(--bg)",
+                    fontSize: 12,
+                    color: "var(--text-secondary)",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
+                    📋 Инструкция
+                  </div>
+                  <ol style={{ paddingLeft: 18, margin: 0 }}>
+                    <li style={{ marginBottom: 4 }}>
+                      Скопируйте номер карты и переведите{" "}
+                      <strong>
+                        {selectedTierDef?.price} {pluralRubles(selectedTierDef?.price ?? 0)}
+                      </strong>
+                    </li>
+                    <li style={{ marginBottom: 4 }}>
+                      В комментарии к переводу укажите:{" "}
+                      <strong>Reveli {selectedTier}</strong>
+                    </li>
+                    <li style={{ marginBottom: 4 }}>Нажмите «Я оплатил(а)» ниже</li>
+                    <li>
+                      {selectedTier === "monthly"
+                        ? "Подписка активируется после проверки (в течение часа)"
+                        : "Анализы зачислятся после проверки (обычно в течение часа)"}
+                    </li>
+                  </ol>
+                </div>
+
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleCardPaid}
+                  disabled={cardSubmitting}
+                  style={{
+                    width: "100%",
+                    padding: "16px",
+                    borderRadius: 16,
+                    background: cardSubmitting
+                      ? "var(--border)"
+                      : "linear-gradient(135deg, #4CAF50, #2E7D32)",
+                    color: "white",
+                    fontSize: 15,
+                    fontWeight: 600,
+                    border: "none",
+                    cursor: cardSubmitting ? "default" : "pointer",
+                  }}
+                >
+                  {cardSubmitting ? "Отправляем..." : "Я оплатил(а)"}
+                </motion.button>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--text-muted)",
+                    textAlign: "center",
+                  }}
+                >
+                  Если возникнут вопросы — напишите в поддержку
+                </div>
+              </div>
             )}
           </motion.div>
         </motion.div>

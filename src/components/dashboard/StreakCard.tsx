@@ -3,6 +3,7 @@
 import React from "react";
 import { StreakIcon } from "@/components/ui/Icons";
 import { motion } from "framer-motion";
+import { pluralRu } from "@/lib/pluralRu";
 
 interface StreakCardProps {
   streak: number;
@@ -48,7 +49,7 @@ export const StreakCard: React.FC<StreakCardProps> = ({ streak, maxStreak }) => 
         <div>
           <div style={{ fontSize: 16, fontWeight: 600 }}>
             {streak > 0 ? (
-              <>Вы на пути {streak} дней подряд!</>
+              <>Вы на пути {streak} {pluralRu(streak, ["день", "дня", "дней"])} подряд!</>
             ) : (
               <>Регулярность — ключ к здоровой коже</>
             )}
@@ -57,7 +58,7 @@ export const StreakCard: React.FC<StreakCardProps> = ({ streak, maxStreak }) => 
             {streak === 0
               ? "Делайте анализы регулярно для отслеживания прогресса"
               : nearestMilestone
-              ? `До цели "${nearestMilestone.label}": ${nearestMilestone.days - streak} дней`
+              ? `До цели "${nearestMilestone.label}": ${nearestMilestone.days - streak} ${pluralRu(nearestMilestone.days - streak, ["день", "дня", "дней"])}`
               : "Цель достигнута!"}
           </div>
         </div>

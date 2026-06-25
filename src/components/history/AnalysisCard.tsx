@@ -3,6 +3,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import type { AnalysisHistoryItem } from "@/services/api";
+import { pluralRu } from "@/lib/pluralRu";
 
 interface AnalysisCardProps {
   item: AnalysisHistoryItem;
@@ -138,7 +139,7 @@ export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index, onClick
                 fontWeight: 500,
               }}
             >
-              {problems.length} {problems.length === 1 ? "проблема" : problems.length < 5 ? "проблемы" : "проблем"}
+              {problems.length} {pluralRu(problems.length, ["проблема", "проблемы", "проблем"])}
             </span>
           )}
         </div>

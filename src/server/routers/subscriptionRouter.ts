@@ -94,6 +94,7 @@ export const subscriptionRouter = router({
     .input(
       z.object({
         amount: z.number().min(1).default(100),
+        tier: z.enum(["single", "pack5", "monthly"]).default("single"),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -101,6 +102,6 @@ export const subscriptionRouter = router({
         where: { telegramId: ctx.telegramId },
       });
       if (!user) throw new Error("User not found");
-      return subscriptionService.reportCardTransfer(user.id, input.amount);
+      return subscriptionService.reportCardTransfer(user.id, input.amount, input.tier);
     }),
 });
