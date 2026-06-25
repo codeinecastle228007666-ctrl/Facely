@@ -310,13 +310,13 @@ export default function Dashboard() {
         />
 
         <div style={{ marginBottom: 12 }}>
-          <RoutineSection />
           <SkinDiary />
+          <RoutineSection />
           <InventoryPanel />
           <ReportsSection hasSubscription={hasSub} />
         </div>
 
-        <div style={{ display: "flex", justifyContent: "center", gap: 16, paddingBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 16, paddingBottom: 8, opacity: 0.5 }}>
           <a
             href="/privacy"
             style={{ fontSize: 11, color: "var(--text-muted)", textDecoration: "none" }}

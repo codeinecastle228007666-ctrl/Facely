@@ -7,8 +7,17 @@ import { motion, AnimatePresence } from "framer-motion";
 
 function CompareFallback() {
   return (
-    <div style={{ paddingTop: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
-      Загрузка...
+    <div style={{ paddingTop: 60, display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
+      <div style={{
+        width: 48, height: 48,
+        border: "4px solid var(--border)",
+        borderTopColor: "var(--primary)",
+        borderRadius: "50%",
+        animation: "spin 0.8s linear infinite",
+      }} />
+      <div style={{ fontSize: 14, color: "var(--text-muted)" }}>
+        Загружаем сравнение...
+      </div>
     </div>
   );
 }

@@ -216,4 +216,24 @@ export const subscriptionService = {
 
     return { subscription: sub, xpGained: xpGain, totalXp: newXp, level: newLevel };
   },
+
+  async reportCardTransfer(userId: string, amount: number) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error("User not found");
+
+    // Отправляем уведомление админу через Telegram Bot API
+    if (process.env.FEEDBACK_CHAT_ID && BOT_TOKEN) {
+      const msg = `💳 Перевод на карту\nОт: ${user.name || user.telegramId}\nСумма: ${amount} ₽\nID: ${user.id}`;
+      fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: process.env.FEEDBACK_CHAT_ID,
+          text: msg,
+        }),
+      }).catch(() => {});
+    }
+
+    return { success: true };
+  },
 };

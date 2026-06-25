@@ -115,6 +115,8 @@ export const api = {
       mutation<{ success: boolean }>("subscription.confirmStarsPayment", data),
     createChatStarsInvoice: () =>
       mutation<{ url: string; currency: string; amount: number }>("subscription.createChatStarsInvoice"),
+    reportCardTransfer: (data: { amount: number }) =>
+      mutation<{ success: boolean }>("subscription.reportCardTransfer", data),
   },
   referral: {
     claimBonus: () => mutation<boolean>("referral.claimBonus"),

@@ -26,19 +26,10 @@ const ChatIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
   </svg>
 );
 
-const LeaderboardIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <path d="M6 9l3-3 3 3 3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M4 21h16M6 21V12M12 21V12M18 21V12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-    <path d="M4 21h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-  </svg>
-);
-
 const TABS: Tab[] = [
   { key: "home", label: "Главная", path: "/", icon: <HomeIcon size={22} /> },
   { key: "history", label: "История", path: "/history", icon: <HistoryIcon size={22} /> },
   { key: "chat", label: "Чат", path: "/chat", icon: <ChatIcon size={22} /> },
-  { key: "leaderboard", label: "Топ", path: "/leaderboard", icon: <LeaderboardIcon size={22} /> },
   { key: "referral", label: "Друзья", path: "/referral", icon: <ShareIcon size={22} /> },
 ];
 

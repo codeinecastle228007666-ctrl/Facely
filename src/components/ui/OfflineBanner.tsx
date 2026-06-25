@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export const OfflineBanner: React.FC = () => {
   const [online, setOnline] = useState(true);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     setOnline(navigator.onLine);
@@ -17,6 +18,13 @@ export const OfflineBanner: React.FC = () => {
       window.removeEventListener("offline", off);
     };
   }, []);
+
+  const handleRetry = () => {
+    setRetrying(true);
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
 
   return (
     <AnimatePresence>
@@ -33,15 +41,38 @@ export const OfflineBanner: React.FC = () => {
             width: "100%",
             maxWidth: 430,
             zIndex: 500,
-            padding: "8px 16px",
-            background: "#E8A0B4",
+            padding: "10px 16px",
+            background: "linear-gradient(135deg, #E07A8E, #E8A0B4)",
             color: "white",
             fontSize: 13,
             fontWeight: 600,
-            textAlign: "center",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            boxShadow: "0 2px 12px rgba(224, 122, 142, 0.3)",
           }}
         >
-          Нет подключения к интернету
+          <span style={{ fontSize: 16, flexShrink: 0 }}>📡</span>
+          <span>Нет подключения к интернету</span>
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            style={{
+              padding: "4px 12px",
+              borderRadius: 10,
+              background: "rgba(255,255,255,0.2)",
+              color: "white",
+              fontSize: 11,
+              fontWeight: 600,
+              border: "1px solid rgba(255,255,255,0.3)",
+              cursor: retrying ? "default" : "pointer",
+              opacity: retrying ? 0.6 : 1,
+              flexShrink: 0,
+            }}
+          >
+            {retrying ? "..." : "Повторить"}
+          </button>
         </motion.div>
       )}
     </AnimatePresence>

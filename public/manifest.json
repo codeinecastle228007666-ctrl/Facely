@@ -1,0 +1,11 @@
+{
+  "name": "Reveli — AI-анализ кожи",
+  "short_name": "Reveli",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#fef6f7",
+  "background_color": "#ffffff",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

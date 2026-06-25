@@ -89,4 +89,18 @@ export const subscriptionRouter = router({
     if (!user) throw new Error("User not found");
     return subscriptionService.createChatStarsInvoice(user.id);
   }),
+
+  reportCardTransfer: protectedProcedure
+    .input(
+      z.object({
+        amount: z.number().min(1).default(100),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await prisma.user.findUnique({
+        where: { telegramId: ctx.telegramId },
+      });
+      if (!user) throw new Error("User not found");
+      return subscriptionService.reportCardTransfer(user.id, input.amount);
+    }),
 });
