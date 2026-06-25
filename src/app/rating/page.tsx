@@ -36,7 +36,11 @@ export default function RatingPage() {
   const [referralLoading, setReferralLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  const myId = user?.telegramId || tgUser?.id?.toString() || localStorage.getItem("__tid") || "";
+  const myId =
+    user?.telegramId ||
+    tgUser?.id?.toString() ||
+    (typeof window !== "undefined" ? localStorage.getItem("__tid") : null) ||
+    "";
 
   useEffect(() => {
     loadLeaderboard("referrers");
