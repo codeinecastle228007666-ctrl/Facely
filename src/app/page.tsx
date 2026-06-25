@@ -12,6 +12,7 @@ import { SkinDiary } from "@/components/dashboard/SkinDiary";
 import { ResultModal } from "@/components/effects/ResultModal";
 import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
 import { PurchaseModal } from "@/components/purchase/PurchaseModal";
+import { FeedbackModal } from "@/components/dashboard/FeedbackModal";
 import { LastAnalysisCard } from "@/components/dashboard/LastAnalysisCard";
 import { StreakCard } from "@/components/dashboard/StreakCard";
 import { RoutineSection } from "@/components/routine/RoutineSection";
@@ -45,6 +46,7 @@ export default function Dashboard() {
   const [lastAnalysisId, setLastAnalysisId] = useState<string | null>(null);
   const [lastAnalysis, setLastAnalysis] = useState<AnalysisHistoryItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   useEffect(() => {
     if (toast) { const t = setTimeout(() => setToast(null), 8000); return () => clearTimeout(t); }
@@ -340,6 +342,11 @@ export default function Dashboard() {
         open={purchaseOpen}
         onClose={() => setPurchaseOpen(false)}
         onSuccess={refetch}
+      />
+
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
       />
 
       <TabBar />
