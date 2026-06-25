@@ -11,6 +11,30 @@ export interface TelegramAuthUser {
 }
 
 /**
+ * Default `auth_date` freshness window for Telegram initData.
+ *
+ * Telegram generates `tg.initData` ONCE when a Mini App is opened — the
+ * embedded `auth_date` is `now()` at that moment and DOES NOT refresh
+ * during the session. Without an explicit reload, the same initData is
+ * sent for every subsequent tRPC call.
+ *
+ * A 5-minute window (the original default) was correct for short-lived
+ * bots but breaks long Telegram sessions — users see [tRPC] 401 after
+ * a few minutes of browsing. Most production Telegram Mini Apps accept
+ * 12-24h; we default to 24h and make it env-configurable.
+ *
+ * Override via `INIT_DATA_MAX_AGE_SECONDS` env var. Set lower (e.g. 3600)
+ * if you need stricter replay protection; set higher for kiosk-style bots.
+ */
+export const DEFAULT_INIT_DATA_MAX_AGE_SECONDS = (() => {
+  const env = process.env.INIT_DATA_MAX_AGE_SECONDS;
+  if (!env) return 24 * 60 * 60; // 24 hours
+  const parsed = parseInt(env, 10);
+  if (!Number.isFinite(parsed) || parsed < 60) return 24 * 60 * 60;
+  return parsed;
+})();
+
+/**
  * Validate HMAC-SHA256 signature of `tg.initData` against `BOT_TOKEN`.
  *
  * Official Telegram algorithm:
@@ -22,7 +46,8 @@ export interface TelegramAuthUser {
  *   6. Compare received `hash` with computed one (constant-time).
  *
  * Additional:
- *   - Reject `auth_date` older than `maxAgeSeconds` (replay protection, default 5 min).
+ *   - Reject `auth_date` older than `DEFAULT_INIT_DATA_MAX_AGE_SECONDS`
+ *     (replay protection; env-tunable).
  *   - Throw on malformed input rather than returning null, so caller can log + fallback.
  *
  * Reference: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
@@ -30,7 +55,7 @@ export interface TelegramAuthUser {
 export function verifyTelegramInitData(
   initData: string,
   botToken: string,
-  maxAgeSeconds = 5 * 60,
+  maxAgeSeconds: number = DEFAULT_INIT_DATA_MAX_AGE_SECONDS,
 ): TelegramAuthUser {
   if (!initData || typeof initData !== "string") {
     throw new Error("initData is empty");
@@ -100,7 +125,6 @@ export function verifyTelegramInitData(
  * Active when:
  *   - NODE_ENV !== "production" (dev/staging)
  *   - OR ALLOW_DEV_AUTH env flag is set
- *   - AND bot token is missing (dev fallback still needed)
  *
  * In production with a valid BOT_TOKEN, every request must include valid `x-telegram-init-data`.
  */

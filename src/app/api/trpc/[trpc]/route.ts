@@ -40,14 +40,24 @@ const handler = (req: NextRequest) => {
     }
   } else {
     // 3. Production without valid initData + BOT_TOKEN → reject.
-    console.error("[tRPC] Production request missing valid initData");
+    // Logged at WARN (not ERROR) because this is expected when users open the
+    // Mini App URL in a regular browser (e.g. desktop link preview) or when
+    // `window.Telegram.WebApp.initData` is briefly empty during Mini App
+    // bootstrap. Genuine auth attacks are still rejected (401 below).
+    console.warn("[tRPC] Production request without valid initData header");
     telegramId = undefined;
   }
 
   if (!telegramId) {
-    // Surface as 401 so client knows it's an auth issue, not a 500.
+    // Surface as 401 with a structured code so the client can show a
+    // meaningful "please reopen from Telegram" message instead of crashing.
     return new Response(
-      JSON.stringify({ error: { message: "Unauthorized: invalid Telegram initData" } }),
+      JSON.stringify({
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Open Reveil from the Telegram Mini App to continue",
+        },
+      }),
       { status: 401, headers: { "content-type": "application/json" } },
     );
   }
