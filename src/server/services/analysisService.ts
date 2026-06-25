@@ -8,133 +8,6 @@ import { XP_PER_ANALYSIS, calculateLevel, didLevelUp } from "../utils/levelSyste
 import { pushService } from "./pushService";
 import { analyzeSkinWithFacePlus } from "./facePlusService";
 import { achievementService } from "./achievementService";
-import type { ProblemPosition } from "@/services/api";
-
-// ── Groq vision: detect problem positions on the photo ────────────────
-// Same proven two-model fallback pattern used by inventoryService OCR
-// (meta-llama/llama-4-scout-17b-16e-instruct → qwen/qwen3.6-27b).
-//
-// Why ONLY positions, not severity refinement:
-//   The June-24 version asked Groq for {type, x, y, radius} coordinates
-//   and worked reliably. The June-25 attempt asked for severity reasoning
-//   and additional_problems in JSON and crashed with parse errors
-//   (`Expected ',' or ']' after array element in JSON at position 103`).
-//   Coordinate-only output is what llama-4-scout excels at; multi-
-//   property JSON with Russian severity classification is too brittle.
-//
-// Visual overlay (`result.problem_positions`) is what gives users the
-// "objective" feel — even when Face++ scores everything near 0 (its
-// categorical granularity of 0/60/100 misses nuance), the marked
-// circles on their face show what the AI actually saw.
-const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.DEEPSEEK_API_KEY || "";
-const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
-
-async function analyzeProblemPositions(photoBase64: string): Promise<ProblemPosition[] | null> {
-  if (!GROQ_API_KEY) return null;
-
-  const models = [
-    "meta-llama/llama-4-scout-17b-16e-instruct",
-    "qwen/qwen3.6-27b",
-  ];
-
-  for (const model of models) {
-    try {
-      const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${GROQ_API_KEY}`,
-        },
-        signal: AbortSignal.timeout(15000),
-        body: JSON.stringify({
-          model,
-          max_tokens: 2048,
-          temperature: 0.1,
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: "Найди проблемы кожи на этом фото. Верни JSON с координатами каждого проблемного участка. Формат: {\"problems\":[{\"type\":\"pimple\",\"label\":\"воспаление\",\"x\":50,\"y\":50,\"radius\":4}]}. type: pimple, spot, redness, wrinkle, dark_circle, large_pore, pigmentation. x y от 0 до 100. Не пиши ничего кроме JSON.",
-                },
-                {
-                  type: "image_url",
-                  image_url: { url: `data:image/jpeg;base64,${photoBase64}` },
-                },
-              ],
-            },
-          ],
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        let raw = data.choices?.[0]?.message?.content || "";
-        // Strip markdown code blocks
-        raw = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
-        // Try parsing as-is; fall back to handling double-encoded JSON;
-        // finally fall back to regex extraction of the first {...} block.
-        let parsed: any;
-        try {
-          parsed = JSON.parse(raw);
-        } catch {
-          if (raw.startsWith('"') && raw.endsWith('"')) {
-            try { parsed = JSON.parse(raw); } catch { /* ignore */ }
-          }
-          if (!parsed) {
-            const m = raw.match(/\{[\s\S]*\}/);
-            if (m) {
-              try { parsed = JSON.parse(m[0]); } catch { /* ignore */ }
-            }
-          }
-        }
-        if (parsed) {
-          const positions: ProblemPosition[] =
-            (Array.isArray(parsed.problems) ? parsed.problems : null) ||
-            (Array.isArray(parsed.positions) ? parsed.positions : null) ||
-            [];
-          // Basic shape validation + clamp coords into SVG-safe ranges.
-          // ResultModal draws into a 0-100 viewBox; an out-of-range x/y
-          // from the model would render the circle off-screen, and an
-          // oversized radius would dominate the photo. Cheap defense.
-          const valid: ProblemPosition[] = positions.flatMap((p) => {
-            if (
-              !p ||
-              typeof p.type !== "string" ||
-              typeof p.x !== "number" ||
-              typeof p.y !== "number" ||
-              typeof p.radius !== "number"
-            ) {
-              return [];
-            }
-            return [{
-              type: p.type,
-              label: typeof p.label === "string" ? p.label : p.type,
-              x: Math.max(0, Math.min(100, p.x)),
-              y: Math.max(0, Math.min(100, p.y)),
-              radius: Math.max(0, Math.min(30, p.radius)),
-            }];
-          });
-          if (valid.length > 0) {
-            console.log(`[GroqPositions] ${model} returned ${valid.length} positions`);
-            return valid;
-          }
-        }
-      } else {
-        const errBody = await res.text().catch(() => "");
-        console.error(
-          `[GroqPositions] ${model} failed:`,
-          res.status,
-          errBody.slice(0, 200),
-        );
-      }
-    } catch (e: any) {
-      console.error(`[GroqPositions] ${model} error:`, e?.message ?? e);
-    }
-  }
-  return null;
-}
 
 /**
  * Threshold for considering two photos as duplicates (0-64).
@@ -218,21 +91,17 @@ export const analysisService = {
 
     const result = await analyzeSkinWithFacePlus(compressedPhoto);
 
-    // ── Groq problem positions over the photo (visual overlay) ────────
-    // Run AFTER Face++ so a single Face++ timeout doesn't block analysis,
-    // and BEFORE the destructure so positions are part of `clientResult`
-    // and end up in the persisted `result` field.
-    // `analyzeProblemPositions` catches every internal error and
-    // returns `null` on failure — no outer wrapping needed.
-    const positions = await analyzeProblemPositions(compressedPhoto);
-    if (positions && positions.length > 0) {
-      result.problem_positions = positions;
-    }
-
     // ── Strip `_rawResponse` from the cooked result we send to clients.
     //    Face++ raw JSON is persisted separately as `rawFacePlus` so we
     //    can re-score old records when scoring logic improves without
     //    re-paying the API quota.
+    //
+    // 2026-06-25: dropped Groq-based `analyzeProblemPositions` (and its
+    // visual overlay in ResultModal). llama-4-scout was misclassifying
+    // nostrils / eyebrows / lips as inflammatory lesions, undermining
+    // the "objective" feel we wanted from the overlay. Without the
+    // overlay the call is now dead weight — pure Face++ structured data
+    // (with confidence gating) is the trustworthy source.
     const { _rawResponse, ...clientResult } = result;
 
     const hasActiveSubscription =

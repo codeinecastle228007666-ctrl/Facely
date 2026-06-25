@@ -1,5 +1,3 @@
-import type { ProblemPosition } from "@/services/api";
-
 interface FacePlusItem {
   confidence: number;
   value: number;
@@ -305,24 +303,15 @@ export type AnalysisVerdict = {
     effect: string;
   }>;
   /**
-   * Visual overlay positions (red circles) drawn on the user's photo
-   * in ResultModal. Populated by `analyzeProblemPositions` in
-   * analysisService.ts AFTER `analyzeSkinWithFacePlus` returns —
-   * declared here so the contract is type-discoverable across both
-   * files without `as any`.
-   */
-  problem_positions?: ProblemPosition[];
-  /**
    * Internal: full Face++ response passed back to the service layer so
    * it can persist into SkinAnalysis.rawFacePlus. Stripped before
    * sending to the client.
    *
-   * NOTE on Groq: the June-25 Groq "severity refinement" attempt was
-   * rolled back due to JSON parse instability (model returned malformed
-   * JSON). The Jun-24 Groq `analyzeProblemPositions()` flow is restored
-   * separately in analysisService.ts — it draws the visual overlay
-   * (`result.problem_positions`) and works reliably because the prompt
-   * asks only for coordinate triples, not multi-property JSON.
+   * History: Jun-25 rolled Groq severity refinement back (JSON parse
+   * failures); Jun-25 evening rolled Groq `analyzeProblemPositions`
+   * back too — vision LLM was misclassifying nostrils / eyebrows / lips
+   * as inflammatory lesions. We rely solely on Face++ structured data
+   * with confidence gating for objectivity.
    */
   _rawResponse: FacePlusResult;
 };

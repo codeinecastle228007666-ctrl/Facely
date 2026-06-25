@@ -184,13 +184,12 @@ export interface ProductLink {
   effect: string;
 }
 
-export interface ProblemPosition {
-  type: string;
-  label: string;
-  x: number;
-  y: number;
-  radius: number;
-}
+/**
+ * 2026-06-25 — `ProblemPosition` interface and the `problem_positions`
+ * field on `AnalysisResult` were rolled back (Groq vision misclassified
+ * nostrils / lips as inflammation). Removed to keep the type surface
+ * honest rather than carrying a dead field.
+ */
 
 export interface AnalysisResult {
   skin_type: string;
@@ -200,7 +199,6 @@ export interface AnalysisResult {
   daily_routine: string;
   mood: "позитивный" | "нейтральный" | "тревожный";
   product_links: ProductLink[];
-  problem_positions?: ProblemPosition[];
 }
 
 export interface AnalyzeResponse {
