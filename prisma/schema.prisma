@@ -83,6 +83,10 @@ model Ritual {
   maxStreak        Int       @default(0)
   nextAnalysisDate DateTime?
   weeklyStreak     Int       @default(0)
+  /// Last streak-milestone value we sent a push notification for.
+  /// Prevents same-day re-analyses from re-firing the milestone message.
+  /// Null means "nothing sent yet".
+  lastSentMilestone Int?
 
   user User @relation(fields: [userId], references: [id])
 

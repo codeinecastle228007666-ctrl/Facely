@@ -90,11 +90,11 @@ export const analysisService = {
     }
 
     const result = await analyzeSkinWithFacePlus(compressedPhoto);
-    // ── Strip internal _rawResponse (only used for persistence) from the
-    //    cooked result we send to clients and store in `result`. Keeping
-    //    _rawResponse separately lets us persist the verbatim Face++
-    //    JSON for re-scoring later without re-paying the Face++ quota.
-    const { _rawResponse, ...clientResult } = result;
+    // ── Strip internal fields (_rawResponse, _groqInterpretation) from
+    //    the cooked result we send to clients and store in `result`.
+    //    Keeping them separately lets us persist Face++ + Groq JSON for
+    //    re-scoring later without re-paying the API quota.
+    const { _rawResponse, _groqInterpretation, ...clientResult } = result;
 
     const hasActiveSubscription =
       user.subscription?.status === "active" &&
@@ -175,8 +175,35 @@ export const analysisService = {
 
     const ritual = await ritualService.getStreak(user.id);
     const milestone = ritualService.isMilestone(ritual.streak);
-    if (milestone) {
-      await pushService.sendStreakMilestone(user.telegramId, milestone);
+    // Only fire the "Стрик N дней!" push the FIRST time a milestone is
+    // reached. Same-day re-analyses see the same streak value still in
+    // MILESTONES (e.g. 4), and without this gate we'd re-spam the user.
+    // Use an atomic `updateMany` claim so that two concurrent analyses
+    // (e.g. an accidental double-tap) only result in ONE push — the
+    // SECOND request finds lastSentMilestone already set to the milestone
+    // and `updateMany` returns count=0, so it skips the push.
+    // Trade-off: if the push fails after the claim, the user misses that
+    // one celebration, but DB stays consistent (no spam on retry).
+    if (milestone !== null && ritual.lastSentMilestone !== milestone) {
+      const claimed = await prisma.ritual.updateMany({
+        where: {
+          userId: user.id,
+          OR: [
+            { lastSentMilestone: null },
+            { lastSentMilestone: { not: milestone } },
+          ],
+        },
+        data: { lastSentMilestone: milestone },
+      });
+      if (claimed.count > 0) {
+        try {
+          await pushService.sendStreakMilestone(user.telegramId, milestone);
+        } catch (e: any) {
+          console.error(
+            `[StreakMilestone] Push failed user=${user.telegramId} milestone=${milestone}: ${e.message ?? e}`,
+          );
+        }
+      }
     }
 
     return {

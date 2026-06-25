@@ -140,7 +140,7 @@ export const ritualService = {
 
   async getStreak(userId: string) {
     const ritual = await prisma.ritual.findUnique({ where: { userId } });
-    return ritual ?? { streak: 0, maxStreak: 0, lastDate: null, weeklyStreak: 0, nextAnalysisDate: null };
+    return ritual ?? { streak: 0, maxStreak: 0, lastDate: null, weeklyStreak: 0, nextAnalysisDate: null, lastSentMilestone: null };
   },
 
   MILESTONES: [2, 4, 8, 12, 24],

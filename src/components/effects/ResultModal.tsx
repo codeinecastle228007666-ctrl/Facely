@@ -436,35 +436,6 @@ export const ResultModal: React.FC<ResultModalProps> = ({
             )}
 
             <div className="flex gap-2" style={{ marginTop: 12 }}>
-              {onShare && (
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={onShare}
-                  style={{
-                    flex: 1,
-                    padding: "14px",
-                    borderRadius: 16,
-                    background: "var(--bg)",
-                    color: "var(--text)",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    border: "1px solid var(--border)",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.5"/>
-                    <circle cx="6" cy="12" r="3" stroke="currentColor" strokeWidth="1.5"/>
-                    <circle cx="18" cy="19" r="3" stroke="currentColor" strokeWidth="1.5"/>
-                    <path d="M15.5 6.5l-7 4M15.5 17.5l-7-4" stroke="currentColor" strokeWidth="1.2"/>
-                  </svg>
-                  Поделиться
-                </motion.button>
-              )}
               {onCompare && hasPrevAnalysis && (
                 <motion.button
                   whileTap={{ scale: 0.97 }}
