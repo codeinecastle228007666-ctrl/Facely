@@ -13,6 +13,7 @@ import { ResultModal } from "@/components/effects/ResultModal";
 import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
 import { PurchaseModal } from "@/components/purchase/PurchaseModal";
 import { FeedbackModal } from "@/components/dashboard/FeedbackModal";
+import { AchievementsModal } from "@/components/dashboard/AchievementsModal";
 import { LastAnalysisCard } from "@/components/dashboard/LastAnalysisCard";
 import { StreakCard } from "@/components/dashboard/StreakCard";
 import { RoutineSection } from "@/components/routine/RoutineSection";
