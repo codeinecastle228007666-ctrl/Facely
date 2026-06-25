@@ -242,7 +242,7 @@ export default function HistoryPage() {
                       ПОСЛЕ
                     </div>
                   )}
-                  <AnalysisCard item={item} index={i} />
+                  <AnalysisCard item={item} index={i} showCheckbox={compareMode} checked={sb || sa} onCheck={() => handleCompareClick(item)} />
                 </div>
               );
             })}

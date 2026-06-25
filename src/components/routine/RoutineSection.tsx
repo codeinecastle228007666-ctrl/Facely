@@ -9,9 +9,18 @@ export const RoutineSection: React.FC = () => {
   const [steps, setSteps] = useState<RoutineStepItem[]>([]);
   const [editing, setEditing] = useState(false);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [checkedSteps, setCheckedSteps] = useState<Set<string>>(new Set());
   const [newStep, setNewStep] = useState<{
     productName: string; inventoryId?: string; timeOfDay: "morning" | "evening"; dayOfWeek?: number | null;
   }>({ productName: "", timeOfDay: "morning" });
+
+  const toggleCheck = (id: string) => {
+    setCheckedSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const load = useCallback(async () => {
     const r = await api.routine.get();
@@ -42,6 +51,7 @@ export const RoutineSection: React.FC = () => {
 
   const removeStep = (id: string) => {
     setSteps((prev) => prev.filter((s) => s.id !== id));
+    setCheckedSteps((prev) => { const next = new Set(prev); next.delete(id); return next; });
   };
 
   const save = async () => {
@@ -105,28 +115,78 @@ export const RoutineSection: React.FC = () => {
                 <>
                   {morningSteps.length > 0 && (
                     <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 6 }}>☀️ Утро</div>
-                      {morningSteps.map((s, i) => (
-                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 4, borderRadius: 12, background: "var(--bg)" }}>
-                          <span style={{ width: 20, height: 20, borderRadius: 8, background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
-                          <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
-                          {s.inventory?.brand && <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>{s.inventory.brand}</span>}
-                          {s.dayOfWeek !== null && <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 6, background: "var(--primary-light)", color: "var(--primary-dark)" }}>{["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][s.dayOfWeek]}</span>}
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 8 }}>☀️ Утро</div>
+                      {morningSteps.map((s) => {
+                        const checked = checkedSteps.has(s.id);
+                        return (
+                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", marginBottom: 2 }}>
+                          <div
+                            onClick={() => toggleCheck(s.id)}
+                            style={{
+                              width: 22, height: 22, borderRadius: 6,
+                              border: checked ? "2px solid #7EC4D8" : "2px solid var(--border)",
+                              background: checked ? "#7EC4D8" : "transparent",
+                              flexShrink: 0, cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {checked && (
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                                <path d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            )}
+                          </div>
+                          <span style={{ fontSize: 13, flex: 1, textDecoration: checked ? "line-through" : "none", color: checked ? "var(--text-muted)" : "var(--text)" }}>
+                            {s.productName}
+                          </span>
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 8,
+                            background: "rgba(255, 180, 162, 0.12)", color: "#E89B87",
+                            flexShrink: 0,
+                          }}>
+                            ☀️
+                          </span>
                         </div>
-                      ))}
+                      )})}
                     </div>
                   )}
                   {eveningSteps.length > 0 && (
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 6 }}>🌙 Вечер</div>
-                      {eveningSteps.map((s, i) => (
-                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 4, borderRadius: 12, background: "var(--bg)" }}>
-                          <span style={{ width: 20, height: 20, borderRadius: 8, background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
-                          <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
-                          {s.inventory?.brand && <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>{s.inventory.brand}</span>}
-                          {s.dayOfWeek !== null && <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 6, background: "var(--primary-light)", color: "var(--primary-dark)" }}>{["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][s.dayOfWeek]}</span>}
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 8 }}>🌙 Вечер</div>
+                      {eveningSteps.map((s) => {
+                        const checked = checkedSteps.has(s.id);
+                        return (
+                        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", marginBottom: 2 }}>
+                          <div
+                            onClick={() => toggleCheck(s.id)}
+                            style={{
+                              width: 22, height: 22, borderRadius: 6,
+                              border: checked ? "2px solid #7EC4D8" : "2px solid var(--border)",
+                              background: checked ? "#7EC4D8" : "transparent",
+                              flexShrink: 0, cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {checked && (
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                                <path d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            )}
+                          </div>
+                          <span style={{ fontSize: 13, flex: 1, textDecoration: checked ? "line-through" : "none", color: checked ? "var(--text-muted)" : "var(--text)" }}>
+                            {s.productName}
+                          </span>
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 8,
+                            background: "rgba(168, 216, 234, 0.12)", color: "#7EC4D8",
+                            flexShrink: 0,
+                          }}>
+                            🌙
+                          </span>
                         </div>
-                      ))}
+                      )})}
                     </div>
                   )}
                 </>
@@ -201,13 +261,38 @@ export const RoutineSection: React.FC = () => {
                             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--primary-dark)", marginBottom: 6 }}>
                               {tod === "morning" ? "☀️ Утро" : "🌙 Вечер"}
                             </div>
-                            {group.map((s, i) => (
-                              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", marginBottom: 4, borderRadius: 12, background: "var(--bg)" }}>
-                                <span style={{ width: 20, height: 20, borderRadius: 8, background: "var(--primary-light)", color: "var(--primary-dark)", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                  {i + 1}
+                            {group.map((s, i) => {
+                              const checked = checkedSteps.has(s.id);
+                              return (
+                              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", marginBottom: 2 }}>
+                                <div
+                                  onClick={() => toggleCheck(s.id)}
+                                  style={{
+                                    width: 22, height: 22, borderRadius: 6,
+                                    border: checked ? "2px solid #7EC4D8" : "2px solid var(--border)",
+                                    background: checked ? "#7EC4D8" : "transparent",
+                                    flexShrink: 0, cursor: "pointer",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    transition: "all 0.15s",
+                                  }}
+                                >
+                                  {checked && (
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                                      <path d="M5 13l4 4L19 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                </div>
+                                <span style={{ fontSize: 13, flex: 1, textDecoration: checked ? "line-through" : "none", color: checked ? "var(--text-muted)" : "var(--text)" }}>
+                                  {s.productName}
                                 </span>
-                                <span style={{ fontSize: 13, flex: 1 }}>{s.productName}</span>
-                                {s.inventory?.brand && <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>{s.inventory.brand}</span>}
+                                <span style={{
+                                  fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 8,
+                                  background: tod === "morning" ? "rgba(255, 180, 162, 0.12)" : "rgba(168, 216, 234, 0.12)",
+                                  color: tod === "morning" ? "#E89B87" : "#7EC4D8",
+                                  flexShrink: 0,
+                                }}>
+                                  {tod === "morning" ? "☀️" : "🌙"}
+                                </span>
                                 <motion.button
                                   whileTap={{ scale: 0.9 }}
                                   onClick={() => removeStep(s.id)}
@@ -216,7 +301,7 @@ export const RoutineSection: React.FC = () => {
                                   ✕
                                 </motion.button>
                               </div>
-                            ))}
+                            )})}
                           </div>
                         );
                       })}

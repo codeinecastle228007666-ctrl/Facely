@@ -8,9 +8,12 @@ interface AnalysisCardProps {
   item: AnalysisHistoryItem;
   index: number;
   onClick?: () => void;
+  showCheckbox?: boolean;
+  checked?: boolean;
+  onCheck?: () => void;
 }
 
-export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index, onClick }) => {
+export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index, onClick, showCheckbox, checked, onCheck }) => {
   const problems = (item.result as any)?.problems || [];
   const photoBase64 = (item as any).photoBase64;
 
@@ -61,6 +64,32 @@ export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index, onClick
             <circle cx="12" cy="12" r="4" fill="white" stroke="#E8A0B4" strokeWidth="1"/>
             <path d="M17 5l-2-3H9L7 5" stroke="#E8A0B4" strokeWidth="1.2" strokeLinecap="round"/>
           </svg>
+        </div>
+      )}
+
+      {showCheckbox && (
+        <div
+          onClick={(e) => { e.stopPropagation(); onCheck?.(); }}
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: "50%",
+            border: checked ? "2px solid var(--primary)" : "2px solid var(--border)",
+            background: checked ? "var(--primary)" : "transparent",
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            transition: "all 0.2s",
+            alignSelf: "center",
+          }}
+        >
+          {checked && (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M5 13l4 4L19 7" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
         </div>
       )}
 

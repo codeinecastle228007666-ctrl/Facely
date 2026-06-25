@@ -26,11 +26,25 @@ const ChatIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
   </svg>
 );
 
+const RatingIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <path d="M8.56 2.9l-6.4 9.6c-.5.7-.1 1.6.6 1.6h8.48l-2.8 7.6c-.3.9.7 1.5 1.4.8l10.4-9.8c.5-.5.1-1.3-.6-1.3h-8.48l2.8-7.6c.3-.9-.7-1.5-1.4-.8z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const ProfileIcon: React.FC<{ size?: number }> = ({ size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.5"/>
+    <path d="M4 21c0-4.5 3.5-8 8-8s8 3.5 8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+);
+
 const TABS: Tab[] = [
   { key: "home", label: "Главная", path: "/", icon: <HomeIcon size={22} /> },
   { key: "history", label: "История", path: "/history", icon: <HistoryIcon size={22} /> },
   { key: "chat", label: "Чат", path: "/chat", icon: <ChatIcon size={22} /> },
-  { key: "referral", label: "Друзья", path: "/referral", icon: <ShareIcon size={22} /> },
+  { key: "rating", label: "Рейтинг", path: "/rating", icon: <RatingIcon size={22} /> },
+  { key: "profile", label: "Профиль", path: "/profile", icon: <ProfileIcon size={22} /> },
 ];
 
 export const TabBar: React.FC = () => {
@@ -46,14 +60,17 @@ export const TabBar: React.FC = () => {
         transform: "translateX(-50%)",
         width: "100%",
         maxWidth: 430,
-        background: "white",
-        borderRadius: "20px 20px 0 0",
-        boxShadow: "0 -4px 24px rgba(200, 140, 150, 0.1)",
-        padding: "8px 8px",
-        paddingBottom: "calc(8px + env(safe-area-inset-bottom, 0px))",
+        background: "rgba(255, 255, 255, 0.78)",
+        backdropFilter: "blur(16px) saturate(140%)",
+        WebkitBackdropFilter: "blur(16px) saturate(140%)",
+        borderRadius: "24px 24px 0 0",
+        boxShadow: "0 -4px 30px rgba(200, 140, 150, 0.1)",
+        padding: "6px 4px",
+        paddingBottom: "calc(6px + env(safe-area-inset-bottom, 0px))",
         zIndex: 50,
         display: "flex",
         justifyContent: "space-around",
+        borderTop: "1px solid rgba(240, 228, 230, 0.5)",
       }}
     >
       {TABS.map((tab) => {
@@ -74,10 +91,10 @@ export const TabBar: React.FC = () => {
               border: "none",
               cursor: "pointer",
               position: "relative",
-              minWidth: 52,
+              minWidth: 48,
             }}
           >
-            <div style={{ opacity: active ? 1 : 0.45, color: active ? "var(--primary-dark)" : "var(--text-muted)", transition: "opacity 0.2s" }}>
+            <div style={{ opacity: active ? 1 : 0.5, color: active ? "var(--primary-dark)" : "var(--text-muted)", transition: "all 0.2s" }}>
               {tab.icon}
             </div>
             <span

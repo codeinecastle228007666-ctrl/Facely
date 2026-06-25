@@ -129,8 +129,41 @@ export default function ChatPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 100px)", paddingTop: 8 }}>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)", textAlign: "center", marginBottom: 12 }}>
-        {hasSubscription ? "Безлимитный чат" : `Осталось вопросов: ${displayRemaining}`}
+      {/* Fixed header with bot avatar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "10px 14px", marginBottom: 8,
+        background: "var(--bg-card)", borderRadius: 20,
+        boxShadow: "var(--shadow)",
+      }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: "50%",
+          background: "linear-gradient(135deg, var(--primary), var(--secondary))",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 18, flexShrink: 0,
+        }}>
+          🧴
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>AI-Косметолог</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            {hasSubscription ? "Безлимитный чат" : `Осталось вопросов: ${displayRemaining}`}
+          </div>
+        </div>
+        <button
+          onClick={() => { setMessages([]); }}
+          style={{
+            width: 32, height: 32, borderRadius: 10,
+            background: "var(--bg)", border: "none",
+            cursor: "pointer", display: "flex",
+            alignItems: "center", justifyContent: "center",
+          }}
+          title="Очистить историю"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a1 1 0 01-1 1H7a1 1 0 01-1-1L5 6" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
       </div>
 
       {!hasSubscription && displayRemaining <= 0 && (
@@ -300,7 +333,14 @@ export default function ChatPage() {
         <div ref={endRef} />
       </div>
 
-      <div style={{ display: "flex", gap: 8, padding: "8px 0", background: "var(--bg)", borderRadius: 20 }}>
+      <div style={{
+        display: "flex", alignItems: "center",
+        padding: "4px 6px",
+        background: "var(--bg-card)",
+        borderRadius: 28,
+        border: "1px solid var(--border)",
+        boxShadow: "var(--shadow)",
+      }}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -310,30 +350,32 @@ export default function ChatPage() {
           style={{
             flex: 1,
             padding: "12px 16px",
-            borderRadius: 14,
-            background: "var(--bg-card)",
+            background: "transparent",
             fontSize: 14,
-            border: "1px solid var(--border)",
+            border: "none",
+            outline: "none",
           }}
         />
         <button
           onClick={handleSend}
           disabled={!canSend || !input.trim() || sending}
           style={{
-            width: 48,
-            height: 48,
-            borderRadius: 14,
-            background: canSend ? "var(--primary)" : "var(--border)",
+            width: 38,
+            height: 38,
+            borderRadius: "50%",
+            background: canSend && input.trim() ? "var(--primary)" : "var(--border)",
             color: "white",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             fontSize: 20,
             border: "none",
-            cursor: canSend ? "pointer" : "default",
+            cursor: canSend && input.trim() ? "pointer" : "default",
+            flexShrink: 0,
+            transition: "background 0.2s",
           }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>

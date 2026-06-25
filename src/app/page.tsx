@@ -9,13 +9,9 @@ import { AnalysisButton } from "@/components/dashboard/AnalysisButton";
 import { AnalysisInput } from "@/components/dashboard/AnalysisInput";
 import { Onboarding } from "@/components/dashboard/Onboarding";
 import { SkinDiary } from "@/components/dashboard/SkinDiary";
-import { InventoryPanel } from "@/components/inventory/InventoryPanel";
-import { AchievementsModal } from "@/components/dashboard/AchievementsModal";
 import { ResultModal } from "@/components/effects/ResultModal";
 import { ConfettiEffect } from "@/components/effects/ConfettiEffect";
 import { PurchaseModal } from "@/components/purchase/PurchaseModal";
-import { FeedbackModal } from "@/components/dashboard/FeedbackModal";
-import { ReportsSection } from "@/components/dashboard/ReportsSection";
 import { LastAnalysisCard } from "@/components/dashboard/LastAnalysisCard";
 import { StreakCard } from "@/components/dashboard/StreakCard";
 import { RoutineSection } from "@/components/routine/RoutineSection";
@@ -44,7 +40,6 @@ export default function Dashboard() {
   const [nextAnalysisDate, setNextAnalysisDate] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [prevAnalysisId, setPrevAnalysisId] = useState<string | null>(null);
   const [lastAnalysisId, setLastAnalysisId] = useState<string | null>(null);
@@ -233,22 +228,7 @@ export default function Dashboard() {
             </div>
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>{streak}</div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>стрик</div>
-            </div>
-          </motion.div>
-          <motion.div
-            className="card flex items-center gap-2"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.15 }}
-            style={{ flex: 1, padding: "14px 16px" }}
-          >
-            <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(168, 216, 234, 0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-              📊
-            </div>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>{user?._count?.analyses ?? 0}</div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>анализов</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>дней стрика</div>
             </div>
           </motion.div>
           <motion.button
@@ -256,7 +236,7 @@ export default function Dashboard() {
             className="card flex items-center gap-2"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
             whileTap={{ scale: 0.97 }}
             style={{ flex: 1, padding: "14px 16px", border: "none", cursor: "pointer", textAlign: "left" }}
           >
@@ -312,8 +292,6 @@ export default function Dashboard() {
         <div style={{ marginBottom: 12 }}>
           <SkinDiary />
           <RoutineSection />
-          <InventoryPanel />
-          <ReportsSection hasSubscription={hasSub} />
         </div>
 
         <div style={{ display: "flex", justifyContent: "center", gap: 16, paddingBottom: 8, opacity: 0.5 }}>
@@ -362,10 +340,6 @@ export default function Dashboard() {
         open={purchaseOpen}
         onClose={() => setPurchaseOpen(false)}
         onSuccess={refetch}
-      />
-      <FeedbackModal
-        open={feedbackOpen}
-        onClose={() => setFeedbackOpen(false)}
       />
 
       <TabBar />
