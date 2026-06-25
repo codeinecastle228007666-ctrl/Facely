@@ -17,21 +17,25 @@ model User {
   paidAnalyses             Int      @default(0)
   freeChatQuestions        Int      @default(3)
   referralCount            Int      @default(0)
+  streakFreezes            Int      @default(0)
+  proTrialUntil            DateTime?
+  monthStreakBadge         Boolean  @default(false)
   subscriptionEnd          DateTime?
   lastSubscriptionOfferSent DateTime?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
-  analyses        SkinAnalysis[]
-  subscription    Subscription?
-  rituals         Ritual[]
-  reports         Report[]
-  referralsGiven  Referral[]        @relation("Referrer")
-  referralsUsed   Referral[]        @relation("Referee")
-  chatMessages    ChatMessage[]
+  analyses         SkinAnalysis[]
+  subscription     Subscription?
+  rituals          Ritual[]
+  reports          Report[]
+  referralsGiven   Referral[]        @relation("Referrer")
+  referralsUsed    Referral[]        @relation("Referee")
+  chatMessages     ChatMessage[]
   userAchievements UserAchievement[]
-  inventory       InventoryItem[]
-  routine         Routine?
+  inventory        InventoryItem[]
+  routine          Routine?
+  bonuses          UserBonus[]
 }
 
 model SkinAnalysis {
@@ -184,4 +188,24 @@ model UserAchievement {
 
   @@unique([userId, achievementId])
   @@index([userId])
+}
+
+model UserBonus {
+  id        String    @id @default(cuid())
+  userId    String
+  kind      String    // free_analysis | chat_questions | streak_freeze | discount_coupon | pro_trial | badge_month_streak
+  amount    Int       @default(1)
+  remaining Int       @default(1)
+  sourceKey String?   // achievement.key, if awarded by one
+  code      String?   @unique
+  discount  Int?
+  appliedTo String?   // tier sku: pack5 | monthly
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+  usedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, kind])
 }

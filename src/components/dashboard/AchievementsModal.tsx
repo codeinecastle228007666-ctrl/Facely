@@ -24,15 +24,21 @@ const ACHIEVEMENT_ICONS: Record<string, string> = {
 export const AchievementsModal: React.FC<AchievementsModalProps> = ({ open, onClose }) => {
   const [data, setData] = useState<AchievementListResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+
+  const reload = () => {
+    if (!open) return;
+    setLoading(true);
+    setError(false);
+    api.achievement.list()
+      .then((d) => setData(d))
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    if (open) {
-      setLoading(true);
-      api.achievement.list()
-        .then(setData)
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    }
+    if (open) reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   return (
@@ -87,9 +93,38 @@ export const AchievementsModal: React.FC<AchievementsModalProps> = ({ open, onCl
               <div className="flex flex-col gap-3">
                 {Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)}
               </div>
+            ) : error ? (
+              <div style={{ textAlign: "center", padding: "24px 8px" }}>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>😕</div>
+                <div style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 12 }}>
+                  Не удалось загрузить достижения
+                </div>
+                <button
+                  onClick={reload}
+                  style={{
+                    padding: "10px 22px",
+                    borderRadius: 14,
+                    background: "var(--primary)",
+                    color: "white",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Повторить
+                </button>
+              </div>
+            ) : data && data.achievements.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "24px 8px" }}>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>🎯</div>
+                <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
+                  Делай анализы и приглашай друзей — открывай достижения
+                </div>
+              </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {data?.achievements.map((ach, i) => (
+                {data?.achievements?.map((ach, i) => (
                   <motion.div
                     key={ach.id}
                     initial={{ opacity: 0, y: 8 }}

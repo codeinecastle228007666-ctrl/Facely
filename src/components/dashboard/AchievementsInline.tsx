@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { api, type AchievementListResult } from "@/services/api";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -9,29 +9,34 @@ interface AchievementsInlineProps {
   onViewAll?: () => void;
 }
 
+type Status = "loading" | "error" | "ready";
+
 export const AchievementsInline: React.FC<AchievementsInlineProps> = ({ onViewAll }) => {
   const [data, setData] = useState<AchievementListResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<Status>("loading");
 
-  useEffect(() => {
-    setLoading(true);
-    api.achievement
-      .list()
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    setStatus("loading");
+    try {
+      const res = await api.achievement.list();
+      setData(res);
+      setStatus("ready");
+    } catch {
+      setStatus("error");
+    }
   }, []);
 
-  // Берём в первую очередь ачивки с прогрессом, чтобы показать «в работе».
-  // Если у пользователя уже разблокированы все — покажем начало списка.
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Берём в первую очередь ачивки с прогрессом, чтобы их было видно «в работе».
   const visible = (() => {
     const items = data?.achievements || [];
     const withProgress = items.filter((a) => a.progress).slice(0, 4);
     if (withProgress.length > 0) return withProgress;
     return items.slice(0, 4);
   })();
-
-  if (!loading && visible.length === 0) return null;
 
   return (
     <div
@@ -49,7 +54,10 @@ export const AchievementsInline: React.FC<AchievementsInlineProps> = ({ onViewAl
         </div>
         {onViewAll && (
           <button
-            onClick={onViewAll}
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewAll();
+            }}
             style={{
               fontSize: 12,
               color: "var(--primary-dark)",
@@ -64,18 +72,66 @@ export const AchievementsInline: React.FC<AchievementsInlineProps> = ({ onViewAl
           </button>
         )}
       </div>
-      {loading ? (
+
+      {status === "loading" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              style={{
+                height: 84,
+                borderRadius: 12,
+                background: "var(--bg)",
+                opacity: 0.55,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {status === "error" && (
         <div
           style={{
             textAlign: "center",
-            padding: "16px",
-            fontSize: 12,
-            color: "var(--text-muted)",
+            padding: "16px 8px",
+            fontSize: 13,
+            color: "var(--text-secondary)",
           }}
         >
-          Загрузка...
+          Не удалось загрузить достижения.{" "}
+          <button
+            onClick={load}
+            style={{
+              fontSize: 13,
+              color: "var(--primary-dark)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 600,
+              padding: 0,
+              textDecoration: "underline",
+            }}
+          >
+            Повторить
+          </button>
         </div>
-      ) : (
+      )}
+
+      {status === "ready" && visible.length === 0 && (
+        <div
+          style={{
+            textAlign: "center",
+            padding: "20px 8px",
+            fontSize: 13,
+            color: "var(--text-muted)",
+            lineHeight: 1.5,
+          }}
+        >
+          🎯 Делай анализы и приглашай друзей — открывай достижения
+        </div>
+      )}
+
+      {status === "ready" && visible.length > 0 && (
         <div
           style={{
             display: "grid",
@@ -85,7 +141,10 @@ export const AchievementsInline: React.FC<AchievementsInlineProps> = ({ onViewAl
         >
           {visible.map((a, i) => {
             const pct = a.progress
-              ? Math.min(100, Math.round((a.progress.current / a.progress.target) * 100))
+              ? Math.min(
+                  100,
+                  Math.round((a.progress.current / a.progress.target) * 100),
+                )
               : a.unlocked
               ? 100
               : 0;
@@ -99,8 +158,12 @@ export const AchievementsInline: React.FC<AchievementsInlineProps> = ({ onViewAl
                 style={{
                   padding: 10,
                   borderRadius: 12,
-                  background: a.unlocked ? "rgba(168, 216, 234, 0.18)" : "var(--bg)",
-                  border: a.unlocked ? "2px solid #A8D8EA" : "1px solid var(--border)",
+                  background: a.unlocked
+                    ? "rgba(168, 216, 234, 0.18)"
+                    : "var(--bg)",
+                  border: a.unlocked
+                    ? "2px solid #A8D8EA"
+                    : "1px solid var(--border)",
                   cursor: "pointer",
                 }}
               >

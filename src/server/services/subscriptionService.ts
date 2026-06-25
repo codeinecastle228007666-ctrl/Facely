@@ -3,8 +3,15 @@ import { XP_PER_PURCHASE, calculateLevel } from "../utils/levelSystem";
 
 const SUBSCRIPTION_PRICE = 500;
 const SUBSCRIPTION_DAYS = 30;
-const PRICE_PER_ANALYSIS = process.env.PROVIDER_TOKEN ? 9900 : 1;
-const CHAT_PRICE = process.env.PROVIDER_TOKEN ? 4900 : 1;
+
+// Продакшн-цены (в копейках для RUB, в ⭐ для Stars).
+// Тестовое значение 1⭐ использовалось только во время разработки.
+const PRICE_PER_ANALYSIS = process.env.PROVIDER_TOKEN
+  ? Number(process.env.PRICE_PER_ANALYSIS_RUB || 9900) // копейки: 9900 = 99 ₽
+  : Number(process.env.STARS_PRICE_PER_ANALYSIS || 50); // Stars: 50 ⭐ за 1 анализ
+const CHAT_PRICE = process.env.PROVIDER_TOKEN
+  ? Number(process.env.CHAT_PRICE_RUB || 4900)
+  : Number(process.env.STARS_PRICE_CHAT || 200);
 const PAYMENT_CURRENCY = process.env.PROVIDER_TOKEN ? "RUB" : "XTR";
 const PROVIDER_TOKEN = process.env.PROVIDER_TOKEN || "";
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
@@ -117,11 +124,17 @@ export const subscriptionService = {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error("User not found");
 
-    const amount = PRICE_PER_ANALYSIS * quantity;
+    // Пакет 5+ анализов получает 35% скидку — синхронизируем с UI-кнопкой в PurchaseModal.
+    const bulk = quantity >= 5;
+    const amount = Math.round(
+      PRICE_PER_ANALYSIS * quantity * (bulk ? 0.65 : 1),
+    );
     const isStars = !PROVIDER_TOKEN;
 
     const body: Record<string, unknown> = {
-      title: `${quantity} анализ кожи`,
+      title: bulk
+        ? `${quantity} анализов кожи (пакет, экономия 35%)`
+        : `${quantity} анализ кожи`,
       description: `AI-анализ кожи в Reveli — ${quantity} шт.`,
       payload: `analysis_${quantity}_${user.id}`,
       provider_token: PROVIDER_TOKEN,

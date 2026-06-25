@@ -145,6 +145,13 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
     }
   };
 
+  // Stars-цена для UI: 1 анализ = prices.analysis ★; пакет 5 = с 35% скидкой.
+  const starsPriceFor = (qty: number, bulk: boolean) => {
+    if (!prices) return qty;
+    const base = prices.analysis * qty;
+    return bulk ? Math.round(base * 0.65) : base;
+  };
+
   const selectedTierDef = selectedTier ? TIERS.find((t) => t.id === selectedTier) : undefined;
 
   return (
@@ -292,7 +299,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                             >
                               {loading === tier.id
                                 ? "Открываем..."
-                                : `⭐ ${tier.id === "single" ? "1 Star" : "5 Stars"}`}
+                                : `⭐ ${starsPriceFor(tier.id === "single" ? 1 : 5, tier.id === "pack5")}`}
                             </motion.button>
                           )}
                           {CARD_NUMBER && (
