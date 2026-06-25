@@ -147,7 +147,9 @@ ${routineContext}
     // ── Persist both messages + (conditionally) decrement charge in one
     //    transaction. Decrement ONLY happens if AI succeeded, so users
     //    don't lose charges on transient 5xx errors.
-    let newRemaining: number;
+    // Pre-compute the safe-default value so TypeScript treats `newRemaining`
+    // as definitely-assigned even if the transaction callback throws.
+    let newRemaining: number = hasSubscription ? 999 : Math.max(0, user.freeChatQuestions);
     await prisma.$transaction(async (tx) => {
       await tx.chatMessage.create({
         data: { userId: user.id, role: "user", content },
@@ -163,8 +165,6 @@ ${routineContext}
           select: { freeChatQuestions: true },
         });
         newRemaining = updated.freeChatQuestions;
-      } else {
-        newRemaining = hasSubscription ? 999 : user.freeChatQuestions;
       }
     });
 
