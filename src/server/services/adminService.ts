@@ -1,6 +1,7 @@
 import { prisma } from "../db";
 import { calculateLevel } from "../utils/levelSystem";
 import { pushService } from "./pushService";
+import { subscriptionService } from "./subscriptionService";
 import type { Prisma } from "@prisma/client";
 
 /**
@@ -265,5 +266,264 @@ export const adminService = {
         },
       },
     });
+  },
+
+  // ─── 2026-06-26 — Phase 2: full admin surface ────────────────────────
+  // Browse-all users, list all payments (Stars auto + bank transfer),
+  // and in-panel confirm/cancel for CardTransferClaims. Each method is
+  // kept narrow so its matching tRPC procedure exports a tiny zod input.
+
+  /**
+   * Paginated browse of ALL users (no search filter). Sorted by paying
+   // first (paidAnalyses DESC), then most recently registered.
+   */
+  async listUsers({
+    offset = 0,
+    limit = 20,
+  }: {
+    offset?: number;
+    limit?: number;
+  }) {
+    return prisma.user.findMany({
+      orderBy: [{ paidAnalyses: "desc" }, { createdAt: "desc" }],
+      skip: Math.max(0, offset),
+      take: Math.min(Math.max(1, limit), 100),
+      select: {
+        id: true,
+        telegramId: true,
+        name: true,
+        username: true,
+        paidAnalyses: true,
+        level: true,
+        subscriptionEnd: true,
+        createdAt: true,
+      },
+    });
+  },
+
+  /**
+   * CardTransferClaim feed. Status taxonomy:
+   *   - "pending"   → notificationSentAt != null && !creditConfirmed
+   *                   (user clicked "I paid", admin was notified, awaiting confirm)
+   *   - "drafts"    → notificationSentAt IS NULL (modal opened, no submit yet)
+   *   - "confirmed" → creditConfirmed = true (admin credited OR cancelled)
+   *   - "all"       → every row, newest first
+   *
+   * Sorted newest-first. Cap 100/page to keep Vercel function fast.
+   */
+  async listCardClaims({
+    limit = 30,
+    offset = 0,
+    status = "pending",
+  }: {
+    limit?: number;
+    offset?: number;
+    status?: "pending" | "drafts" | "confirmed" | "all";
+  }) {
+    const where: Prisma.CardTransferClaimWhereInput = {};
+    if (status === "pending") {
+      where.creditConfirmed = false;
+      where.notificationSentAt = { not: null };
+    } else if (status === "drafts") {
+      where.notificationSentAt = null;
+    } else if (status === "confirmed") {
+      where.creditConfirmed = true;
+    }
+    return prisma.cardTransferClaim.findMany({
+      where,
+      orderBy: { claimedAt: "desc" },
+      skip: Math.max(0, offset),
+      take: Math.min(Math.max(1, limit), 100),
+      include: {
+        user: {
+          select: {
+            id: true,
+            telegramId: true,
+            name: true,
+            username: true,
+          },
+        },
+      },
+    });
+  },
+
+  /**
+   * ProcessedInvoice feed (Stars auto-credits). Filterable by user or
+   * kind. No user join in Prisma (no FK relation in schema) — the
+   * client joins by userId when it has a list of users to map.
+   */
+  async listProcessedInvoices({
+    limit = 30,
+    offset = 0,
+    userId,
+    kind,
+  }: {
+    limit?: number;
+    offset?: number;
+    userId?: string;
+    kind?: "analysis" | "chat" | "subscription";
+  }) {
+    const where: Prisma.ProcessedInvoiceWhereInput = {};
+    if (userId) where.userId = userId;
+    if (kind) where.kind = kind;
+    return prisma.processedInvoice.findMany({
+      where,
+      orderBy: { processedAt: "desc" },
+      skip: Math.max(0, offset),
+      take: Math.min(Math.max(1, limit), 100),
+    });
+  },
+
+  /**
+   * In-panel confirm for a CardTransferClaim. Equivalent to running
+   * scripts/credit-by-ref.ts but exposed as tRPC mutation so admin never
+   * has to ssh into Vercel. Calls subscriptionService to apply the
+   * purchase, then marks the claim confirmed + writes a creditCardClaim
+   // AdminGrant audit row so the unified audit feed shows "card claim
+   * confirmed by admin X".
+   *
+   * Idempotency: claim.creditConfirmed already true → throws. Caller
+   * should refresh list. The endpoint also disables the Confirm button
+   * on the first click (client-side) to prevent accidental double-tap.
+   */
+  async confirmCardClaim(adminTelegramId: string, claimId: string) {
+    const claim = await prisma.cardTransferClaim.findUnique({
+      where: { id: claimId },
+      include: { user: true },
+    });
+    if (!claim) throw new Error("Claim not found");
+    if (claim.creditConfirmed) throw new Error("Claim already closed");
+
+    const tier = claim.tier as "single" | "pack5" | "monthly" | "fifteen";
+    const qty =
+      tier === "single" ? 1 : tier === "pack5" ? 5 : tier === "fifteen" ? 15 : 0;
+
+    if (tier === "monthly") {
+      await subscriptionService.activate(claim.userId, "paid");
+    } else if (qty > 0) {
+      await subscriptionService.purchaseAnalysis(claim.userId, qty);
+    } else {
+      throw new Error(`Unknown tier: ${tier}`);
+    }
+
+    const confirmedAt = new Date();
+    await prisma.cardTransferClaim.update({
+      where: { id: claim.id },
+      data: { creditConfirmed: true, creditConfirmedAt: confirmedAt },
+    });
+    await prisma.adminGrant.create({
+      data: {
+        adminTelegramId,
+        targetUserId: claim.userId,
+        kind: "creditCardClaim",
+        amount: claim.amount,
+        reason: `card-transfer ref=${claim.expectedReference} tier=${tier}`,
+        details: {
+          from: "cardClaim",
+          ref: claim.expectedReference,
+          tier,
+          amount: claim.amount,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    // Best-effort push. Failure doesn't fail the operation (DB + audit
+    // already persisted) — admin would re-push manually if needed.
+    try {
+      await pushService.send(
+        claim.user.telegramId,
+        "Оплата подтверждена",
+        `🎉 Спасибо! Админ подтвердил твой перевод — ${
+          tier === "monthly" ? "подписка активирована" : `${qty} анализ(ов) зачислено`
+        }.`,
+      );
+    } catch (e: any) {
+      console.warn(`[admin] confirm push failed: ${e?.message ?? e}`);
+    }
+
+    return {
+      claim: { id: claim.id, expectedReference: claim.expectedReference },
+      target: {
+        id: claim.userId,
+        telegramId: claim.user.telegramId,
+        name: claim.user.name,
+      },
+      tier,
+      confirmedAt: confirmedAt.toISOString(),
+    };
+  },
+
+  /**
+   * In-panel cancel for a CardTransferClaim. Doesn't drop the row —
+   * we'd lose user-side audit history. Marks it "closed-via-cancel"
+   // (creditConfirmed=true) + writes a cancelCardClaim AdminGrant row
+   // that captures the reason. The audit feed shows both events.
+   *
+   * Phase 3 (later): add explicit `cancelledAt` / `cancellationReason`
+   // fields to CardTransferClaim via migration. For now we reuse
+   // `creditConfirmed` as a "closed" flag with audit-only distinction.
+   */
+  async cancelCardClaim(
+    adminTelegramId: string,
+    claimId: string,
+    reason?: string,
+  ) {
+    const claim = await prisma.cardTransferClaim.findUnique({
+      where: { id: claimId },
+    });
+    if (!claim) throw new Error("Claim not found");
+    if (claim.creditConfirmed) throw new Error("Claim already closed");
+
+    await prisma.cardTransferClaim.update({
+      where: { id: claim.id },
+      data: { creditConfirmed: true, creditConfirmedAt: new Date() },
+    });
+    await prisma.adminGrant.create({
+      data: {
+        adminTelegramId,
+        targetUserId: claim.userId,
+        kind: "cancelCardClaim",
+        amount: 0,
+        reason:
+          reason?.trim() ||
+          `cancel card-claim ref=${claim.expectedReference}`,
+      },
+    });
+    return { ok: true };
+  },
+
+  /**
+   * Aggregate dashboard counts. Single round-trip with Promise.all so
+   * all six counts run in parallel (cheap: each is a single SQL COUNT).
+   */
+  async dashStats() {
+    const weekAgo = new Date(Date.now() - 7 * 86400000);
+    const [
+      totalUsers,
+      payingUsers,
+      pendingClaims,
+      confirmedClaims,
+      starsInvoices,
+      grantsLast7d,
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { paidAnalyses: { gt: 0 } } }),
+      prisma.cardTransferClaim.count({
+        where: { creditConfirmed: false, notificationSentAt: { not: null } },
+      }),
+      prisma.cardTransferClaim.count({ where: { creditConfirmed: true } }),
+      prisma.processedInvoice.count(),
+      prisma.adminGrant.count({
+        where: { createdAt: { gte: weekAgo } },
+      }),
+    ]);
+    return {
+      totalUsers,
+      payingUsers,
+      pendingClaims,
+      confirmedClaims,
+      starsInvoices,
+      grantsLast7d,
+    };
   },
 };

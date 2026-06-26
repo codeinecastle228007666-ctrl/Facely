@@ -99,6 +99,10 @@ export interface UserSummary {
   paidAnalyses: number;
   level: number;
   subscriptionEnd: string | null;
+  /** ISO timestamp; not all backends return it (kept optional for the
+   * search endpoint which doesn't select `createdAt` to keep the query
+   * narrow). The browse-all endpoint always provides it. */
+  createdAt?: string;
 }
 
 export interface UserDetails {
@@ -132,6 +136,8 @@ export interface AdminGrantRow {
   id: string;
   adminTelegramId: string;
   targetUserId: string;
+  /** One of the dynamically-applied kind strings (see AdminGrantKind
+   * in adminService.ts / prisma AdminGrant.kind column comment). */
   kind: string;
   amount: number;
   reason: string | null;
@@ -142,6 +148,44 @@ export interface AdminGrantRow {
     name: string | null;
     username: string | null;
   };
+}
+
+export interface CardClaimRow {
+  id: string;
+  userId: string;
+  tier: string;
+  amount: number;
+  expectedReference: string;
+  submittedReference: string | null;
+  creditConfirmed: boolean;
+  creditConfirmedAt: string | null;
+  notificationSentAt: string | null;
+  claimedAt: string;
+  user: {
+    id: string;
+    telegramId: string;
+    name: string | null;
+    username: string | null;
+  };
+}
+
+export interface ProcessedInvoiceRow {
+  id: string;
+  payload: string;
+  userId: string;
+  kind: "analysis" | "chat" | "subscription";
+  amount: number;
+  currency: string;
+  processedAt: string;
+}
+
+export interface DashStats {
+  totalUsers: number;
+  payingUsers: number;
+  pendingClaims: number;
+  confirmedClaims: number;
+  starsInvoices: number;
+  grantsLast7d: number;
 }
 
 export const adminApi = {
@@ -176,4 +220,54 @@ export const adminApi = {
     }>("admin.grant", data),
   listGrants: (data: { limit: number }) =>
     callTrpc<AdminGrantRow[]>("admin.listGrants", data),
+
+  /**
+   * Browse-all users paginated. Sorted by paying first.
+   */
+  listUsers: (data: { offset: number; limit: number }) =>
+    callTrpc<UserSummary[]>("admin.listUsers", data),
+
+  /**
+   * CardTransferClaim feed (pending/drafts/confirmed/all).
+   */
+  listCardClaims: (data: {
+    offset: number;
+    limit: number;
+    status: "pending" | "drafts" | "confirmed" | "all";
+  }) => callTrpc<CardClaimRow[]>("admin.listCardClaims", data),
+
+  /**
+   * ProcessedInvoice feed (Stars auto-credits).
+   */
+  listProcessedInvoices: (data: {
+    offset: number;
+    limit: number;
+    userId?: string;
+    kind?: "analysis" | "chat" | "subscription";
+  }) =>
+    callTrpc<ProcessedInvoiceRow[]>("admin.listProcessedInvoices", data),
+
+  /**
+   * In-panel confirm for a CardTransferClaim. Idempotent on
+   * creditConfirmed=true (server throws BAD_REQUEST in that case).
+   */
+  confirmCardClaim: (data: { claimId: string }) =>
+    postTrpc<{
+      claim: { id: string; expectedReference: string };
+      target: { id: string; telegramId: string; name: string | null };
+      tier: string;
+      confirmedAt: string;
+    }>("admin.confirmCardClaim", data),
+
+  /**
+   * In-panel cancel for a CardTransferClaim. Marks closed + writes
+   * cancelCardClaim audit row.
+   */
+  cancelCardClaim: (data: { claimId: string; reason?: string }) =>
+    postTrpc<{ ok: true }>("admin.cancelCardClaim", data),
+
+  /**
+   * Dashboard aggregate counts.
+   */
+  dashStats: () => callTrpc<DashStats>("admin.dashStats"),
 };

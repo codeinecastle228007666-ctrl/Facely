@@ -5,7 +5,14 @@ import { AdminLogin } from "@/components/admin/AdminLogin";
 import { UserSearch } from "@/components/admin/UserSearch";
 import { UserDetails } from "@/components/admin/UserDetails";
 import { RecentGrants } from "@/components/admin/RecentGrants";
-import { adminApi, type UserDetails as UserDetailsT } from "@/components/admin/adminApi";
+import { AllUsersList } from "@/components/admin/AllUsersList";
+import { PendingClaimsPanel } from "@/components/admin/PendingClaimsPanel";
+import { StarsInvoicesFeed } from "@/components/admin/StarsInvoicesFeed";
+import { DashStats } from "@/components/admin/DashStats";
+import {
+  adminApi,
+  type UserDetails as UserDetailsT,
+} from "@/components/admin/adminApi";
 
 /**
  * /admin — operator-only panel. Lives OUTSIDE Telegram Mini App
@@ -13,10 +20,17 @@ import { adminApi, type UserDetails as UserDetailsT } from "@/components/admin/a
  * theme piggy-backs on the same `var(--*)` palette used by the
  * main app for visual continuity.
  *
+ * 2026-06-26 Phase 2 — full admin surface. Long single-scroll
+ * layout with anchor-driven mini-nav (Stats / Users / Claims /
+ * Stars / Audit). Single-admin MVP keeps the structure flat so
+ * every panel is one click away. UserDetails is sticky-once-picked
+ * (persisted across sections so admin can pivot from a card-claim
+ * to the user's audit or apply a manual grant without losing state).
+ *
  * State machine:
- *   enabled=false            → "panel disabled" message (server missing ADMIN_PANEL_SECRET)
- *   enabled=true, !authed    → AdminLogin form
- *   enabled=true, authed     → search + selected user + audit log below
+ *   enabled = false        → "panel disabled" message
+ *   enabled, !authed       → AdminLogin form
+ *   enabled, authed        → main surface (this component's body)
  */
 export default function AdminPage() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -35,9 +49,9 @@ export default function AdminPage() {
       .catch(() => {
         if (!cancelled) setEnabled(false);
       });
-    // admin.me() will throw UNAUTHORIZED if no valid cookie. We
-    // don't care about the error type — just whether the cookie
-    // produced any sane response (status code < 400).
+    // admin.me() rejects UNAUTHORIZED without a valid cookie. We just
+    // inspect the status code — not the error body — to keep the
+    // probe cheap.
     fetch("/api/trpc/admin.me?input=" + encodeURIComponent("{}"), {
       method: "GET",
       credentials: "include",
@@ -69,20 +83,21 @@ export default function AdminPage() {
     setRefreshKey((k) => k + 1);
   }, []);
 
-  const onUserPicked = useCallback(
-    async (user: { id: string }) => {
-      const details = await adminApi.getUserDetails({ id: user.id });
-      setSelectedUser(details);
-    },
-    [],
-  );
+  const onUserPicked = useCallback(async (user: { id: string }) => {
+    const details = await adminApi.getUserDetails({ id: user.id });
+    setSelectedUser(details);
+    // After picking via search/list, scroll the UserDetails card into
+    // view. Skip if user clicked a name inside Claims/Stars panels —
+    // they still set selectedUser but the anchor-based jump is the
+    // caller's responsibility (we don't unconditionally scroll).
+  }, []);
 
   const onGrantsRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
     if (selectedUser) {
-      adminApi
-        .getUserDetails({ id: selectedUser.id })
-        .then((u) => setSelectedUser(u));
+      adminApi.getUserDetails({ id: selectedUser.id }).then((u) =>
+        setSelectedUser(u),
+      );
     }
   }, [selectedUser]);
 
@@ -114,12 +129,19 @@ export default function AdminPage() {
         }}
       >
         <div style={{ fontSize: 24, marginBottom: 8 }}>🔒</div>
-        <h1 style={{ fontSize: 18, margin: "0 0 8px 0", color: "var(--text)" }}>
+        <h1
+          style={{
+            fontSize: 18,
+            margin: "0 0 8px 0",
+            color: "var(--text)",
+          }}
+        >
           Панель администратора отключена
         </h1>
         <div style={{ fontSize: 13 }}>
           Задайте <code>ADMIN_PANEL_SECRET</code> (≥8 символов) в Vercel
-          Environment Variables, пересоберите проект, и откройте страницу ещё раз.
+          Environment Variables, пересоберите проект, и откройте
+          страницу ещё раз.
         </div>
       </main>
     );
@@ -136,7 +158,7 @@ export default function AdminPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "16px 0 24px",
+          padding: "16px 0 12px",
         }}
       >
         <div>
@@ -163,13 +185,68 @@ export default function AdminPage() {
         </button>
       </header>
 
-      <UserSearch onPick={onUserPicked} selectedId={selectedUser?.id ?? null} />
+      <nav
+        style={{
+          display: "flex",
+          gap: 6,
+          marginBottom: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        {(
+          [
+            ["dashboard", "📊 Статистика"],
+            ["users", "👥 Юзеры"],
+            ["claims", "💳 Заявки"],
+            ["stars", "⭐ Stars"],
+            ["audit", "📜 Audit"],
+          ] as const
+        ).map(([id, label]) => (
+          <a
+            key={id}
+            href={`#${id}`}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 999,
+              border: "1px solid var(--border)",
+              background: "white",
+              fontSize: 12,
+              color: "var(--text)",
+              textDecoration: "none",
+            }}
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
 
-      {selectedUser && (
-        <UserDetails user={selectedUser} onGrantSuccess={onGrantsRefresh} />
-      )}
+      <DashStats refreshKey={refreshKey} />
 
-      <RecentGrants refreshKey={refreshKey} />
+      <div id="users" style={{ scrollMarginTop: 16 }}>
+        <UserSearch onPick={onUserPicked} selectedId={selectedUser?.id ?? null} />
+        {selectedUser && (
+          <UserDetails
+            user={selectedUser}
+            onGrantSuccess={onGrantsRefresh}
+          />
+        )}
+        <AllUsersList
+          onPick={onUserPicked}
+          selectedId={selectedUser?.id ?? null}
+          refreshKey={refreshKey}
+        />
+      </div>
+
+      <PendingClaimsPanel
+        refreshKey={refreshKey}
+        onUserPicked={onUserPicked}
+      />
+
+      <StarsInvoicesFeed refreshKey={refreshKey} />
+
+      <div id="audit" style={{ scrollMarginTop: 16 }}>
+        <RecentGrants refreshKey={refreshKey} />
+      </div>
     </main>
   );
 }
