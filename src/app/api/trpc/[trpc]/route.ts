@@ -7,31 +7,23 @@ import {
   shouldAllowDevAuthFallback,
   type TelegramAuthUser,
 } from "@/server/utils/telegramAuth";
-import {
-  extractAdminCookie,
-  verifyAdminToken,
-} from "@/server/utils/adminAuth";
 
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
 
 const handler = (req: NextRequest) => {
-  // 2026-06-26 — /admin panel routes authenticate via the HMAC-signed
+  // 2026-06-26 — /api/trpc/admin.* routes authenticate via the HMAC-signed
   // HttpOnly `admin_session` cookie (set by POST /api/admin/login), NOT
-  // via Telegram initData. We parse + HMAC-verify the cookie up-front so
-  // we can bypass the initData gate below for /api/trpc/admin.* paths.
-  // HMAC is what actually proves authenticity — without ADMIN_PANEL_SECRET
-  // no cookie can be forged, so adminSession === null still falls through
-  // to the standard 401 path. Same cookie is re-fed into createTRPCContext
-  // so adminProtectedProcedure checks ctx.adminSession on the way in.
-  // 2026-06-26 — DRY: cookie extract via adminAuth.extractAdminCookie
-  // (shared with createTRPCContext in src/server/trpc/index.ts).
-  const cookieToken = extractAdminCookie(req.headers);
-  const adminSession = verifyAdminToken(cookieToken ?? undefined);
-
-  // adminRouter is the only router that uses the `admin.*` procedure
-  // prefix. Anything under that prefix is allowed through on a valid
-  // admin cookie regardless of Telegram initData. Everything else still
-  // demands initData as before.
+  // via Telegram initData. They reach fetchRequestHandler regardless of
+  // initData; adminProtectedProcedure enforces cookie auth inside the
+  // router via createTRPCContext (which HMAC-verifies the cookie).
+  //
+  // Critically: `adminRouter.status` is intentionally `publicProcedure`
+  // so the /admin page can render "panel disabled" BEFORE login. The gate
+  // below lets every admin.* request through; auth enforcement happens
+  // inside adminProtectedProcedure once admin.me, admin.searchUsers,
+  // admin.grant, etc. are reached. Without this bypass the page would
+  // show "panel disabled" even with ADMIN_PANEL_SECRET set — because
+  // status() itself would 401.
   const pathname =
     req.nextUrl?.pathname ?? new URL(req.url).pathname;
   const isAdminPath = pathname.startsWith("/api/trpc/admin.");
@@ -81,7 +73,7 @@ const handler = (req: NextRequest) => {
     telegramId = undefined;
   }
 
-  if (!telegramId && !(isAdminPath && adminSession !== null)) {
+  if (!telegramId && !isAdminPath) {
     // Surface as 401 with a structured code so the client can show a
     // meaningful "please reopen from Telegram" message instead of crashing.
     return new Response(
