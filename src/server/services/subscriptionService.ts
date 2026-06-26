@@ -147,33 +147,47 @@ export const subscriptionService = {
     };
   },
 
-  async createStarsInvoice(userId: string, quantity: number) {
+  /**
+   * 2026-06-26 — tier-based (single | pack5 | monthly) вместо quantity.
+   * Payload-формат для webhook-диспатча:
+   *   • analysis_<tier>_<uid>     — single/pack5 → paidAnalyses += qty
+   *   • subscription_monthly_<uid> — monthly → activate Subscription 30д
+   * Префикс subscription явно несёт kind чтобы webhook не путал с
+   * legacy `analysis_<qty>_<uid>` (in-flight payments ещё читаются
+   * для обратной совместимости, см. webhook route.ts).
+   *
+   * Для isStars=true start_parameter ставим monthly/tier — Telegram
+   * использует его как deeplink внутрь WebApp после оплаты.
+   * Telegram Stars НЕ поддерживают recurring subscriptions как
+   * нативный тип, поэтому monthly здесь — one-time payment за
+   * 30-дневную подписку (активация в webhook после successful_payment).
+   */
+  async createStarsInvoice(userId: string, tier: TierId) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error("User not found");
 
-    // Для покупки одиночного пакета используем тариф-сетку из pricing.ts.
-    // quantity=1  → PRICES[currency].single
-    // quantity=5  → PRICES[currency].pack5
-    // quantity≥5 иной — fallback на 20% скидку от полной суммы.
-    const tier: TierId | null =
-      quantity === 1 ? "single" : quantity === 5 ? "pack5" : null;
-    const amount = tier ? priceFor(tier) : Math.round(priceFor("single") * quantity * 0.8);
+    const amount = priceFor(tier);
     const isStars = !PROVIDER_TOKEN;
+    const isMonthly = tier === "monthly";
+    const payload = isMonthly
+      ? `subscription_monthly_${user.id}`
+      : `analysis_${tier}_${user.id}`;
+    const qty = tier === "pack5" ? 5 : tier === "single" ? 1 : 30;
 
     const body: Record<string, unknown> = {
-      title: tier
-        ? TIER_LABELS[tier]
-        : `${quantity} анализов кожи`,
+      title: TIER_LABELS[tier],
       description: isStars
-        ? `AI-анализ кожи в Reveli — ${quantity} шт.`
-        : `Оплата картой в Telegram для ${quantity} анализов`,
-      payload: `analysis_${quantity}_${user.id}`,
+        ? isMonthly
+          ? "Безлимит на анализы кожи 30 дней в Reveli"
+          : `AI-анализ кожи в Reveli — ${qty} шт.`
+        : `Оплата ${TIER_LABELS[tier]} через Telegram`,
+      payload,
       provider_token: PROVIDER_TOKEN,
       currency: PAYMENT_CURRENCY,
-      prices: [{ label: `${quantity} анализ(ов)`, amount }],
+      prices: [{ label: TIER_LABELS[tier], amount }],
     };
     if (isStars) {
-      body.start_parameter = "analysis";
+      body.start_parameter = isMonthly ? "monthly" : tier;
     }
 
     const controller = new AbortController();
@@ -194,16 +208,8 @@ export const subscriptionService = {
       throw new Error(data.description || "Ошибка создания счёта");
     }
 
-    return { url: data.result, currency: PAYMENT_CURRENCY, amount };
-  },
-
-  async confirmStarsPayment(userId: string, quantity = 1) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { paidAnalyses: { increment: quantity } },
-    });
-    return { success: true };
-  },
+    return { url: data.result, currency: PAYMENT_CURRENCY, amount, tier };
+  },,
 
   async createChatStarsInvoice(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });

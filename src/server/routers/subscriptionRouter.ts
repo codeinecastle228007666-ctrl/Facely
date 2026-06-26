@@ -52,10 +52,14 @@ export const subscriptionRouter = router({
     return subscriptionService.purchaseSubscription(user.id);
   }),
 
+  // 2026-06-26 — tier-based (single | pack5 | monthly). Monthly via
+  // Stars is a one-time payment that internally activates a 30-day
+  // Subscription (Telegram Stars do NOT support recurring payments
+  // natively), so the kind/sub-amount routing happens in webhook.
   createStarsInvoice: protectedProcedure
     .input(
       z.object({
-        quantity: z.number().min(1).max(100).default(1),
+        tier: z.enum(["single", "pack5", "monthly"]).default("single"),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -63,24 +67,14 @@ export const subscriptionRouter = router({
         where: { telegramId: ctx.telegramId },
       });
       if (!user) throw new Error("User not found");
-      return subscriptionService.createStarsInvoice(user.id, input.quantity);
+      return subscriptionService.createStarsInvoice(user.id, input.tier);
     }),
 
-  confirmStarsPayment: protectedProcedure
-    .input(
-      z.object({
-        payload: z.string(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const user = await prisma.user.findUnique({
-        where: { telegramId: ctx.telegramId },
-      });
-      if (!user) throw new Error("User not found");
-
-      const quantity = parseInt(input.payload.replace("analysis_", "").split("_")[0], 10) || 1;
-      return subscriptionService.confirmStarsPayment(user.id, quantity);
-    }),
+  // 2026-06-26 — removed `confirmStarsPayment`. The flow is now
+  // webhook-driven: `tg.openInvoice` calls back with paid/cancelled,
+  // and the actual credit happens server-side via Telegram's webhook
+  // hitting our /api/webhook route. The old front-end confirm route
+  // was vestigial and would have mis-read the new tier-based payload.
 
   createChatStarsInvoice: protectedProcedure.mutation(async ({ ctx }) => {
     const user = await prisma.user.findUnique({

@@ -133,10 +133,14 @@ export const api = {
       mutation<PurchaseResult>("subscription.purchaseAnalysis", data),
     purchaseSubscription: () =>
       mutation<PurchaseResult>("subscription.purchaseSubscription"),
-    createStarsInvoice: (data: { quantity: number }) =>
-      mutation<{ url: string; currency: string; amount: number }>("subscription.createStarsInvoice", data),
-    confirmStarsPayment: (data: { payload: string }) =>
-      mutation<{ success: boolean }>("subscription.confirmStarsPayment", data),
+    // 2026-06-26 — tier-based (single | pack5 | monthly). Monthly via
+    // Stars is implemented as a one-time payment that internally activates
+    // a 30-day Subscription (Telegram Stars do NOT support recurring).
+    createStarsInvoice: (data: { tier: "single" | "pack5" | "monthly" }) =>
+      mutation<{ url: string; currency: string; amount: number; tier: string }>(
+        "subscription.createStarsInvoice",
+        data,
+      ),
     createChatStarsInvoice: () =>
       mutation<{ url: string; currency: string; amount: number }>("subscription.createChatStarsInvoice"),
     // 2026-06-26 Phase 1.5 — клиент больше не передаёт amount (берётся

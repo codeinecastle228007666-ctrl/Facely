@@ -208,17 +208,19 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
       alert("Доступно только в Telegram");
       return;
     }
-    if (tier === "monthly") {
-      alert("Безлимит пока оплачивается переводом на карту. Telegram Stars для подписки — скоро.");
-      return;
-    }
-    const quantity = tier === "single" ? 1 : 5;
+    // 2026-06-26 — monthly Stars включён. Telegram Stars не поддерживают
+    // recurring subscription, поэтому сервер активирует 30-дневную
+    // подписку как one-time payment (см. webhook route.ts + service).
     setLoading(tier);
     try {
-      const res = await api.subscription.createStarsInvoice({ quantity });
+      const res = await api.subscription.createStarsInvoice({ tier });
       tg.openInvoice(res.url, async (status: string) => {
         if (status === "paid") {
-          alert("Оплата прошла! Анализы будут зачислены в течение минуты.");
+          alert(
+            tier === "monthly"
+              ? "Оплата прошла! Подписка активна 30 дней \u2014 наслаждайтесь безлимитом."
+              : "Оплата прошла! Анализы будут зачислены в течение минуты.",
+          );
           setTimeout(() => {
             onSuccess?.();
             onClose();
@@ -380,7 +382,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                           )}
                         </div>
                         <div className="flex gap-2">
-                          {prices?.isStars && tier.id !== "monthly" && (
+                          {prices?.isStars && (
                             <motion.button
                               whileTap={{ scale: 0.97 }}
                               onClick={() => handleStarsPurchase(tier.id)}

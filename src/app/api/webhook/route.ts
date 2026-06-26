@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import { PRICES, CHAT_PRICE } from "@/lib/pricing";
+import { PRICES, CHAT_PRICE, SUBSCRIPTION_DAYS } from "@/lib/pricing";
 
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://facely-chi.vercel.app";
@@ -14,36 +14,61 @@ async function telegramRequest(method: string, body: Record<string, unknown>) {
 }
 
 /**
- * Returns the expected invoice amount for a given invoice payload,
- * using the SAME pricing matrix that `subscriptionService.createStarsInvoice`
- * uses to bill the user. If no tier matches the quantity, returns null so
- * Telegram rejects the payment (better than crediting wrong amount).
+ * 2026-06-26 — tier-based payload routing. Returns the expected invoice
+ * amount for a given invoice_payload, using the SAME pricing matrix that
+ * `subscriptionService.createStarsInvoice` uses to bill the user. If
+ * no tier matches the payload, returns null so Telegram rejects the
+ * payment (better than crediting wrong amount).
  *
- *      payload         kind        expected amount (XTR stars)
- *      analysis_1_xxx  analysis    PRICES.XTR.single (80)
- *      analysis_5_xxx  analysis    PRICES.XTR.pack5   (320)
- *      analysis_N_xxx  analysis    PRICES.XTR.single * N * 0.8  (round)
- *      chat_10_xxx     chat        CHAT_PRICE.XTR     (400)
+ *      payload                   kind         expected amount (XTR stars)
+ *      analysis_single_xxx       analysis     PRICES.XTR.single  (70)
+ *      analysis_pack5_xxx        analysis     PRICES.XTR.pack5   (280)
+ *      subscription_monthly_xxx  subscription PRICES.XTR.monthly (1200)
+ *      analysis_1_xxx (legacy)   analysis     PRICES.XTR.single  (70)
+ *      analysis_5_xxx (legacy)   analysis     PRICES.XTR.pack5   (280)
+ *      analysis_N_xxx (legacy)   analysis     PRICES.XTR.single * N * 0.8 (round)
+ *      chat_10_xxx               chat         CHAT_PRICE.XTR      (350)
  */
 function getExpectedStarsAmount(
   payload: string,
-): { amount: number; kind: "analysis" | "chat" } | null {
-  if (payload.startsWith("analysis_")) {
-    const parts = payload.split("_");
-    if (parts.length < 3) return null;
-    const quantity = parseInt(parts[1], 10);
-    if (!Number.isFinite(quantity) || quantity < 1) return null;
+):
+  | { amount: number; kind: "analysis"; quantity: number }
+  | { amount: number; kind: "subscription"; quantity: number }
+  | { amount: number; kind: "chat"; quantity: number }
+  | null {
+  const parts = payload.split("_");
+  if (parts.length < 3) return null;
+  const prefix = parts[0];
+  const seg1 = parts[1];
 
+  if (prefix === "chat") {
+    const q = parseInt(seg1, 10) || 10;
+    return { amount: CHAT_PRICE.XTR, kind: "chat", quantity: q };
+  }
+
+  // 2026-06-26 NEW: monthly via one-time Stars — activate 30-day Sub.
+  if (prefix === "subscription" && seg1 === "monthly") {
+    return {
+      amount: PRICES.XTR.monthly,
+      kind: "subscription",
+      quantity: SUBSCRIPTION_DAYS,
+    };
+  }
+
+  if (prefix === "analysis") {
+    // 2026-06-26 NEW tier-based: tier is a lowercase string, not a number.
+    if (seg1 === "single") return { amount: PRICES.XTR.single, kind: "analysis", quantity: 1 };
+    if (seg1 === "pack5") return { amount: PRICES.XTR.pack5, kind: "analysis", quantity: 5 };
+
+    // LEGACY qty-based: `analysis_<int>_<uid>` (in-flight payments only).
+    const quantity = parseInt(seg1, 10);
+    if (!Number.isFinite(quantity) || quantity < 1) return null;
     let amount: number;
     if (quantity === 1) amount = PRICES.XTR.single;
     else if (quantity === 5) amount = PRICES.XTR.pack5;
     else if (quantity > 5) amount = Math.round(PRICES.XTR.single * quantity * 0.8);
     else return null;
-    return { amount, kind: "analysis" };
-  }
-
-  if (payload.startsWith("chat_")) {
-    return { amount: CHAT_PRICE.XTR, kind: "chat" };
+    return { amount, kind: "analysis", quantity };
   }
 
   return null;
@@ -147,20 +172,20 @@ export async function POST(req: NextRequest) {
 
     // ── Idempotency: refuse to credit the same invoice_payload twice. ─────
     // Telegram may retry webhook delivery; without this guard we'd add paid
-    // analyses TWICE on retry. The unique index on ProcessedInvoice.payload
-    // protects us at DB level.
+    // analyses / activate subscription TWICE on retry. The unique index on
+    // ProcessedInvoice.payload protects us at DB level.
     try {
+      const parts = payload.split("_");
+      const userId = parts.slice(2).join("_");
+      const quantity = expected.quantity;
+
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        console.log(`[Webhook] User not found for payload ${payload}: userId ${userId}`);
+        return NextResponse.json({ ok: true });
+      }
+
       if (expected.kind === "analysis") {
-        const parts = payload.split("_");
-        const userId = parts.slice(2).join("_");
-        const quantity = parseInt(parts[1], 10);
-
-        const user = await prisma.user.findUnique({ where: { id: userId } });
-        if (!user) {
-          console.log(`[Webhook] User not found: ${userId}`);
-          return NextResponse.json({ ok: true });
-        }
-
         await prisma.$transaction([
           prisma.processedInvoice.create({
             data: { payload, userId, kind: "analysis", amount: totalAmount, currency },
@@ -171,17 +196,40 @@ export async function POST(req: NextRequest) {
           }),
         ]);
         console.log(`[Webhook] Credited ${quantity} analysis(es) to user ${userId}`);
+      } else if (expected.kind === "subscription") {
+        // 2026-06-26 NEW: one-time monthly Stars payment activates a
+        // Subscription for SUBSCRIPTION_DAYS (30). Atomic with the
+        // ProcessedInvoice insert so retries don't double-activate.
+        // Date math matches `subscriptionService.activate` (local-TZ
+        // .setDate) for consistency.
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + SUBSCRIPTION_DAYS);
+        await prisma.$transaction([
+          prisma.processedInvoice.create({
+            data: { payload, userId, kind: "subscription", amount: totalAmount, currency },
+          }),
+          prisma.subscription.upsert({
+            where: { userId },
+            update: {
+              status: "active",
+              type: "paid",
+              endDate,
+              startDate: new Date(),
+            },
+            create: {
+              userId,
+              status: "active",
+              type: "paid",
+              startDate: new Date(),
+              endDate,
+            },
+          }),
+        ]);
+        console.log(
+          `[Webhook] Activated ${SUBSCRIPTION_DAYS}day subscription for user ${userId} (Stars-monthly)`,
+        );
       } else {
-        const parts = payload.split("_");
-        const userId = parts.slice(2).join("_");
-        const quantity = parseInt(parts[1], 10) || 10;
-
-        const user = await prisma.user.findUnique({ where: { id: userId } });
-        if (!user) {
-          console.log(`[Webhook] User not found for chat: ${userId}`);
-          return NextResponse.json({ ok: true });
-        }
-
+        // kind === "chat"
         await prisma.$transaction([
           prisma.processedInvoice.create({
             data: { payload, userId, kind: "chat", amount: totalAmount, currency },
