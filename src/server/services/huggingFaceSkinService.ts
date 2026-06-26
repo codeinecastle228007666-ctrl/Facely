@@ -44,7 +44,6 @@ import type {
   FacePlusItem,
 } from "./facePlusService";
 import {
-  FEATURE_WEIGHTS,
   MIN_CONFIDENCE,
   PROBLEM_MAP,
   severityFromValue,
@@ -238,7 +237,7 @@ function synthesizeRawFacePlus(
   // feature. So multiple low-confidence acne detections don't compound
   // (a noisy result with score 0.45 wouldn't trigger but a clear
   // single detection at 0.91 would).
-  const perFeature: Record<string, { score: number; value: number; confidence: number }> = {};
+  const perFeature: Record<string, { value: number; confidence: number }> = {};
   for (const det of detections) {
     const feature = HF_LABEL_TO_FEATURE[det.label.toLowerCase()];
     if (!feature) continue;
