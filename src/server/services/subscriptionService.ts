@@ -297,7 +297,7 @@ export const subscriptionService = {
      * from preview" — `null` becomes `notificationSentAt IS NULL` in DB.
      */
     notificationSentAt?: Date | null;
-  }> {
+  }) {
     // No explicit return type — let TypeScript infer from
     // `prisma.cardTransferClaim.create()`. Manual annotations drift
     // out of sync with the schema (the previous manual type was missing
