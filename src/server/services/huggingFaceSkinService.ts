@@ -98,7 +98,13 @@ function hfSeverity(score: number): { value: number; confidence: number } {
 
 // HF label → our PROBLEM_MAP key (the same keys facePlusService.PROBLEM_MAP
 // expects). Unmapped labels are dropped (not all YOLO labels are useful).
-const HF_LABEL_TO_FEATURE: Record<string, keyof typeof HF_LABEL_TO_FEATURE> = {
+//
+// Explicit literal union (not `keyof typeof HF_LABEL_TO_FEATURE`) —
+// the latter would be a self-referential type that TypeScript correctly
+// rejects ("X is referenced directly or indirectly in its own type
+// annotation"). HF can't detect more than this subset anyway.
+type HFFeature = "acne" | "spot" | "mole" | "wrinkle";
+const HF_LABEL_TO_FEATURE: Record<string, HFFeature> = {
   acne: "acne",
   pimple: "acne",
   spot: "spot",
