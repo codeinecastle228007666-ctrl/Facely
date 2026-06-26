@@ -37,6 +37,18 @@
  * - `HFUpstreamError`   → any transient upstream failure (network,
  *                         cold-start exhausted, non-2xx response,
  *                         unparseable body, etc.)
+ *
+ * 2026-06-26 — circuit breaker
+ * ─────────────────────────────
+ * `api-inference.huggingface.co` was observed unreachable from Vercel
+ * (FetchError in 24ms with HFUpstreamError, see Vercel runtime logs).
+ * The breaker trips on the FIRST HFUpstreamError and skips HF entirely
+ * for `HF_CIRCUIT_TTL_MS` (60s). Saves 10-25s per call while HF is
+ * down, and prevents the unhandled-rejection HandlerChain from racing
+ * the orchestrator's `.then(s, e)` and crashing the lambda at exit 128.
+ * HF_TIMEOUT_MS also shortened 25s → 10s — Vercel Free tier caps
+ * lambdas at 10s; Pro tier 60s. Cold-boot warming (5-15s) won't burn
+ * the budget thanks to the breaker tripping immediately on first miss.
  */
 import type {
   AnalysisVerdict,
@@ -83,70 +95,23 @@ export class HFUpstreamError extends Error {
 
 const HF_MODEL = "mufasabrownie/glowlytics-skin-models";
 const HF_API_URL = `https://api-inference.huggingface.co/models/${HF_MODEL}`;
-export async function analyzeSkinWithHuggingFace(
-  imageBase64: string,
-): Promise<AnalysisVerdict> {
-  // 2026-06-26 — circuit breaker: if HF failed recently, skip the call
-  // entirely. Tested runtime when `api-inference.huggingface.co` is
-  // unreachable from Vercel: 24ms to fail with HFUpstreamError, so
-  // tripping on first failure and skipping for the next 60s is the
-  // cheapest way to stay fast on Free tier.
-  if (isHfCircuitOpen()) {
-    const ageSec = Math.round(((Date.now() - (lastHfFailureAt ?? Date.now())) / 1000));
-    console.warn(
-      `[HuggingFace] Circuit breaker OPEN — skipping call (last failure ${ageSec}s ago, TTL ${HF_CIRCUIT_TTL_MS / 1000}s).`,
-    );
-    throw new HFUpstreamError(
-      `HuggingFace circuit breaker open (last failure ${ageSec}s ago).`,
-    );
-  }
-
-  const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-  const sizeKB = Math.round((cleanBase64.length * 3) / 4 / 1024);
-  if (sizeKB < 10) {
-    throw new Error("Фото слишком маленькое. Сделайте новый снимок.");
-  }
-
-  console.log(`[HuggingFace] Calling ${HF_MODEL} (${sizeKB}KB)…`);
-  // Single trip-point for the circuit breaker: ANY HFUpstreamError from
-  // any inner path (network, JSON parse, non-2xx, 503-after-retry,
-  // exhausted retries) trips the breaker. Without this, only
-  // `doFetch`'s network catch tripped it — leaving HTTP 429 / 503-stuck-
-  // warming / non-JSON paths paying 10s timeout per call even after
-  // HF started failing.
-  let detections: Array<{
-    label: string;
-    score: number;
-    box: { xmin: number; ymin: number; xmax: number; ymax: number };
-  }>;
-  try {
-    detections = await callHuggingFace(cleanBase64);
-  } catch (e: any) {
-    if (e instanceof HFUpstreamError) {
-      tripHfCircuit();
-    }
-    throw e;
-  }
-  console.log(`[HuggingFace] Returned ${detections.length} detections`);
-                                      // tier caps lambdas at 10s; Pro has 60s. The
-                                      // circuit-breaker below trips on the FIRST
-                                      // HFUpstreamError and skips HF entirely for
-                                      // HF_CIRCUIT_TTL_MS, so cold-boot warming
-                                      // (~5-15s) won't burn the lambda budget.
+// 2026-06-26: shortened from 25s — Vercel Free tier caps lambdas at 10s;
+// Pro has 60s. The circuit breaker (below) trips on the FIRST
+// HFUpstreamError and skips HF entirely for HF_CIRCUIT_TTL_MS, so a slow
+// cold-start won't burn the whole lambda budget.
+const HF_TIMEOUT_MS = 10_000;
 const HF_COLD_START_RETRY_DELAY_MS = 6_000;
 const HF_COLD_START_RETRY_COUNT = 1;
 
 // 2026-06-26 — circuit breaker for HF upstream unreachability.
-// `api-inference.huggingface.co` was observed unreachable from Vercel
-// (FetchError in 24ms with HFUpstreamError, see Vercel runtime logs).
-// We trip the breaker on the FIRST failure so the next call in the
-// same lambda / same minute skips HF altogether — saves 10-25s of
-// outbound latency and prevents the unhandled-rejection HandlerChain
-// from racing the orchestrator's `.then(s, e)` and crashing the
-// process with exit code 128.
+// Single trip-point lives in `analyzeSkinWithHuggingFace`'s try/catch —
+// ANY HFUpstreamError (network / JSON parse / HTTP non-2xx / 503-after-
+// retry / exhausted retries) trips the breaker for HF_CIRCUIT_TTL_MS.
 const HF_CIRCUIT_TTL_MS = 60_000;
 let lastHfFailureAt: number | null = null;
-function tripHfCircuit() { lastHfFailureAt = Date.now(); }
+function tripHfCircuit(): void {
+  lastHfFailureAt = Date.now();
+}
 function isHfCircuitOpen(): boolean {
   return lastHfFailureAt !== null && Date.now() - lastHfFailureAt < HF_CIRCUIT_TTL_MS;
 }
@@ -184,6 +149,11 @@ const HF_LABEL_TO_FEATURE: Record<string, HFFeature> = {
  * Internal: call HF Inference API with 503 cold-start retry.
  * Returns the raw detection array or throws an HFConfigError /
  * HFUpstreamError subclass on unrecoverable failure.
+ *
+ * Note: this function does NOT trip the circuit breaker directly. The
+ * single trip-point lives in `analyzeSkinWithHuggingFace`'s try/catch
+ * so all HFUpstreamError throw paths (network, JSON parse, HTTP non-2xx,
+ * 503-exhausted, retries-exhausted) trip identically.
  */
 async function callHuggingFace(cleanBase64: string): Promise<Array<{
   label: string;
@@ -212,11 +182,10 @@ async function callHuggingFace(cleanBase64: string): Promise<Array<{
         signal: AbortSignal.timeout(HF_TIMEOUT_MS),
       });
     } catch (e: any) {
-      // Network reach failure (DNS, ECONNREFUSED, TLS) — same handling
-      // path as HTTP errors so the orchestrator doesn't leak the raw
-      // fetch message to the user. The single circuit-breaker trip-
-      // point lives in `analyzeSkinWithHuggingFace`'s try/catch below,
-      // so we don't need to trip here as well.
+      // Network reach failure (DNS, ECONNREFUSED, TLS) — wraps the
+      // fetch error so the orchestrator sees a typed HFUpstreamError
+      // instead of the raw TypeError. The single trip-point in
+      // analyzeSkinWithHuggingFace catches this and trips the breaker.
       throw new HFUpstreamError(
         `HuggingFace network unreachable: ${e?.message ?? String(e)}`,
       );
@@ -333,10 +302,30 @@ function synthesizeRawFacePlus(
  * Returns an AnalysisVerdict with `data_quality: "partial"` (only
  * acne/spot/mole/wrinkle are populated; everything else stays at
  * zero confidence, which `weightedSkinScore` filters out).
+ *
+ * 2026-06-26 — circuit breaker: if HF failed in the last 60s, this
+ * function short-circuits with HFUpstreamError before doing any
+ * outbound fetch. Single trip-point: any HFUpstreamError caught below
+ * extends the breaker TTL via tripHfCircuit().
  */
 export async function analyzeSkinWithHuggingFace(
   imageBase64: string,
 ): Promise<AnalysisVerdict> {
+  // 2026-06-26 — circuit breaker: if HF failed recently, skip the call
+  // entirely. Tested runtime when `api-inference.huggingface.co` is
+  // unreachable from Vercel: 24ms to fail with HFUpstreamError, so
+  // tripping on first failure and skipping for the next 60s is the
+  // cheapest way to stay fast on Free tier.
+  if (isHfCircuitOpen()) {
+    const ageSec = Math.round(((Date.now() - (lastHfFailureAt ?? Date.now())) / 1000));
+    console.warn(
+      `[HuggingFace] Circuit breaker OPEN — skipping call (last failure ${ageSec}s ago, TTL ${HF_CIRCUIT_TTL_MS / 1000}s).`,
+    );
+    throw new HFUpstreamError(
+      `HuggingFace circuit breaker open (last failure ${ageSec}s ago).`,
+    );
+  }
+
   const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
   const sizeKB = Math.round((cleanBase64.length * 3) / 4 / 1024);
   if (sizeKB < 10) {
@@ -344,7 +333,24 @@ export async function analyzeSkinWithHuggingFace(
   }
 
   console.log(`[HuggingFace] Calling ${HF_MODEL} (${sizeKB}KB)…`);
-  const detections = await callHuggingFace(cleanBase64);
+  // Single trip-point for the circuit breaker: ANY HFUpstreamError from
+  // any inner path (network, JSON parse, non-2xx, 503-after-retry,
+  // exhausted retries) trips the breaker. Without this single chokepoint,
+  // HTTP 429 / 503-stuck-warming / non-JSON paths would keep paying the
+  // 10s timeout per call even after HF started failing.
+  let detections: Array<{
+    label: string;
+    score: number;
+    box: { xmin: number; ymin: number; xmax: number; ymax: number };
+  }>;
+  try {
+    detections = await callHuggingFace(cleanBase64);
+  } catch (e: any) {
+    if (e instanceof HFUpstreamError) {
+      tripHfCircuit();
+    }
+    throw e;
+  }
   console.log(`[HuggingFace] Returned ${detections.length} detections`);
 
   const raw = synthesizeRawFacePlus(detections);
