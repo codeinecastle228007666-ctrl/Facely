@@ -118,7 +118,21 @@ export type AnalysisVerdict = {
    * when this provider kicks in). Set here too so Face++ writes
    * "full" and HF writes "partial" naturally.
    */
-  _rawResponse: FacePlusResult;
+  /**
+   * Internal: full provider response returned to the service layer so
+   * it can persist into the matching SkinAnalysis raw JSON column
+   * (`rawFacePlus` / `rawHuggingFace` / `rawGemini`). Stripped before
+   * sending to the client.
+   *
+   * Face++ writes a `FacePlusResult` (nested envelope — `result.acne`).
+   * HuggingFace and Gemini write a flat shape (top-level
+   * `acne` / `dark_circle` / ...). Union-widened 2026-06-26 so
+   * Gemini's responseSchema JSON is structurally accepted; the
+   * orchestrator persists it to `rawGemini` JSONB at write-site and
+   * Prisma `Json?` is permissive at runtime, so this is a pure
+   * TypeScript widening with no behavior change.
+   */
+  _rawResponse: FacePlusResult | Record<string, unknown>;
   /**
    * Jun-25: which AI provider produced this verdict. Set explicitly by
    * huggingFaceSkinService to "partial" (only acne/spot/mole/wrinkle)
