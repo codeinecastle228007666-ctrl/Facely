@@ -222,6 +222,7 @@ export interface AnalysisResult {
    */
   variants?: {
     faceplus?: AnalysisResult;
+    gemini?: AnalysisResult;
     huggingface?: AnalysisResult;
   };
   /**
@@ -229,7 +230,7 @@ export interface AnalysisResult {
    * UI defaults its tab to this provider before the user explicitly
    * switches tabs.
    */
-  activeProvider?: "faceplus" | "huggingface";
+  activeProvider?: "faceplus" | "gemini" | "huggingface";
 }
 
 export interface AnalyzeResponse {
@@ -238,8 +239,12 @@ export interface AnalyzeResponse {
    * Jun-25: which provider produced this analysis. Surfaced so the
    * client can route UI affordances accordingly (e.g. hide daily
    * routine in some cases). Currently informational only.
+   *
+   * 2026-06-26: union extended to include "gemini" for the new
+   * Google Gemini 2.5 Pro Vision provider. "dual" semantics unchanged:
+   * at least 2 providers ran successfully.
    */
-  provider?: "faceplus" | "huggingface" | "dual";
+  provider?: "faceplus" | "gemini" | "huggingface" | "dual";
   xpGained: number;
   totalXp: number;
   level: number;
@@ -255,11 +260,10 @@ export interface AnalysisHistoryItem {
   skinType: string | null;
   /**
    * 2026-06-25 evening — top-level "dual" when both providers ran
-   * and both passed the bogus-gate. `result.variants` (if present)
-   * holds each provider's verdict for re-rendering the dual UI from
-   * history.
+   * and both passed the bogus-gate. 2026-06-26 — union extended to
+   * include "gemini" for the new parallel provider.
    */
-  provider: "faceplus" | "huggingface" | "dual" | null;
+  provider: "faceplus" | "gemini" | "huggingface" | "dual" | null;
   result: AnalysisResult | null;
   isFree: boolean;
   createdAt: string;
@@ -293,8 +297,9 @@ export interface ComparisonResult {
     result: any;
     skinType: string | null;
     photoBase64: string | null;
-    /** 2026-06-25 evening — surfaced so the comparison view can flag the provider. */
-    provider: "faceplus" | "huggingface" | "dual" | null;
+    /** 2026-06-25 evening — surfaced so the comparison view can flag the provider.
+     *  2026-06-26: union extended with "gemini" for the new parallel provider. */
+    provider: "faceplus" | "gemini" | "huggingface" | "dual" | null;
   };
   analysis2: {
     id: string;
@@ -302,7 +307,7 @@ export interface ComparisonResult {
     result: any;
     skinType: string | null;
     photoBase64: string | null;
-    provider: "faceplus" | "huggingface" | "dual" | null;
+    provider: "faceplus" | "gemini" | "huggingface" | "dual" | null;
   };
   differences: Record<string, { from: number; to: number; diff: number; improved: boolean }>;
 }

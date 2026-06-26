@@ -70,16 +70,27 @@ ALTER TABLE "InventoryItem" ADD CONSTRAINT "InventoryItem_userId_fkey" FOREIGN K
 
 ## Fallback для анализа кожи
 
-**Dual-mode (default, Pro tier only)** — Face++ и HuggingFace запускаются параллельно. ResultModal показывает вкладки `[Face++]` `[HuggingFace]` если вернулись оба. Если один bogus (HTTP 200 + all-zero features) — другая провайдер-мода попадает в `data_quality: "invalid"` и тихо выкидывается из `variants`. `result.provider: "dual" | "faceplus" | "huggingface"`.
+**Tripe-provider mode (default, Pro tier)** — Face++ + Gemini 2.5 Pro Vision + HuggingFace YOLO запускаются параллельно. ResultModal показывает до 3 вкладок `[Face++] [Gemini 2.5] [HuggingFace]` для сравнения. Если один bogus (HTTP 200 + all-zero features) — другая провайдер-мода попадает в `data_quality: "invalid"` и тихо выкидывается из `variants`. `result.provider: "dual" | "faceplus" | "gemini" | "huggingface"`. `"dual"` означает `>=2` валидных варриантов (2-провайдерная эра обратно совместима).
 
-**Circuit breaker на HF** (2026-06-26) — `api-inference.huggingface.co` недоступна с Vercel network. Реализован в `huggingFaceSkinService.ts`:
-- `HF_TIMEOUT_MS = 10_000` (было 25_000) — fail fast на Free tier 10s бюджете.
-- При первом `HFUpstreamError` → `tripHfCircuit()` → следующие 60с вызовы сразу кидают HFUpstreamError без outbound fetch. TTL продлевается на каждой неудаче.
-- Лог: `[HuggingFace] Circuit breaker OPEN — skipping call`.
+**Active-provider inversion (2026-06-26)** — если Face++ вернул пустой вердикт (0 problems), но Gemini ИЛИ HuggingFace нашёл хотя бы одну → activeProvider инвертируется на тот, у которого есть проблемы. Это критично при Face++ Free-Plan outage (bogus near-zero outputs): юзер сразу видит рабочий результат с Gemini, а не пустую Face++ вкладку.
 
-**Force sequential (Free tier)** — переменная окружения `DUAL_PROVIDER_ENABLED=false`. `analysisService` запускает Face++ первым; на `AppQuotaExceededError` ИЛИ bogus-verdict (data_quality="invalid") swap на HF. Укладывается в 10s Vercel Free бюджет (HF после Face++ стартует только когда нужен fallback).
+**Circuit breaker на HF + Gemini** (2026-06-26) — `api-inference.huggingface.co` недоступна с Vercel network, а Gemini имеет Free-Plan rate limits (429 после burst). Реализованы в `huggingFaceSkinService.ts` и `geminiSkinService.ts`:
+- `HF_TIMEOUT_MS = 10_000`, `GEMINI_TIMEOUT_MS = 60_000`.
+- При первом `HFUpstreamError` / `GeminiUpstreamError` → `tripXxxCircuit()` → следующие 60с вызовы сразу кидают ошибку без outbound fetch. TTL продлевается на каждой неудаче.
+- Логи: `[HuggingFace] Circuit breaker OPEN — skipping call`, `[Gemini] Circuit breaker OPEN — skipping call`.
 
-**Глобальная защита от process crash** (2026-06-26) — `process.on("unhandledRejection")` ставится один раз в `analysisService.ts`. Если Vercel-баблинг пропустил необработанный rejection между Next.js Request handler и нашим `.then(s, e)`, лог пишется, но процесс **НЕ** завершается с exit 128. Face++ result всё равно дойдёт до юзера.
+**Force sequential (Free tier)** — переменная окружения `DUAL_PROVIDER_ENABLED=false`. `analysisService` запускает Face++ первым; на `AppQuotaExceededError` ИЛИ bogus-verdict (data_quality="invalid") swap на HF. Gemini пропускается (60s cold-boot не влезает в 10s Free-tier budget). Укладывается в 10s Vercel Free бюджет.
+
+**Глобальная защита от process crash** (2026-06-26) — `process.on("unhandledRejection")` ставится один раз в `analysisService.ts` через `Symbol.for("reveli.unhandledRejectionGuard")` (HMR-safe). Если Vercel-баблинг пропустил необработанный rejection, лог пишется, но процесс **НЕ** завершается с exit 128. Face++ result всё равно дойдёт до юзера.
+
+**Gemini 2.5 Pro Vision integration** (2026-06-26):
+- Модель: `gemini-2.5-pro` (multimodal by default, без `-vision` suffix).
+- Endpoint: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={GEMINI_API_KEY}`.
+- Запрос: `contents[0].parts[0].text` (Russian prompt с описанием 8 признаков), `parts[1].inline_data.mime_type="image/jpeg"`, `parts[1].inline_data.data=<base64>`, `generationConfig.responseMimeType="application/json"`, `generationConfig.responseSchema` (Object с 8 feature вложенными `{value, confidence}` + skin_type).
+- Output: тот же 8-feature bag что и Face++, плюс skin_type integer. Совместим с `severityFromValue` / `weightedSkinScore` / `isBogusResult` пайплайном без спецкейса.
+- `data_quality: "partial"` (Vision-LLM verdict, не structured-data specialist). UI рисует "Сервис анализа в ограниченном режиме" баннер — приемлемо, т.к. юзер всё равно получает полный список проблем.
+- `rawGemini` JSONB column в `SkinAnalysis` для ре-скоринга в будущем.
+- Миграция: `20260628120000_add_raw_gemini/migration.sql`.
 
 ## Исторический контекст
 Раньше: Face++ → при quota error → HF fallback (только при явной ошибке). С 2026-06-25 Face++ Free plan $0 → возвращает валидный 200 + canned near-zero данные → orchestrator лояльно помечал `data_quality: "full"` (ложь). 2026-06-25 evening → dual-mode с bogus-detection (`isBogusResult`) и параллельным запуском обоих провайдеров. 2026-06-26 → HF Inference API стала недоступна с Vercel → добавлен circuit breaker + global guard. Миграция БД: см. `prisma/migrations/20260625180000_provider_fallback` и `prisma/migrations/20260628000000_add_raw_face_plus`.

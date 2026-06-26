@@ -43,17 +43,17 @@ import {
   MIN_CONFIDENCE,
   PROBLEM_MAP,
   RECOMMENDATIONS_MAP,
+  SKIN_TYPE_MAP,
+  buildRoutine,
+  generateProductLinks,
   isBogusResult,
   severityFromValue,
   weightedSkinScore,
 } from "../utils/skinScoring";
 
-const SKIN_TYPE_MAP: Record<number, string> = {
-  0: "сухая",
-  1: "жирная",
-  2: "комбинированная",
-  3: "нормальная",
-};
+// SKIN_TYPE_MAP, buildRoutine, generateProductLinks now live in
+// skinScoring.ts (2026-06-26) as shared helpers between Face++ and
+// Gemini providers. Imported at the top of this file.
 
 /**
  * Resolve skin type only when the model is confident.
@@ -76,50 +76,12 @@ const PROBLEM_DESC: Record<string, string> = {
   eyelids: "Отёчность век — скопление жидкости в тканях вокруг глаз. Причины: усталость, недосып, задержка соли.",
 };
 
-function buildRoutine(
-  skinType: string,
-  problems: string[],
-  hasAcne: boolean,
-): string {
-  const parts: string[] = [];
-
-  parts.push(
-    hasAcne
-      ? "Очищение: мягкий гель с салициловой кислотой"
-      : "Очищение: мягкая пенка для умывания",
-  );
-  parts.push("Тонизирование: успокаивающий тонер без спирта");
-
-  if (problems.includes("морщины")) {
-    parts.push("Сыворотка: увлажняющая с гиалуроновой кислотой");
-  }
-  if (problems.includes("акне") || problems.includes("поры")) {
-    parts.push("Сыворотка: матирующая с ниацинамидом");
-  }
-  if (problems.includes("пигментация")) {
-    parts.push("Сыворотка: с витамином C");
-  }
-
-  if (skinType === "жирная" || skinType === "комбинированная") {
-    parts.push("Увлажнение: лёгкий гелевый крем");
-  } else {
-    parts.push("Увлажнение: питательный крем");
-  }
-  parts.push("Защита: SPF 50+ ежедневно");
-
-  const morning = parts.join(" → ");
-  const evening: string[] = [];
-
-  evening.push("Демакияж: мицеллярная вода");
-  evening.push(hasAcne ? "Умывание: гель с салициловой кислотой" : "Умывание: мягкая пенка");
-  evening.push("Тонизирование");
-  if (problems.includes("пигментация") || problems.includes("морщины")) {
-    evening.push("Сыворотка: с ретинолом (через день)");
-  }
-  evening.push("Ночной крем: питательный с церамидами");
-
-  return `Утром: ${morning}\nВечером: ${evening.join(" → ")}`;
-}
+// buildRoutine + generateProductLinks now imported from
+// ../utils/skinScoring.ts (shared with Gemini provider; centralization
+// also fixes a latent bug: Face++'s old local copies used
+// `.includes("морщины")` which never matched `"морщины (умеренное)"`,
+// silently dropping сыворотка/ретинол recommendations. Centralized
+// version uses `.startsWith()` matching problem prefixes.)
 
 function determineMood(
   problems: string[],
@@ -127,63 +89,6 @@ function determineMood(
   if (problems.length >= 3) return "тревожный";
   if (problems.length >= 1) return "нейтральный";
   return "позитивный";
-}
-
-function generateProductLinks(
-  problems: string[],
-): Array<{ name: string; reason: string; effect: string }> {
-  const PRODUCTS: Record<string, Array<{ name: string; reason: string; effect: string }>> = {
-    акне: [
-      { name: "Сыворотка с салициловой кислотой 2%", reason: "Глубоко очищает поры и уменьшает воспаления", effect: "Через 2 недели воспаления станут заметно меньше, кожа успокоится" },
-      { name: "Гель с цинком", reason: "Успокаивает и подсушивает высыпания", effect: "Новые прыщи будут появляться реже, краснота уйдёт за 3-4 дня" },
-    ],
-    поры: [
-      { name: "Сыворотка с ниацинамидом 5%", reason: "Сужает поры и выравнивает тон", effect: "Через месяц поры станут менее заметными, тон кожи выровняется" },
-      { name: "Энзимная пудра для умывания", reason: "Мягко отшелушивает и очищает", effect: "Текстура кожи станет более гладкой уже через неделю" },
-    ],
-    "тёмные круги": [
-      { name: "Крем для глаз с кофеином", reason: "Улучшает микроциркуляцию", effect: "Тёмные круги станут светлее через 2 недели регулярного применения" },
-      { name: "Патчи с гиалуроновой кислотой", reason: "Интенсивно увлажняют и освежают", effect: "Экспресс-эффект — кожа вокруг глаз выглядит отдохнувшей сразу" },
-    ],
-    пигментация: [
-      { name: "Сыворотка с витамином C", reason: "Осветляет пигментные пятна", effect: "Пигментация станет заметно светлее через 3-4 недели" },
-      { name: "SPF 50+ ежедневно", reason: "Защищает от появления новых пятен", effect: "Предотвращает потемнение существующих пятен и появление новых" },
-    ],
-    морщины: [
-      { name: "Крем с ретинолом", reason: "Стимулирует выработку коллагена", effect: "Мелкие морщины разгладятся через месяц, глубокие станут менее заметными" },
-      { name: "Сыворотка с пептидами", reason: "Повышает упругость кожи", effect: "Кожа станет более упругой и подтянутой через 2-3 недели" },
-    ],
-    "чёрные точки": [
-      { name: "Сыворотка с салициловой кислотой 2%", reason: "Растворяет пробки в порах", effect: "Чёрные точки станут заметно светлее и меньше через 2 недели" },
-      { name: "Энзимная пудра", reason: "Мягко отшелушивает без травмирования", effect: "Поры очистятся, текстура выровняется через 3-4 применения" },
-    ],
-    "мешки под глазами": [
-      { name: "Крем для век с кофеином", reason: "Улучшает микроциркуляцию и отток жидкости", effect: "Отёчность уменьшится утром после первого же применения" },
-      { name: "Патчи гидрогелевые", reason: "Охлаждают и увлажняют тонкую кожу век", effect: "Мешки заметно уменьшатся после 15 минут, взгляд станет свежее" },
-    ],
-    "отёчность век": [
-      { name: "Гель для век с экстрактом огурца", reason: "Охлаждает и снимает припухлость", effect: "Отёчность спадает через 10-15 минут после нанесения" },
-      { name: "Патчи с зелёным чаем", reason: "Антиоксиданты и кофеин тонизируют кожу век", effect: "Веки выглядят менее припухшими, взгляд открытый" },
-    ],
-  };
-
-  const links: Array<{ name: string; reason: string; effect: string }> = [];
-
-  for (const [problem, items] of Object.entries(PRODUCTS)) {
-    if (problems.some((p) => p.startsWith(problem))) {
-      links.push(...items);
-    }
-  }
-
-  if (links.length === 0) {
-    links.push(
-      { name: "Мягкая пенка для умывания", reason: "Мягкое очищение без пересушивания", effect: "Кожа остаётся чистой и увлажнённой после каждого умывания" },
-      { name: "Увлажняющий крем с гиалуроновой кислотой", reason: "Интенсивно увлажняет", effect: "Спустя неделю кожа станет более упругой и сияющей" },
-      { name: "SPF 50+ для лица", reason: "Защита от фотостарения", effect: "Предотвращает преждевременное старение и пигментацию" },
-    );
-  }
-
-  return links;
 }
 
 export type AnalysisVerdict = {

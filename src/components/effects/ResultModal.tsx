@@ -11,10 +11,15 @@ import { useTelegram } from "@/hooks/useTelegram";
  * at the top of the modal in dual-mode Era (2026-06-25 evening).
  * Single-mode records have `variants` undefined and fall through to
  * render the legacy behavior (top-level fields).
+ *
+ * 2026-06-26 — added "gemini" for the new parallel provider. The tab
+ * switcher iterates `Object.keys(result.variants)` so any new provider
+ * added in the future automatically renders without UI changes.
  */
-type VariantKey = "faceplus" | "huggingface";
+type VariantKey = "faceplus" | "gemini" | "huggingface";
 const PROVIDER_LABELS: Record<VariantKey, string> = {
   faceplus: "Face++",
+  gemini: "Gemini 2.5",
   huggingface: "HuggingFace",
 };
 
@@ -99,7 +104,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
   // Dual-mode: pick the variant for the currently active tab. Defaults
   // to whichever provider the orchestrator flagged as `activeProvider`.
   // Single-mode: variants undefined → fall back to top-level fields.
-  const hasVariants = !!(result.variants && (result.variants.faceplus || result.variants.huggingface));
+  const hasVariants = !!(result.variants && (result.variants.faceplus || result.variants.gemini || result.variants.huggingface));
   const pickedVariant: AnalysisResult | null = hasVariants
     ? (result.variants![activeTab ?? (result.activeProvider ?? "faceplus")] ?? null)
     : null;

@@ -12,6 +12,7 @@ import {
   HFConfigError,
   HFUpstreamError,
 } from "./huggingFaceSkinService";
+import { analyzeSkinWithGemini } from "./geminiSkinService";
 import { achievementService } from "./achievementService";
 
 /**
@@ -33,6 +34,14 @@ const HASH_SIMILARITY_THRESHOLD = 20;
  * a temp `false` switch if anyone hits a 504 on Free.
  */
 const DUAL_PROVIDER_ENABLED = process.env.DUAL_PROVIDER_ENABLED !== "false";
+// 2026-06-26 — When false, Gemini 2.5 Pro Vision is excluded from
+// parallel run regardless of DUAL_PROVIDER_ENABLED. Default true so
+// Gemini participates in dual-mode and the user can compare its
+// verdict against Face++. Set "false" on deploys where Google free-
+// tier 429 rate limits cause unacceptable latency. (Sequential mode
+// already skips Gemini automatically — 60s cold-boot exceeds 10s
+// Vercel Free budget.)
+const GEMINI_PROVIDER_ENABLED = process.env.GEMINI_PROVIDER_ENABLED !== "false";
 
 // 2026-06-26 — Vercel runtime hardening: in production, an
 // unhandledRejection somewhere downstream of the orchestrator
@@ -129,25 +138,33 @@ export const analysisService = {
       throw new Error(access.reason || "no_analyses_left");
     }
 
-    // ── Dual-provider parallel chain (2026-06-25 evening) ────────────────
-    // Both providers run in parallel via `Promise.allSettled`. We never
-    // pre-commit to either one — both can succeed independently and
-    // give the user a real choice via the tab switcher in ResultModal.
+    // ── Tripe-provider parallel chain (2026-06-25 evening / updated 26) ──
+    // Face++ AND Gemini AND HuggingFace all run in parallel via
+    // `Promise.allSettled`. We never pre-commit to any one of them — each
+    // can succeed independently and give the user a real choice via
+    // the tab switcher in ResultModal.
     //
     // Why dual, not fallback-on-quota:
     // Face++ has been observed returning HTTP 200 with all-zero
     // features (no INSUFFICIENT_BALANCE error) after Free-Plan balance
     // hit $0. The previous fallback-on-quota chain silently labelled
-    // those responses as "full" quality. Now BOTH providers run; the
+    // those responses as "full" quality. Now ALL providers run; the
     // orchestrator's `isBogusResult` gate discards Face++ entries that
-    // look empty (`maxValue < 30 && maxConfidence < 0.5`).
+    // look empty (`maxValue < 30 && maxConfidence < 0.5 &&
+    // weightedScore.totalW === 0`).
     //
     // Quota errors from Face++ still fall through cleanly: a settled
     // `rejected` outcome is treated like any other failure, and the
-    // surviving variant (or friendly Russian message if both fail)
+    // surviving variant (or friendly Russian message if all fail)
     // takes over. The optional `AppQuotaExceededError` subclass is no
     // longer needed for routing but kept exported for backwards compat
     // in case other code paths use it.
+    //
+    // 2026-06-26 — added Gemini as a 3rd provider. `api-inference.huggingface.co`
+    // is no longer reachable from Vercel network; Gemini 2.5 Pro Vision
+    // (now added) is reachable and becomes the preferred mid-tier
+    // provider between Face++ (richest signals) and HuggingFace YOLO
+    // (sparse features).
     const fpPromise = analyzeSkinWithFacePlus(compressedPhoto);
     const hfPromise = analyzeSkinWithHuggingFace(compressedPhoto);
 
@@ -203,6 +220,12 @@ export const analysisService = {
             return { status: "rejected" as const, reason: e };
           }
         })();
+    const geminiRes = DUAL_PROVIDER_ENABLED && GEMINI_PROVIDER_ENABLED
+      ? await geminiPromise.then(
+          (v) => ({ status: "fulfilled" as const, value: v }),
+          (e) => ({ status: "rejected" as const, reason: e }),
+        )
+      : null; // Sequential mode or Gemini opt-out: 60s cold-boot exceeds Vercel Free 10s budget
     const hfRes = DUAL_PROVIDER_ENABLED
       ? await hfPromise.then(
           (v) => ({ status: "fulfilled" as const, value: v }),
@@ -211,14 +234,18 @@ export const analysisService = {
       : null; // Free tier: HF already ran inside the sequential IIFE above; outer `hfRes` stays null
 
     // ── Aggregated verdicts from the parallel/sequential result bags ──────
-    // IMPORTANT: order matters — `fpVerdict` and `hfVerdict` must be
-    // declared BEFORE the "both providers exhausted" branch below, which
-    // references them. Previous attempt left the declarations after the
-    // `if` check, causing a TypeScript "Cannot access 'fpVerdict' before
-    // initialization" TDZ error.
+    // IMPORTANT: order matters — `fpVerdict`, `geminiVerdict` and
+    // `hfVerdict` must be declared BEFORE the "all-providers-exhausted"
+    // branch below, which references them. Previous attempt left the
+    // declarations after the `if` check, causing a TypeScript "Cannot
+    // access 'fpVerdict' before initialization" TDZ error.
     const fpVerdict =
       fpRes.status === "fulfilled" && fpRes.value && fpRes.value.data_quality !== "invalid"
         ? fpRes.value
+        : null;
+    const geminiVerdict =
+      geminiRes && geminiRes.status === "fulfilled" && geminiRes.value && geminiRes.value.data_quality !== "invalid"
+        ? geminiRes.value
         : null;
     const hfVerdict =
       hfRes && hfRes.status === "fulfilled" && (hfRes as any).value
@@ -230,19 +257,28 @@ export const analysisService = {
       fpRes.status === "fulfilled" && fpRes.value.data_quality === "invalid"
         ? fpRes.value
         : null;
+    const geminiInvalidButPersisted =
+      geminiRes && geminiRes.status === "fulfilled" && geminiRes.value && geminiRes.value.data_quality === "invalid"
+        ? geminiRes.value
+        : null;
     const fpError = fpRes.status === "rejected" ? fpRes.reason : null;
     // Free tier (DUAL_PROVIDER_ENABLED=false): hfRes stays null because HF
     // already ran inside the sequential IIFE above. Optional chaining
     // makes this branch null-safe on both Pro and Free paths.
     const hfError = hfRes?.status === "rejected" ? hfRes.reason : null;
+    const geminiError = geminiRes?.status === "rejected" ? geminiRes.reason : null;
 
-    if (!fpVerdict && !hfVerdict) {
-      // Both providers either errored or returned bogus data. Log the
-      // actual cause(s) so Vercel logs carry the real exception
-      // while the user sees a friendly Russian message.
+    if (!fpVerdict && !geminiVerdict && !hfVerdict) {
+      // All three providers either errored or returned bogus data.
+      // Log the actual cause(s) so Vercel logs carry the real
+      // exception while the user sees a friendly Russian message.
       console.error(
-        "[Analysis] Both providers exhausted:",
-        { faceplus: fpError ?? fpInvalidButPersisted, huggingface: hfError },
+        "[Analysis] All providers exhausted:",
+        {
+          faceplus: fpError ?? fpInvalidButPersisted,
+          gemini: geminiError ?? geminiInvalidButPersisted,
+          huggingface: hfError,
+        },
       );
       throw new Error(
         "Сервис анализа временно недоступен. Разработчик уже работает над восстановлением. Попробуйте через час.",
@@ -260,17 +296,27 @@ export const analysisService = {
     // Pick the dominant variant for top-level backward-compatible
     // fields (skin_type / problems / etc.).
     //
-    // Default preference order: Face++ (richer). But if Face++ found
-    // no problems at all AND HF did find problems (e.g. HF caught real
-    // acne on a clear-skinned photo while Face++ gave the legitimate
-    // empty verdict), invert to HF so the top-level display surfaces
-    // the actionable feedback rather than the empty one.
+    // Default preference order: Face++ (richest) > Gemini (rich but
+    // Slower) > HuggingFace (YOLO sparse). But if Face++ found no
+    // problems AND Gemini did (e.g. Gemini caught real acne on a
+    // clear-skinned photo where Face++ returned legitimately-empty),
+    // invert to Gemini so the top-level display surfaces actionable
+    // feedback rather than the empty one. Falls back to HF only when
+    // both richer providers are absent.
     const fpProblems = fpVerdict?.problems.length ?? 0;
+    const geminiProblems = geminiVerdict?.problems.length ?? 0;
     const hfProblems = hfVerdict?.problems.length ?? 0;
-    const invertToHF = !!fpVerdict && fpProblems === 0 && hfProblems > 0 && !!hfVerdict;
-    const activeProvider: "faceplus" | "huggingface" =
-      fpVerdict && !invertToHF ? "faceplus" : (hfVerdict ? "huggingface" : "faceplus");
-    const primaryVerdict = (fpVerdict ?? hfVerdict)!;
+    const invertToGemini =
+      !!fpVerdict && fpProblems === 0 && geminiProblems > 0 && !!geminiVerdict;
+    const invertToHF =
+      !!fpVerdict && fpProblems === 0 &&
+      (!geminiVerdict || geminiProblems === 0) &&
+      hfProblems > 0 && !!hfVerdict;
+    const activeProvider: "faceplus" | "gemini" | "huggingface" =
+      fpVerdict && !invertToGemini && !invertToHF
+        ? "faceplus"
+        : (geminiVerdict && !invertToHF ? "gemini" : (hfVerdict ? "huggingface" : "faceplus"));
+    const primaryVerdict = (fpVerdict ?? geminiVerdict ?? hfVerdict)!;
 
     // Build the response shape:
     //  • top-level `analysis.*` fields mirror the dominant variant so
@@ -286,10 +332,15 @@ export const analysisService = {
     const { _rawResponse, ...clientResult } = stripProvider(primaryVerdict);
     const variants: Record<string, ReturnType<typeof stripProvider>> = {};
     if (fpVerdict) variants.faceplus = stripProvider(fpVerdict);
+    if (geminiVerdict) variants.gemini = stripProvider(geminiVerdict);
     if (hfVerdict) variants.huggingface = stripProvider(hfVerdict);
 
-    const providerField: "faceplus" | "huggingface" | "dual" =
-      fpVerdict && hfVerdict ? "dual" : activeProvider;
+    const validCount = (fpVerdict ? 1 : 0) + (geminiVerdict ? 1 : 0) + (hfVerdict ? 1 : 0);
+    // 2026-06-26: with three providers, "dual" means ">=2 valid variants"
+    // (interpretation unchanged from 2-provider era). User-facing value
+    // signals that the analysis came from multiple models.
+    const providerField: "faceplus" | "gemini" | "huggingface" | "dual" =
+      validCount >= 2 ? "dual" : activeProvider;
     const clientResultWithVariants = {
       ...clientResult,
       variants,
@@ -322,6 +373,11 @@ export const analysisService = {
             ? (fpVerdict._rawResponse as object)
             : fpInvalidButPersisted
               ? (fpInvalidButPersisted._rawResponse as object)
+              : undefined,
+          rawGemini: geminiVerdict
+            ? (geminiVerdict._rawResponse as object)
+            : geminiInvalidButPersisted
+              ? (geminiInvalidButPersisted._rawResponse as object)
               : undefined,
           rawHuggingFace: hfVerdict ? (hfVerdict._rawResponse as object) : undefined,
           provider: providerField,
