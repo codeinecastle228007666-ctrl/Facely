@@ -54,7 +54,7 @@ export const UserSearch: React.FC<Props> = ({ onPick, selectedId }) => {
       </label>
       <input
         type="text"
-        placeholder='напр. 5104952330 или ivanov или "Анна"'
+        placeholder='напр. ivanov или "Анна"'
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         style={{

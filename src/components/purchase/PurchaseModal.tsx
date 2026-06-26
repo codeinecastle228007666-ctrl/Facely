@@ -725,12 +725,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                           fontFamily: "'SF Mono', 'Fira Code', 'Courier New', monospace",
                           fontSize: 12,
                         }}
-                      >
-                        <div>
-                          {refToShowInInstructions
-                            ? refToShowInInstructions
-                            : "R-XXXX-XXXX"}
-                        </div>
+                      >                        <div>{refToShowInInstructions ? refToShowInInstructions : "R-КККК-ЧЧЧЧ"}</div>
                         <div>{usernameHint}</div>
                       </div>
                       <span style={{ fontSize: 11 }}>
