@@ -179,7 +179,7 @@ export interface ProcessedInvoiceRow {
   processedAt: string;
 }
 
-export interface DashStats {
+export interface DashCounts {
   totalUsers: number;
   payingUsers: number;
   pendingClaims: number;
@@ -269,5 +269,5 @@ export const adminApi = {
   /**
    * Dashboard aggregate counts.
    */
-  dashStats: () => callTrpc<DashStats>("admin.dashStats"),
+  dashStats: () => callTrpc<DashCounts>("admin.dashStats"),
 };

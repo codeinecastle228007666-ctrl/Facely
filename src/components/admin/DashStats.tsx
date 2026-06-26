@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { adminApi, type DashStats } from "./adminApi";
+import { adminApi, type DashCounts } from "./adminApi";
 
 interface Props {
   refreshKey: number;
@@ -15,7 +15,7 @@ interface Props {
  * The pendingClaims tile doubles as a banner notice when > 0.
  */
 export const DashStats: React.FC<Props> = ({ refreshKey }) => {
-  const [stats, setStats] = useState<DashStats | null>(null);
+  const [stats, setStats] = useState<DashCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
