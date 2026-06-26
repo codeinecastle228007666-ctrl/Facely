@@ -132,6 +132,25 @@ export function clearAdminCookieHeader(): string {
   return `${COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`;
 }
 
+/**
+ * 2026-06-26 — extract the raw `admin_session` token from a Headers
+ * object. Returns the bare token string (URL-safe base64 payload +
+ * HMAC sig). Callers verify via `verifyAdminToken`. Shared helper so
+ * the global tRPC handler and `createTRPCContext` parse cookies the
+ * same way.
+ *
+ * Defensive: missing/empty cookie header → undefined. Malformed entry
+ * (no `=`) → undefined. Whitespace trimmed.
+ */
+export function extractAdminCookie(headers: Headers): string | undefined {
+  const cookieHeader = headers.get("cookie") ?? "";
+  return cookieHeader
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${COOKIE_NAME}=`))
+    ?.slice(COOKIE_NAME.length + 1);
+}
+
 export const ADMIN_COOKIE_NAME = COOKIE_NAME;
 export const ADMIN_PANEL_DISABLED_ERROR =
   "ADMIN_PANEL_SECRET not configured (or too short) — admin panel disabled";

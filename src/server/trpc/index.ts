@@ -3,7 +3,11 @@ import superjson from "superjson";
 import { z } from "zod";
 import { prisma } from "../db";
 import type { TelegramAuthUser } from "../utils/telegramAuth";
-import { ADMIN_COOKIE_NAME, verifyAdminToken, ADMIN_PANEL_DISABLED_ERROR } from "../utils/adminAuth";
+import {
+  extractAdminCookie,
+  verifyAdminToken,
+  ADMIN_PANEL_DISABLED_ERROR,
+} from "../utils/adminAuth";
 import type { AdminSession } from "../utils/adminAuth";
 
 /**
@@ -27,12 +31,9 @@ export const createTRPCContext = async (opts: {
   telegramId?: string;
   initDataUser?: TelegramAuthUser;
 }) => {
-  const cookieHeader = opts.headers.get("cookie") ?? "";
-  const cookieToken = cookieHeader
-    .split(";")
-    .map((c) => c.trim())
-    .find((c) => c.startsWith(`${ADMIN_COOKIE_NAME}=`))
-    ?.slice(ADMIN_COOKIE_NAME.length + 1);
+  // 2026-06-26 — DRY: shared cookie extractor (also used by
+  // src/app/api/trpc/[trpc]/route.ts for the early initData gate).
+  const cookieToken = extractAdminCookie(opts.headers);
   const adminSession: AdminSession | null = verifyAdminToken(cookieToken ?? undefined);
 
   return {

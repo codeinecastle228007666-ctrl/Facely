@@ -7,10 +7,35 @@ import {
   shouldAllowDevAuthFallback,
   type TelegramAuthUser,
 } from "@/server/utils/telegramAuth";
+import {
+  extractAdminCookie,
+  verifyAdminToken,
+} from "@/server/utils/adminAuth";
 
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
 
 const handler = (req: NextRequest) => {
+  // 2026-06-26 — /admin panel routes authenticate via the HMAC-signed
+  // HttpOnly `admin_session` cookie (set by POST /api/admin/login), NOT
+  // via Telegram initData. We parse + HMAC-verify the cookie up-front so
+  // we can bypass the initData gate below for /api/trpc/admin.* paths.
+  // HMAC is what actually proves authenticity — without ADMIN_PANEL_SECRET
+  // no cookie can be forged, so adminSession === null still falls through
+  // to the standard 401 path. Same cookie is re-fed into createTRPCContext
+  // so adminProtectedProcedure checks ctx.adminSession on the way in.
+  // 2026-06-26 — DRY: cookie extract via adminAuth.extractAdminCookie
+  // (shared with createTRPCContext in src/server/trpc/index.ts).
+  const cookieToken = extractAdminCookie(req.headers);
+  const adminSession = verifyAdminToken(cookieToken ?? undefined);
+
+  // adminRouter is the only router that uses the `admin.*` procedure
+  // prefix. Anything under that prefix is allowed through on a valid
+  // admin cookie regardless of Telegram initData. Everything else still
+  // demands initData as before.
+  const pathname =
+    req.nextUrl?.pathname ?? new URL(req.url).pathname;
+  const isAdminPath = pathname.startsWith("/api/trpc/admin.");
+
   let telegramId: string | undefined;
   let initDataUser: TelegramAuthUser | undefined;
   let authSource: "initdata" | "dev-header" | "none" = "none";
@@ -43,17 +68,20 @@ const handler = (req: NextRequest) => {
         );
       }
     }
-  } else {
+  } else if (!isAdminPath) {
     // 3. Production without valid initData + BOT_TOKEN → reject.
     // Logged at WARN (not ERROR) because this is expected when users open the
     // Mini App URL in a regular browser (e.g. desktop link preview) or when
     // `window.Telegram.WebApp.initData` is briefly empty during Mini App
     // bootstrap. Genuine auth attacks are still rejected (401 below).
+    // Skipped for admin.* paths — /admin is opened in a regular browser
+    // and legitimately never sends initData. Admin auth is enforced by
+    // adminProtectedProcedure further down.
     console.warn("[tRPC] Production request without valid initData header");
     telegramId = undefined;
   }
 
-  if (!telegramId) {
+  if (!telegramId && !(isAdminPath && adminSession !== null)) {
     // Surface as 401 with a structured code so the client can show a
     // meaningful "please reopen from Telegram" message instead of crashing.
     return new Response(
