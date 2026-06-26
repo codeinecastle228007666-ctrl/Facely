@@ -93,7 +93,12 @@ async function mutation<T>(path: string, input?: unknown): Promise<T> {
 
 export const api = {
   auth: {
-    register: (data: { telegramId: string; name?: string; referrerId?: string }) =>
+    // 2026-06-26 Phase 1.5 — register now accepts Telegram @username so
+    // admin can match manual card-transfer receipts to the user via
+    // bank-comment grep. (Server-side, every subsequent `me()` also
+    // syncs it from the HMAC-verified initData — this is just just for
+    // brand-new users who haven't been seen yet.)
+    register: (data: { telegramId: string; name?: string; username?: string; referrerId?: string }) =>
       mutation<UserProfile>("auth.register", data),
     me: () => query<UserProfile>("auth.me"),
   },
@@ -134,8 +139,29 @@ export const api = {
       mutation<{ success: boolean }>("subscription.confirmStarsPayment", data),
     createChatStarsInvoice: () =>
       mutation<{ url: string; currency: string; amount: number }>("subscription.createChatStarsInvoice"),
-    reportCardTransfer: (data: { amount: number; tier?: "single" | "pack5" | "monthly" }) =>
-      mutation<{ success: boolean }>("subscription.reportCardTransfer", data),
+    // 2026-06-26 Phase 1.5 — клиент больше не передаёт amount (берётся
+    // server-side из PRICES.RUB[tier]). Новые параметры:
+    //   • previewCardTransfer(tier) → возвращает ref ДО перевода;
+    //     юзер видит его сразу при клике «Картой» и копирует в комментарий
+    //     банковского перевода.
+    //   • reportCardTransfer({ tier, expectedReference, submittedReference?,
+    //     screenshotBase64? }) — ищет драфт по expectedReference и
+    //     атомарно переводит в "submitted", нотифицируя admin ровно один раз.
+    previewCardTransfer: (data: { tier: "single" | "pack5" | "monthly" | "fifteen" }) =>
+      mutation<{ success: true; expectedReference: string; amount: number; tier: string }>(
+        "subscription.previewCardTransfer",
+        data,
+      ),
+    reportCardTransfer: (data: {
+      tier: "single" | "pack5" | "monthly" | "fifteen";
+      expectedReference?: string;
+      submittedReference?: string;
+      screenshotBase64?: string;
+    }) =>
+      mutation<{ success: boolean; expectedReference?: string; error?: string }>(
+        "subscription.reportCardTransfer",
+        data,
+      ),
   },
   referral: {
     claimBonus: () => mutation<boolean>("referral.claimBonus"),
@@ -395,6 +421,9 @@ export interface UserProfile {
   id: string;
   telegramId: string;
   name: string | null;
+  // 2026-06-26 Phase 1.5 — Telegram @username (без "@" префикса).
+  // Null если юзер скрыл username в настройках приватности.
+  username: string | null;
   level: number;
   xp: number;
   freeAnalyses: number;

@@ -5,12 +5,14 @@ import { createTRPCContext } from "@/server/trpc";
 import {
   verifyTelegramInitData,
   shouldAllowDevAuthFallback,
+  type TelegramAuthUser,
 } from "@/server/utils/telegramAuth";
 
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
 
 const handler = (req: NextRequest) => {
   let telegramId: string | undefined;
+  let initDataUser: TelegramAuthUser | undefined;
   let authSource: "initdata" | "dev-header" | "none" = "none";
 
   // 1. Production auth: verify Telegram initData HMAC-SHA256 signature.
@@ -19,6 +21,7 @@ const handler = (req: NextRequest) => {
     try {
       const user = verifyTelegramInitData(initData, BOT_TOKEN);
       telegramId = String(user.id);
+      initDataUser = user;
       authSource = "initdata";
     } catch (e: any) {
       console.error(`[tRPC] initData validation failed: ${e.message}`);
@@ -30,6 +33,8 @@ const handler = (req: NextRequest) => {
     const fallback = req.headers.get("x-telegram-id") || undefined;
     if (fallback) {
       telegramId = fallback;
+      // 2026-06-26 Phase 1.5 — no initDataUser in dev-mode → no username
+      // sync (dev doesn't ship to real Telegram users anyway).
       authSource = "dev-header";
       if (BOT_TOKEN) {
         console.warn(
@@ -70,6 +75,7 @@ const handler = (req: NextRequest) => {
       createTRPCContext({
         headers: req.headers,
         telegramId,
+        initDataUser,
       }),
   });
 };

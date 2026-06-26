@@ -9,6 +9,20 @@ function getTelegramInfo() {
   return tg?.initDataUnsafe?.user ?? null;
 }
 
+/**
+ * 2026-06-26 Phase 1.5 — strip leading "@" from Telegram username so
+ * the server stores a consistent "ivanov" (not "@ivanov"). Telegram
+ * itself usually hands us the bare handle, but some clients prepend @.
+ * Note: even with this, returning users' usernames get synced through
+ * the server-side `auth.me()` path; this client-side strip just makes
+ * sure `register()` matches what server stores.
+ */
+function normalizeUsername(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.replace(/^@+/, "").trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export function useUser() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,9 +63,14 @@ export function useUser() {
           const urlParam = new URLSearchParams(search).get("startapp") || new URLSearchParams(search).get("ref") || "";
           const startParam = sp || urlParam;
           const referrerId = startParam && /^\d{5,}$/.test(startParam) ? startParam : undefined;
+          // 2026-06-26 Phase 1.5 — pass @username on register so admin
+          // can match bank comments to user even before the me() sync
+          // catches up. (For brand-new users there's no DB row yet, so
+          // this is the only write path.)
           const data = await api.auth.register({
             telegramId: String(tgUser.id),
             name: tgUser.first_name,
+            username: normalizeUsername(tgUser.username),
             referrerId,
           });
           setUser(data);

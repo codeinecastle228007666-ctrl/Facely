@@ -41,6 +41,14 @@ interface PurchaseModalProps {
   onSuccess?: () => void;
 }
 
+interface PreviewState {
+  ref: string;
+  tier: Tier;
+  amount: number;
+  loading: boolean;
+  error: string | null;
+}
+
 export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onSuccess }) => {
   const [loading, setLoading] = useState<Tier | null>(null);
   const [prices, setPrices] = useState<{
@@ -55,6 +63,32 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
   const [cardCopied, setCardCopied] = useState(false);
   const [cardPaid, setCardPaid] = useState(false);
   const [cardSubmitting, setCardSubmitting] = useState(false);
+
+  // 2026-06-26 Phase 1.5 — ref генерируется на КЛИК «Картой», а не после
+  // «Я оплатил(a)». Юзер видит реф ДО перевода — может вписать его в
+  // комментарий к банковскому платежу. previewState привязан к
+  // выбранному тиру и обновляется useEffect'ом при смене тира.
+  const [previewState, setPreviewState] = useState<PreviewState | null>(null);
+  const [refCopied, setRefCopied] = useState(false);
+
+  // Phase 1 поля (оставлены для обратной совместимости / опционального UX).
+  const [submittedReference, setSubmittedReference] = useState("");
+  const [screenshotBase64, setScreenshotBase64] = useState<string | null>(null);
+  const [screenshotError, setScreenshotError] = useState<string | null>(null);
+  const [generatedReference, setGeneratedReference] = useState<string | null>(null);
+
+  // Live username from Telegram WebApp — показываем в инструкции как
+  // подсказку для комментария к банковскому переводу. Читается напрямую
+  // из Telegram WebApp (НЕ из сети), не делает лишний tRPC-запрос на
+  // каждый рендер модала.
+  // 2026-06-26 Phase 1.5 — ревьюер поймал race/лишний-traffic в прошлой
+  // реализации (`api.auth.me()` в useEffect без deps).
+  const liveUsername = typeof window !== "undefined"
+    ? (() => {
+        const raw = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.username;
+        return raw ? raw.replace(/^@+/, "") : null;
+      })()
+    : null;
 
   useEffect(() => {
     api.subscription
@@ -79,8 +113,54 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
       setCardPaid(false);
       setCardSubmitting(false);
       setLoading(null);
+      setPreviewState(null);
+      setRefCopied(false);
+      setSubmittedReference("");
+      setScreenshotBase64(null);
+      setScreenshotError(null);
+      setGeneratedReference(null);
     }
   }, [open]);
+
+  // Phase 1.5 — когда юзер выбирает «Картой» на конкретном тире,
+  // асинхронно запрашиваем у сервера реф (idempotent: при повторном
+  // открытии того же тира вернётся тот же реф; при смене тира создаётся
+  // новый драфт под новый тир).
+  useEffect(() => {
+    setPreviewState(null);
+    setRefCopied(false);
+    if (selectedTier === null) return;
+
+    let cancelled = false;
+    setPreviewState({ ref: "", tier: selectedTier, amount: 0, loading: true, error: null });
+
+    (async () => {
+      try {
+        const result = await api.subscription.previewCardTransfer({ tier: selectedTier });
+        if (cancelled) return;
+        setPreviewState({
+          ref: result.expectedReference,
+          tier: selectedTier,
+          amount: result.amount,
+          loading: false,
+          error: null,
+        });
+      } catch (e: any) {
+        if (cancelled) return;
+        setPreviewState({
+          ref: "",
+          tier: selectedTier,
+          amount: 0,
+          loading: false,
+          error: e?.message ?? "Не удалось сгенерировать код оплаты",
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTier]);
 
   const copyCardNumber = useCallback(async () => {
     try {
@@ -92,23 +172,43 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
     }
   }, []);
 
+  const copyReference = useCallback(async (ref: string) => {
+    try {
+      await navigator.clipboard.writeText(ref);
+      setRefCopied(true);
+      setTimeout(() => setRefCopied(false), 3000);
+    } catch {
+      prompt("Код оплаты:", ref);
+    }
+  }, []);
+
   const handleCardPaid = useCallback(async () => {
     if (!selectedTier) return;
-    const amount = PRICES.RUB[selectedTier];
     setCardSubmitting(true);
     try {
-      await api.subscription.reportCardTransfer({ amount, tier: selectedTier });
-      setCardPaid(true);
-      setTimeout(() => {
-        onSuccess?.();
-        onClose();
-      }, 2000);
+      const result = await api.subscription.reportCardTransfer({
+        tier: selectedTier,
+        expectedReference: previewState?.ref || undefined,
+        submittedReference: submittedReference.trim() || undefined,
+        screenshotBase64: screenshotBase64 || undefined,
+      });
+      if (result.success) {
+        setGeneratedReference(result.expectedReference ?? previewState?.ref ?? null);
+        setCardPaid(true);
+        // 2026-06-26 — extend to 6s so user has time to read confirmation + ref.
+        setTimeout(() => {
+          onSuccess?.();
+          onClose();
+        }, 6000);
+      } else {
+        alert(`Не удалось обработать заявку: ${result.error}. Попробуйте ещё раз.`);
+      }
     } catch {
       alert("Не удалось отправить уведомление. Пожалуйста, напишите в поддержку или попробуйте позже.");
     } finally {
       setCardSubmitting(false);
     }
-  }, [selectedTier, onSuccess, onClose]);
+  }, [selectedTier, submittedReference, screenshotBase64, previewState, onSuccess, onClose]);
 
   const handleStarsPurchase = async (tier: Tier) => {
     const tg = (window as any).Telegram?.WebApp;
@@ -161,6 +261,12 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
   const selectedTierDef = selectedTier
     ? tierViews.find((t) => t.id === selectedTier)
     : undefined;
+
+  // Phase 1.5 — для текста инструкции: ref из preview, юзернейм из
+  // профиля (если есть). Если username === null, просим ввести
+  // имя — fallback для юзеров без Telegram-username.
+  const refToShowInInstructions = previewState?.ref;
+  const usernameHint = liveUsername ? `@${liveUsername}` : "ваше имя";
 
   return (
     <AnimatePresence>
@@ -352,8 +458,50 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                 <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
                 <div style={{ fontSize: 16, fontWeight: 600 }}>Заявка принята!</div>
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 6, lineHeight: 1.5 }}>
-                  {selectedTierDef?.title} будет активирован после проверки платежа (обычно в течение часа).
+                  Админ проверит перевод в течение часа и зачислит {selectedTierDef?.title}.<br />
+                  Мы пришлём вам уведомление в Telegram после подтверждения.
                 </div>
+                {(generatedReference || previewState?.ref) && (
+                  <div
+                    style={{
+                      marginTop: 16,
+                      padding: "12px 14px",
+                      borderRadius: 12,
+                      background: "var(--bg)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: "'SF Mono', 'Fira Code', 'Courier New', monospace",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "var(--primary-dark)",
+                        letterSpacing: 1,
+                      }}
+                    >
+                      № {generatedReference ?? previewState?.ref}
+                    </span>
+                    <button
+                      onClick={() => copyReference(generatedReference ?? previewState?.ref ?? "")}
+                      style={{
+                        fontSize: 11,
+                        padding: "4px 10px",
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        background: refCopied ? "#4CAF50" : "transparent",
+                        color: refCopied ? "white" : "var(--text-secondary)",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {refCopied ? "✓ Скопировано" : "Копировать"}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-col gap-3">
@@ -449,6 +597,94 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                   </motion.button>
                 </div>
 
+                {/* Phase 1.5 — ULTRA-VISIBLE ref card BEFORE submit.
+                    Юзер копирует этот код и вписывает в комментарий к
+                    банковскому переводу — без этого админ не найдёт платёж. */}
+                <div
+                  style={{
+                    padding: "16px 14px",
+                    borderRadius: 14,
+                    background: "linear-gradient(135deg, rgba(255,215,0,0.10) 0%, rgba(126,196,216,0.10) 100%)",
+                    border: "2px dashed #FFD700",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "#8A6A00",
+                      letterSpacing: 1,
+                      textTransform: "uppercase",
+                      marginBottom: 6,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    🔖 Ваш код оплаты
+                  </div>
+                  {previewState?.loading || !previewState ? (
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                      Генерируем код…
+                    </div>
+                  ) : previewState.error ? (
+                    <div style={{ fontSize: 12, color: "#D32F2F" }}>
+                      Не удалось получить код. Попробуйте вернуться назад и обновить.
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontFamily: "'SF Mono', 'Fira Code', 'Courier New', monospace",
+                            fontSize: 18,
+                            fontWeight: 700,
+                            color: "#8A6A00",
+                            letterSpacing: 1.5,
+                          }}
+                        >
+                          {previewState.ref}
+                        </span>
+                        <button
+                          onClick={() => copyReference(previewState.ref)}
+                          style={{
+                            fontSize: 11,
+                            padding: "6px 12px",
+                            borderRadius: 10,
+                            border: "1px solid #FFD700",
+                            background: refCopied ? "#4CAF50" : "rgba(255,215,0,0.15)",
+                            color: refCopied ? "white" : "#8A6A00",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {refCopied ? "✓ Скопировано" : "Копировать"}
+                        </button>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--text-secondary)",
+                          marginTop: 8,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Впишите этот код в комментарий к переводу — иначе админ не сможет найти ваш платёж.
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Phase 1.5 — инструкция переписана: чёткие 2 строки в
+                    комментарии банка, сильный warning админ-не-найдёт. */}
                 <div
                   style={{
                     padding: "14px 16px",
@@ -475,15 +711,173 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                       на карту {CARD_BANK}
                       {CARD_HOLDER ? ` (${CARD_HOLDER})` : ""}
                     </li>
-                    <li>В комментарии к переводу: <code>Reveli {selectedTier}</code></li>
-                    <li>Нажмите «Я оплатил(а)» — админ зачислит в течение часа</li>
+                    <li>
+                      <strong style={{ color: "#D32F2F" }}>В комментарии ОБЯЗАТЕЛЬНО</strong>{" "}
+                      укажите две строки:
+                      <div
+                        style={{
+                          marginTop: 6,
+                          marginBottom: 4,
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          background: "white",
+                          border: "1px solid var(--border)",
+                          fontFamily: "'SF Mono', 'Fira Code', 'Courier New', monospace",
+                          fontSize: 12,
+                        }}
+                      >
+                        <div>
+                          {refToShowInInstructions
+                            ? refToShowInInstructions
+                            : "R-XXXX-XXXX"}
+                        </div>
+                        <div>{usernameHint}</div>
+                      </div>
+                      <span style={{ fontSize: 11 }}>
+                        Код сверху — чтобы админ нашёл платёж. Ваш @username / имя —
+                        чтобы админ знал кому зачислить.
+                      </span>
+                    </li>
+                    <li>
+                      Нажмите «Я оплатил(а)» — мы пришлём подтверждение, и админ зачислит в течение часа
+                    </li>
                   </ol>
+                </div>
+
+                {/* Phase 1 — optional submittedReference field. User types any
+                    word they put in their bank comment for admin cross-check. */}
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "var(--text-secondary)",
+                      marginBottom: 4,
+                    }}
+                  >
+                    💬 Слово для сверки (опционально)
+                  </label>
+                  <input
+                    type="text"
+                    value={submittedReference}
+                    onChange={(e) => setSubmittedReference(e.target.value)}
+                    maxLength={64}
+                    placeholder="например: привет2026"
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      fontSize: 13,
+                      background: "white",
+                      color: "var(--text)",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-muted)",
+                      marginTop: 4,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Если добавите это же слово в комментарий к переводу, админ найдёт платёж быстрее
+                  </div>
+                </div>
+
+                {/* Phase 1 — optional screenshot upload, max 1MB enforced client-side. */}
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "var(--text-secondary)",
+                      marginBottom: 4,
+                    }}
+                  >
+                    📸 Скриншот из банка (опционально, до 1 MB)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 1_000_000) {
+                        setScreenshotError("Файл больше 1 MB. Сожмите скриншот.");
+                        return;
+                      }
+                      setScreenshotError(null);
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const result = reader.result;
+                        if (typeof result === "string") {
+                          setScreenshotBase64(result);
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text-secondary)",
+                      width: "100%",
+                    }}
+                  />
+                  {screenshotError && (
+                    <div style={{ fontSize: 11, color: "#D32F2F", marginTop: 4 }}>{screenshotError}</div>
+                  )}
+                  {screenshotBase64 && (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 11,
+                        color: "#4CAF50",
+                      }}
+                    >
+                      ✓ Скриншот прикреплён
+                      <button
+                        onClick={() => setScreenshotBase64(null)}
+                        style={{
+                          fontSize: 10,
+                          padding: "2px 8px",
+                          borderRadius: 6,
+                          border: "1px solid var(--border)",
+                          background: "transparent",
+                          color: "var(--text-muted)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Убрать
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={handleCardPaid}
-                  disabled={cardSubmitting}
+                  disabled={cardSubmitting || previewState?.loading || !previewState?.ref}
                   style={{
                     width: "100%",
                     padding: "16px",
@@ -496,6 +890,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                     fontWeight: 600,
                     border: "none",
                     cursor: cardSubmitting ? "default" : "pointer",
+                    opacity: cardSubmitting ? 0.7 : 1,
                   }}
                 >
                   {cardSubmitting ? "Отправляем..." : "Я оплатил(а)"}

@@ -64,6 +64,96 @@ ALTER TABLE "SkinAnalysis" ADD COLUMN "rawGemini" JSONB;
 (см. комментарий в `analysisService.ts`). Лучше всё-таки применить SQL
 через Supabase SQL Editor чтобы дебажить Gemini по истории.
 
+### Phase 1 — CardTransferClaim reference tracking (2026-06-26)
+```sql
+ALTER TABLE "CardTransferClaim"
+  ADD COLUMN "expectedReference"   TEXT,
+  ADD COLUMN "submittedReference"  TEXT,
+  ADD COLUMN "screenshotBase64"    TEXT,
+  ADD COLUMN "creditConfirmed"     BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN "creditConfirmedAt"   TIMESTAMP(3);
+
+UPDATE "CardTransferClaim" SET "expectedReference" = 'LEGACY-' || "id"
+  WHERE "expectedReference" IS NULL;
+
+ALTER TABLE "CardTransferClaim" ALTER COLUMN "expectedReference" SET NOT NULL;
+
+CREATE UNIQUE INDEX "CardTransferClaim_expectedReference_key"
+  ON "CardTransferClaim"("expectedReference");
+
+CREATE INDEX "CardTransferClaim_creditConfirmed_claimedAt_idx"
+  ON "CardTransferClaim"("creditConfirmed", "claimedAt");
+```
+Назначение `expectedReference`: short code `R-{userLast4}-{random4Hex}`
+(≈12 chars), который генерируется при каждом клике «Я оплатил(a)».
+UNIQUE-индекс блокирует double-credit. Admin матчит перевод в банковской
+выписке (по этому рефу, по amount, или по `submittedReference` если юзер
+ввёл своё слово). Чтобы подтвердить кредит: `npx tsx scripts/credit-by-ref.ts R-XXXX-XXXX`
+(см. CLI usage в шапке скрипта).
+
+### Phase 1.5 — preview ref + username sync (2026-06-26)
+
+```sql
+ALTER TABLE "User" ADD COLUMN "username" TEXT;
+CREATE INDEX "User_username_idx" ON "User"("username");
+
+ALTER TABLE "CardTransferClaim"
+  ADD COLUMN "notificationSentAt" TIMESTAMP(3);
+
+UPDATE "CardTransferClaim"
+SET    "notificationSentAt" = "claimedAt"
+WHERE  "notificationSentAt" IS NULL;
+
+CREATE INDEX "CardTransferClaim_userId_tier_notificationSentAt_idx"
+  ON "CardTransferClaim"("userId", "tier", "notificationSentAt");
+```
+
+Phase 1.5 закрывает два оставшихся "match gap" на ручных переводах:
+
+1. **Username сохраняется + синкается на каждом `me()`**.
+   `AuthService.getProfile(telegramId, initDataUser)` теперь принимает
+   HMAC-проверенный `TelegramAuthUser` и тихо upsert'ит `name`+`username`
+   (без "@") при каждом авторизованном запросе. Раньше username никогда
+   не попадал в DB для existing users (только через `register()`,
+   который сидит в `catch`-ветке `useUser.ts`). Теперь — и через `register()`,
+   и через `me()`. Admin матчит переводы по `@username` в банковской
+   выписке (после текста в комментарии к переводу — см. ниже).
+
+2. **Preview endpoint генерирует ref ДО перевода**.
+   Новая tRPC-procedure `subscription.previewCardTransfer(tier)`:
+   - ищет draft `(userId, tier, creditConfirmed=false, notificationSentAt IS NULL)`;
+   - если нашла — возвращает тот же ref (idempotent per (user, tier));
+   - если нет — генерирует `R-{userLast4}-{random4Hex}`, создаёт
+     `CardTransferClaim` БЕЗ `notificationSentAt` (драфт);
+   - возвращает `{ ref, amount, tier }`.
+   UI в `PurchaseModal` вызывает preview при клике «Картой» и рисует
+   prominent ref-карточку с копированием ДО submit.
+
+3. **Ref-stable submit через ожидаемый ref**.
+   `subscription.reportCardTransfer({ tier, expectedReference, submittedReference?, screenshotBase64? })`
+   ищет драфт по `(userId, expectedReference)` — детерминировано, без
+   гонок. Без `expectedReference` (defensive / legacy) — создаёт новую
+   запись + сразу нотифицирует admin. С ним — апдейтит драфт: если
+   `notificationSentAt` was null, нотифицирует и ставит timestamp
+   (идемпотентно на повторный клик). Если уже set — тихо обновляет
+   submitted fields без повторной нотификации.
+
+4. **Backfill `notificationSentAt` критичен**.
+   Без `UPDATE … SET "notificationSentAt" = "claimedAt" WHERE NULL`
+   старые записи Phase 1 выглядели бы как драфты → первый же
+   `Я оплатил(a)` от того же юзера/тира вызывал бы ПОВТОРНУЮ
+   нотификацию admin по уже-кредитованной записи.
+
+5. **Bank-comment инструкция — две обязательные строки**:
+   ```
+   R-XXXX-XXXX
+   @username_из_Telegram  (или имя, если username скрыт)
+   ```
+   Юзер видит оба в `PurchaseModal` сразу с copy-кнопкой.
+   Admin матчит перевод в выписке по `(amount, ref)` ИЛИ по `@username`,
+   что покрывает ~95% кейсов (раньше был только `amount` при полном
+   отстутствии username → ~30% матч).
+
 ## Переменные окружения (Vercel + .env)
 - `DATABASE_URL`
 - `FACE_PLUS_KEY`

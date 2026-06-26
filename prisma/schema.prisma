@@ -11,6 +11,14 @@ model User {
   id                       String   @id @default(cuid())
   telegramId               String   @unique
   name                     String?
+  /// Telegram @username (without `@` prefix), synced silently on every
+  /// `auth.me()` and saved on first register. Used by admin as a
+  /// matcher for manual card-transfer credits — user puts the same
+  /// `@username` in their bank transfer comment so admin can find them
+  /// in their bank statement. Nullable (user can hide username from
+  /// Telegram privacy settings). Not unique — Telegram may recycle
+  /// usernames when accounts are deleted.
+  username                 String?
   level                    Int      @default(1)
   xp                       Int      @default(0)
   freeAnalyses             Int      @default(3)
@@ -39,6 +47,8 @@ model User {
   inventory        InventoryItem[]
   routine          Routine?
   bonuses          UserBonus[]
+  
+  @@index([username])
 }
 
 model SkinAnalysis {
@@ -249,17 +259,53 @@ model ProcessedInvoice {
 
   @@index([userId])
   @@index([processedAt])
-}
-
-/// Records a user's claim that they transferred money for a card-paid tier.
-/// Prevents spam — admin bot sees at most one notification per (user, tier)
-/// per cooldown window.
+}/// Records a user's claim that they transferred money for a card-paid tier.
+/// Phase 1 (2026-06-26): added reference tracking (expected/submitted),
+/// screenshot upload, and credit-confirmation status. The `expectedReference`
+/// is a UNIQUE short code (e.g. "R-A9B2-XR7K") returned to the user and
+/// shown in the bank-transfer comment field; admin matches it to incoming
+/// payments. UNIQUE prevents accidental double-credit and dedups duplicate
+/// "Я оплатил" clicks without needing a time window.
+///
+/// Phase 1.5 (2026-06-26): added `notificationSentAt` to distinguish
+/// "draft" (modal opened, ref issued, no admin notification yet) from
+/// "submitted" (user clicked "Я оплатил" — admin was notified). The
+/// `previewCardTransfer` mutation creates the draft; `reportCardTransfer`
+/// updates it + sends the notification (once, idempotent via this flag).
 model CardTransferClaim {
-  id        String   @id @default(cuid())
-  userId    String
-  tier      String   // "single" | "pack5" | "monthly"
-  amount    Int
-  claimedAt DateTime @default(now())
+  id                  String    @id @default(cuid())
+  userId              String
+  tier                String    // "single" | "pack5" | "fifteen" | "monthly"
+  amount              Int
+  /// Short auto-generated ref displayed to user + sent in admin notification.
+  /// Format: "R-{userLast4Uid}-{random4Hex}" — ≈12 chars, easy to copy,
+  /// unique via DB UNIQUE index (catches accidental double-click re-submits).
+  /// Phase 1.5: ref is now issued on `previewCardTransfer` (modal open),
+  /// BEFORE the user makes their bank transfer, so they can put it in the
+  /// transfer comment field.
+  expectedReference   String    @unique
+  /// User-typed/observed ref from their banking app confirmation. Optional
+  /// cross-check; admin scans bank statement for this string to match.
+  submittedReference  String?
+  /// Optional screenshot of the payment confirmation screen from user's
+  /// banking app. Stored as base64 (max ~1MB enforced client-side). Short
+  /// Phase 1 hack — Phase 2 (Smart Global Payment) makes this obsolete.
+  screenshotBase64    String?
+  /// Flagged true after admin has matched the ref in their bank statement
+  /// AND credited the user. Drives both the push notification to user and
+  /// the `scripts/credit-by-ref.ts` admin tooling's idempotency.
+  creditConfirmed     Boolean   @default(false)
+  creditConfirmedAt   DateTime?
+  /// Phase 1.5 — when telegram notification to admin bot was dispatched
+  /// (null = draft from preview, set = user clicked "Я оплатил").
+  /// null ↔ draft from preview (may or may not be confirmed later);
+  /// set ↔ admin was already notified about this claim.
+  /// Drives both idempotent re-clicks AND admin notification dedup.
+  notificationSentAt  DateTime?
+
+  claimedAt           DateTime  @default(now())
 
   @@index([userId, tier, claimedAt])
+  @@index([creditConfirmed, claimedAt])
+  @@index([userId, tier, notificationSentAt])
 }
