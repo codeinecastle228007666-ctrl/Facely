@@ -46,6 +46,7 @@ import type {
 import {
   MIN_CONFIDENCE,
   PROBLEM_MAP,
+  isBogusResult,
   severityFromValue,
   weightedSkinScore,
 } from "../utils/skinScoring";
@@ -296,6 +297,11 @@ export async function analyzeSkinWithHuggingFace(
     eye_pouch: { value: 0, confidence: 0 },
     eyelids: { value: 0, confidence: 0 },
   };
+
+  // Bogus detection (parallel to Face++ side). HF's YOLO output is
+  // usually sparse — if it returns zero detections the synthesized
+  // feature bag will be all-zero conf, which trips the bogus gate.
+  const bogo = isBogusResult(features);
 
   // Trimmed recommendations menu — HF can only detect acne/spot/wrinkle.
   // Full RECOMMENDATIONS_MAP lives in skinScoring.ts; we deliberately

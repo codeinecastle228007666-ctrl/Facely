@@ -6,6 +6,18 @@ import { CloseIcon } from "@/components/ui/Icons";
 import type { AnalysisResult } from "@/services/api";
 import { useTelegram } from "@/hooks/useTelegram";
 
+/**
+ * Helper: a variant object keyed by `provider`. Drives the tab switcher
+ * at the top of the modal in dual-mode Era (2026-06-25 evening).
+ * Single-mode records have `variants` undefined and fall through to
+ * render the legacy behavior (top-level fields).
+ */
+type VariantKey = "faceplus" | "huggingface";
+const PROVIDER_LABELS: Record<VariantKey, string> = {
+  faceplus: "Face++",
+  huggingface: "HuggingFace",
+};
+
 interface ResultModalProps {
   open: boolean;
   onClose: () => void;
@@ -80,11 +92,28 @@ export const ResultModal: React.FC<ResultModalProps> = ({
   onShare,
   hasPrevAnalysis,
 }) => {
+  const [activeTab, setActiveTab] = React.useState<VariantKey | null>(null);
+
   if (!result) return null;
 
-  const problems = result.problems || [];
-  const recommendations = result.recommendations || [];
-  const productLinks = result.product_links || [];
+  // Dual-mode: pick the variant for the currently active tab. Defaults
+  // to whichever provider the orchestrator flagged as `activeProvider`.
+  // Single-mode: variants undefined → fall back to top-level fields.
+  const hasVariants = !!(result.variants && (result.variants.faceplus || result.variants.huggingface));
+  const pickedVariant: AnalysisResult | null = hasVariants
+    ? (result.variants![activeTab ?? (result.activeProvider ?? "faceplus")] ?? null)
+    : null;
+  const display: AnalysisResult = pickedVariant ?? result;
+
+  // Reset tab on close / when result changes (picks orchestrator's
+  // default activeProvider each time we open a fresh analysis).
+  React.useEffect(() => {
+    setActiveTab(result.activeProvider ?? null);
+  }, [result]);
+
+  const problems = display.problems || [];
+  const recommendations = display.recommendations || [];
+  const productLinks = display.product_links || [];
 
   const parseSeverity = (p: string): string | null => {
     const m = p.match(/\((.+?)\)/);
@@ -141,7 +170,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </button>
             </div>
 
-            {result.data_quality === "partial" && (
+            {display.data_quality === "partial" && (
               <div
                 role="status"
                 style={{
@@ -162,6 +191,48 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </div>
             )}
 
+            {hasVariants && result.variants && (
+              <div
+                role="tablist"
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  padding: 4,
+                  background: "var(--bg)",
+                  borderRadius: 12,
+                  marginBottom: 16,
+                }}
+              >
+                {(Object.keys(result.variants) as VariantKey[]).map((key) => {
+                  if (!result.variants![key]) return null;
+                  const isActive = (activeTab ?? result.activeProvider ?? "faceplus") === key;
+                  return (
+                    <button
+                      key={key}
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setActiveTab(key)}
+                      style={{
+                        flex: 1,
+                        padding: "8px 12px",
+                        borderRadius: 10,
+                        border: "none",
+                        fontSize: 13,
+                        fontWeight: isActive ? 600 : 500,
+                        background: isActive
+                          ? "linear-gradient(135deg, var(--primary), var(--secondary))"
+                          : "transparent",
+                        color: isActive ? "white" : "var(--text-secondary)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {PROVIDER_LABELS[key]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="flex items-center gap-3" style={{ marginBottom: 16 }}>
               <div
                 style={{
@@ -174,23 +245,23 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                 }}
               >
                 <span style={{ fontSize: 14, fontWeight: 600, color: "var(--primary-dark)" }}>
-                  {result.skin_type}
+                  {display.skin_type}
                 </span>
                 <span style={{ fontSize: 10, color: "var(--primary-dark)", opacity: 0.6, marginTop: 1 }}>
-                  {SKIN_TYPE_HINT[result.skin_type] || ""}
+                  {SKIN_TYPE_HINT[display.skin_type] || ""}
                 </span>
               </div>
               <div
                 style={{
                   padding: "8px 16px",
                   borderRadius: 20,
-                  background: `${MOOD_COLORS[result.mood]}22`,
+                  background: `${MOOD_COLORS[display.mood]}22`,
                   fontSize: 14,
                   fontWeight: 500,
-                  color: MOOD_COLORS[result.mood],
+                  color: MOOD_COLORS[display.mood],
                 }}
               >
-                {result.mood}
+                {display.mood}
               </div>
             </div>
 
@@ -205,9 +276,9 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                 marginBottom: 16,
               }}
             >
-              {SKIN_TYPE_DESC[result.skin_type] || `Тип кожи: ${result.skin_type}`}
-              <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 10, background: `${MOOD_COLORS[result.mood]}18`, fontSize: 13, color: MOOD_COLORS[result.mood] }}>
-                <strong>Настроение кожи: {result.mood}</strong> — {MOOD_DESC[result.mood] || ""}
+              {SKIN_TYPE_DESC[display.skin_type] || `Тип кожи: ${display.skin_type}`}
+              <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 10, background: `${MOOD_COLORS[display.mood]}18`, fontSize: 13, color: MOOD_COLORS[display.mood] }}>
+                <strong>Настроение кожи: {display.mood}</strong> — {MOOD_DESC[display.mood] || ""}
               </div>
             </div>
 
@@ -284,7 +355,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </div>
             )}
 
-            {result.skin_score !== undefined && (
+            {display.skin_score !== undefined && (
               <div style={{ marginBottom: 16, textAlign: "center" }}>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Skin Score</div>
                 <div style={{ position: "relative", display: "inline-block", width: 80, height: 80 }}>
@@ -292,19 +363,19 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                     <circle cx="40" cy="40" r="34" fill="none" stroke="var(--border)" strokeWidth="6" />
                     <circle
                       cx="40" cy="40" r="34" fill="none"
-                      stroke={result.skin_score >= 80 ? "#4CAF50" : result.skin_score >= 50 ? "#FF9800" : "#E07A8E"}
-                      strokeWidth="6" strokeDasharray={`${2 * Math.PI * 34 * result.skin_score / 100} ${2 * Math.PI * 34}`}
+                      stroke={display.skin_score >= 80 ? "#4CAF50" : display.skin_score >= 50 ? "#FF9800" : "#E07A8E"}
+                      strokeWidth="6" strokeDasharray={`${2 * Math.PI * 34 * display.skin_score / 100} ${2 * Math.PI * 34}`}
                       strokeLinecap="round" transform="rotate(-90, 40, 40)"
                     />
                     <text x="40" y="45" textAnchor="middle" fontSize="18" fontWeight={700} fill="var(--text)">
-                      {result.skin_score}
+                      {display.skin_score}
                     </text>
                   </svg>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                  {result.skin_score >= 80 ? "Отличное состояние" : result.skin_score >= 50 ? "Требует внимания" : "Нужен уход"}
+                  {display.skin_score >= 80 ? "Отличное состояние" : display.skin_score >= 50 ? "Требует внимания" : "Нужен уход"}
                 </div>
-                {result.data_quality === "partial" && (
+                {display.data_quality === "partial" && (
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
                     ⚠ Оценка приблизительная — часть параметров не проверялась
                   </div>
@@ -327,7 +398,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                   whiteSpace: "pre-line",
                 }}
               >
-                {result.daily_routine}
+                {display.daily_routine}
               </div>
             </div>
 

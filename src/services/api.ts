@@ -206,8 +206,30 @@ export interface AnalysisResult {
    * was used (only acne/spot/mole/wrinkle, no skin_type, no pore,
    * no dark_circle) — skin_score will be biased upward because
    * HF-undetected features stay at zero confidence.
+   *
+   * 2026-06-25 evening (dual-mode): "invalid" means the provider
+   * returned HTTP 200 but the feature bag was all-zero / near-zero
+   * (likely a stub or cached response). Orchestrator silently drops
+   * these from `variants` so they never reach the user.
    */
-  data_quality?: "full" | "partial";
+  data_quality?: "full" | "partial" | "invalid";
+  /**
+   * 2026-06-25 evening (dual-mode). Optional map of per-provider
+   * results. When present, ResultModal renders a tab switcher so the
+   * user can pick which provider's verdict to trust. Older single-mode
+   * records simply omit this field — UI gracefully falls back to the
+   * top-level (dominant) skin_type / problems / skin_score fields.
+   */
+  variants?: {
+    faceplus?: AnalysisResult;
+    huggingface?: AnalysisResult;
+  };
+  /**
+   * Which entry in `variants` is mirrored by the top-level fields.
+   * UI defaults its tab to this provider before the user explicitly
+   * switches tabs.
+   */
+  activeProvider?: "faceplus" | "huggingface";
 }
 
 export interface AnalyzeResponse {
@@ -217,7 +239,7 @@ export interface AnalyzeResponse {
    * client can route UI affordances accordingly (e.g. hide daily
    * routine in some cases). Currently informational only.
    */
-  provider?: "faceplus" | "huggingface";
+  provider?: "faceplus" | "huggingface" | "dual";
   xpGained: number;
   totalXp: number;
   level: number;
@@ -231,6 +253,13 @@ export interface AnalysisHistoryItem {
   id: string;
   photoUrl: string | null;
   skinType: string | null;
+  /**
+   * 2026-06-25 evening — top-level "dual" when both providers ran
+   * and both passed the bogus-gate. `result.variants` (if present)
+   * holds each provider's verdict for re-rendering the dual UI from
+   * history.
+   */
+  provider: "faceplus" | "huggingface" | "dual" | null;
   result: AnalysisResult | null;
   isFree: boolean;
   createdAt: string;
@@ -258,8 +287,23 @@ export interface WeeklyStreakResult {
 }
 
 export interface ComparisonResult {
-  analysis1: { id: string; date: string; result: any; skinType: string | null; photoBase64: string | null };
-  analysis2: { id: string; date: string; result: any; skinType: string | null; photoBase64: string | null };
+  analysis1: {
+    id: string;
+    date: string;
+    result: any;
+    skinType: string | null;
+    photoBase64: string | null;
+    /** 2026-06-25 evening — surfaced so the comparison view can flag the provider. */
+    provider: "faceplus" | "huggingface" | "dual" | null;
+  };
+  analysis2: {
+    id: string;
+    date: string;
+    result: any;
+    skinType: string | null;
+    photoBase64: string | null;
+    provider: "faceplus" | "huggingface" | "dual" | null;
+  };
   differences: Record<string, { from: number; to: number; diff: number; improved: boolean }>;
 }
 

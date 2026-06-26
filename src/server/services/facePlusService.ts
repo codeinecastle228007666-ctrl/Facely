@@ -43,6 +43,7 @@ import {
   MIN_CONFIDENCE,
   PROBLEM_MAP,
   RECOMMENDATIONS_MAP,
+  isBogusResult,
   severityFromValue,
   weightedSkinScore,
 } from "../utils/skinScoring";
@@ -218,8 +219,15 @@ export type AnalysisVerdict = {
    * huggingFaceSkinService to "partial" (only acne/spot/mole/wrinkle)
    * and stays undefined (or "full") for Face++ records. ResultModal
    * surfaces this as a degraded-mode banner.
+   *
+   * Jun-25 evening (dual-mode era): also exposes "invalid" — set when
+   * the provider returned HTTP 200 but the feature bag was all-zero
+   * (no real analysis). The orchestrator silently drops these from
+   * the user-visible `variants` map. They are still persisted to the
+   * `rawFacePlus` / `rawHuggingFace` JSON column for debug, but never
+   * rendered.
    */
-  data_quality?: "full" | "partial";
+  data_quality?: "full" | "partial" | "invalid";
 };
 
 /**
@@ -358,6 +366,12 @@ export async function analyzeSkinWithFacePlus(
     eyelids: { value: eyelidValue, confidence: eyelidConfidence },
   };
 
+  // Bogus detection: Face++ was observed (2026-06-25) returning canned
+  // near-zero responses instead of throwing a quota error after Free-Plan
+  // exhaustion. Mark such a verdict as `data_quality: "invalid"` so the
+  // orchestrator's dual-mode logic drops it from the user-facing variants.
+  const bogo = isBogusResult(features);
+
   // Build problem list from Face++.
   const problemEntries: { name: string; severity: "лёгкое" | "умеренное" | "выраженное" }[] = [];
   const recommendations: string[] = [];
@@ -391,6 +405,6 @@ export async function analyzeSkinWithFacePlus(
     mood,
     product_links: productLinks,
     _rawResponse: r,
-    data_quality: "full",
+    data_quality: bogo ? "invalid" : "full",
   };
 }
