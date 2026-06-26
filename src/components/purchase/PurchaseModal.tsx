@@ -77,18 +77,10 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
   const [screenshotError, setScreenshotError] = useState<string | null>(null);
   const [generatedReference, setGeneratedReference] = useState<string | null>(null);
 
-  // Live username from Telegram WebApp — показываем в инструкции как
-  // подсказку для комментария к банковскому переводу. Читается напрямую
-  // из Telegram WebApp (НЕ из сети), не делает лишний tRPC-запрос на
-  // каждый рендер модала.
-  // 2026-06-26 Phase 1.5 — ревьюер поймал race/лишний-traffic в прошлой
-  // реализации (`api.auth.me()` в useEffect без deps).
-  const liveUsername = typeof window !== "undefined"
-    ? (() => {
-        const raw = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.username;
-        return raw ? raw.replace(/^@+/, "") : null;
-      })()
-    : null;
+  // Live @username **больше** не читается из Telegram WebApp:
+  // подставлять Telegram-@username в UI «банковского комментария» —
+  // это data-leak в screenshot юзера и в /admin нотификации. Юзер
+  // сам впишет свой `@username` в комментарий при переводе.
 
   useEffect(() => {
     api.subscription
@@ -262,11 +254,12 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
     ? tierViews.find((t) => t.id === selectedTier)
     : undefined;
 
-  // Phase 1.5 — для текста инструкции: ref из preview, юзернейм из
-  // профиля (если есть). Если username === null, просим ввести
-  // имя — fallback для юзеров без Telegram-username.
+  // Phase 1.5 — для текста инструкции: ref из preview. Юзернейм
+  // **никогда** не подставляется автоматически — это data-leak в
+  // UI/bank-screenshot. Юзер должен вписать его сам в банковский
+  // комментарий, поэтому здесь всегда placeholder.
   const refToShowInInstructions = previewState?.ref;
-  const usernameHint = liveUsername ? `@${liveUsername}` : "ваше имя";
+  const usernameHint = "ваше имя";
 
   return (
     <AnimatePresence>
@@ -575,7 +568,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                   >
                     <span>Сумма к оплате</span>
                     <span style={{ fontWeight: 700, opacity: 1, color: "#4CAF50" }}>
-                      {selectedTierDef && formatAmount(selectedTierDef.amount, "RUB")}
+                      {selectedTierDef && formatAmount(PRICES.RUB[selectedTierDef.id], "RUB")}
                     </span>
                   </div>
                   <motion.button
@@ -706,7 +699,7 @@ export const PurchaseModal: React.FC<PurchaseModalProps> = ({ open, onClose, onS
                       Переведите{" "}
                       <strong>
                         {selectedTierDef &&
-                          formatAmount(selectedTierDef.amount, "RUB")}
+                          formatAmount(PRICES.RUB[selectedTierDef.id], "RUB")}
                       </strong>{" "}
                       на карту {CARD_BANK}
                       {CARD_HOLDER ? ` (${CARD_HOLDER})` : ""}
