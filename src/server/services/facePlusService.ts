@@ -56,6 +56,37 @@ import {
 // Gemini providers. Imported at the top of this file.
 
 /**
+ * 2026-06-26 — Face++ value-scale normalizer.
+ *
+ * Face++ `/facepp/v1/skinanalyze` returns `value` on a 0-3 integer
+ * severity scale (0=none, 1=light, 2=moderate, 3=severe). Our
+ * `severityFromValue()` in skinScoring.ts was calibrated to the
+ * 0-100 scale used by Gemini's responseSchema (30=лёгкое, 60=умеренное,
+ * 90=выраженное). Without normalization, Face++ value=3 (severe)
+ * never crosses the 30 floor and no features ever register as a
+ * problem — every Face++ analysis ends with phantom
+ * "score=100, no problems". (Confirmed by user feedback 2026-06-26.)
+ *
+ * Mapping: linearize the four buckets into the calibrated scale so
+ * downstream `severityFromValue` thresholds line up naturally:
+ *   0 → 0    (none)
+ *   1 → 35   (≥ 30 → лёгкое)
+ *   2 → 70   (≥ 60 → умеренное)
+ *   3 → 100  (≥ 90 → выраженное; any n≥3 lands here for safety)
+ *
+ * Graceful fallback for unexpected fractional values: Math.round
+ * first, so 0.4 → 0, 1.4 → 1, 2.6 → 3. Pre-existing feature paths
+ * already coalesce null/undefined to 0 via `?? 0`.
+ */
+function normalizeFacePlusValue(v: number | undefined | null): number {
+  const n = Math.round(v ?? 0);
+  if (n <= 0) return 0;
+  if (n === 1) return 35;
+  if (n === 2) return 70;
+  return 100;
+}
+
+/**
  * Resolve skin type only when the model is confident.
  */
 function determineSkinType(skinType: FacePlusResult["skin_type"] | undefined | null): string {
@@ -242,46 +273,67 @@ export async function analyzeSkinWithFacePlus(
   const r = data.result;
 
   // Aggregate pore score (max-confidence across 4 zones — see commit
-  // "pore max-conf" for rationale).
+  // "pore max-conf" for rationale). Values are normalized to 0-100 via
+  // `normalizeFacePlusValue` so the downstream severity thresholds
+  // (30/60/90) actually fire on real Face++ severity (0/1/2/3).
   const poreEntries = [
     r.pores_left_cheek,
     r.pores_right_cheek,
     r.pores_forehead,
     r.pores_jaw,
-  ].map((v) => v ?? { confidence: 0, value: 0 });
+  ].map((v) => ({
+    confidence: v?.confidence ?? 0,
+    value: normalizeFacePlusValue(v?.value),
+  }));
   const bestPore = poreEntries.reduce((best, cur) =>
     cur.confidence > best.confidence ? cur : best,
   );
   const poreConfidence = bestPore.confidence;
   const poreValue = bestPore.value;
 
-  // Aggregate wrinkle as max across types.
+  // Aggregate wrinkle as max across types. Values normalized to 0-100
+  // (Face++ API returns 0-3 severity baskets) so max-comparison and
+  // downstream severityFromValue both work in calibrated units.
   const wrinkleValues = [
     r.nasolabial_fold,
     r.forehead_wrinkle,
     r.glabella_wrinkle,
     r.crows_feet,
     r.eye_finelines,
-  ].map((v) => v ?? { confidence: 0, value: 0 });
+  ].map((v) => ({
+    confidence: v?.confidence ?? 0,
+    value: normalizeFacePlusValue(v?.value),
+  }));
   const wrinkleEntry = wrinkleValues.reduce((worst, cur) =>
     cur.value > worst.value ? cur : worst,
   );
 
-  // Aggregate eyelids as average across both eyes.
+  // Aggregate eyelids as average across both eyes. Each input value is
+  // normalized to 0-100 scale before averaging so e.g. left=2, right=3
+  // → (70 + 100) / 2 = 85 (умеренно-выраженный диапазон) instead of
+  // (2 + 3) / 2 = 2.5 which would never trigger Face++ calibrated
+  // severity thresholds.
   const eyelidConfidence =
     ((r.left_eyelids?.confidence ?? 0) + (r.right_eyelids?.confidence ?? 0)) / 2;
   const eyelidValue =
-    ((r.left_eyelids?.value ?? 0) + (r.right_eyelids?.value ?? 0)) / 2;
+    (normalizeFacePlusValue(r.left_eyelids?.value) +
+      normalizeFacePlusValue(r.right_eyelids?.value)) /
+    2;
 
-  // Build feature bag for weighted scoring.
+  // Build feature bag for weighted scoring. Every value passes through
+  // `normalizeFacePlusValue` so the downstream severityFromValue()
+  // (30/60/90 thresholds) actually fires on real Face++ severity.
+  // Aggregated features (pore, wrinkle, eyelids) are already
+  // normalized at aggregation time above; here we just normalize the
+  // single-axis features.
   const features: Record<string, { value: number; confidence: number }> = {
-    acne: { value: r.acne?.value ?? 0, confidence: r.acne?.confidence ?? 0 },
-    dark_circle: { value: r.dark_circle?.value ?? 0, confidence: r.dark_circle?.confidence ?? 0 },
+    acne: { value: normalizeFacePlusValue(r.acne?.value), confidence: r.acne?.confidence ?? 0 },
+    dark_circle: { value: normalizeFacePlusValue(r.dark_circle?.value), confidence: r.dark_circle?.confidence ?? 0 },
     pore: { value: poreValue, confidence: poreConfidence },
-    spot: { value: r.skin_spot?.value ?? 0, confidence: r.skin_spot?.confidence ?? 0 },
+    spot: { value: normalizeFacePlusValue(r.skin_spot?.value), confidence: r.skin_spot?.confidence ?? 0 },
     wrinkle: { value: wrinkleEntry.value, confidence: wrinkleEntry.confidence },
-    blackhead: { value: r.blackhead?.value ?? 0, confidence: r.blackhead?.confidence ?? 0 },
-    eye_pouch: { value: r.eye_pouch?.value ?? 0, confidence: r.eye_pouch?.confidence ?? 0 },
+    blackhead: { value: normalizeFacePlusValue(r.blackhead?.value), confidence: r.blackhead?.confidence ?? 0 },
+    eye_pouch: { value: normalizeFacePlusValue(r.eye_pouch?.value), confidence: r.eye_pouch?.confidence ?? 0 },
     eyelids: { value: eyelidValue, confidence: eyelidConfidence },
   };
 
