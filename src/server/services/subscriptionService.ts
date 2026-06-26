@@ -297,17 +297,15 @@ export const subscriptionService = {
      * from preview" — `null` becomes `notificationSentAt IS NULL` in DB.
      */
     notificationSentAt?: Date | null;
-  }): Promise<{
-    id: string;
-    userId: string;
-    tier: string;
-    amount: number;
-    expectedReference: string;
-    submittedReference: string | null;
-    screenshotBase64: string | null;
-    claimedAt: Date;
-    notificationSentAt: Date | null;
   }> {
+    // No explicit return type — let TypeScript infer from
+    // `prisma.cardTransferClaim.create()`. Manual annotations drift
+    // out of sync with the schema (the previous manual type was missing
+    // `creditConfirmed` and `creditConfirmedAt`, breaking `next build`
+    // after the User ←→ CardTransferClaim relation fix). The narrow
+    // subtypes on `notifyCardTransferAdmin` (8-field subset) and on
+    // `previewCardTransfer` callers are structurally satisfied by the
+    // full Prisma type — no call-site changes required.
     for (let attempt = 0; attempt < 3; attempt++) {
       const ref = this.generateCardTransferRef({ id: data.userId });
       try {
