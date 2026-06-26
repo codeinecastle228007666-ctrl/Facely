@@ -10,6 +10,7 @@ import { achievementRouter } from "./achievementRouter";
 import { leaderboardRouter } from "./leaderboardRouter";
 import { inventoryRouter } from "./inventoryRouter";
 import { routineRouter } from "./routineRouter";
+import { adminRouter } from "./adminRouter";
 
 export const appRouter = router({
   auth: authRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   leaderboard: leaderboardRouter,
   inventory: inventoryRouter,
   routine: routineRouter,
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;

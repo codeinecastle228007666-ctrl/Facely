@@ -193,6 +193,90 @@ Phase 1.5 закрывает два оставшихся "match gap" на руч
 ## Исторический контекст
 Раньше: Face++ → при quota error → HF fallback (только при явной ошибке). С 2026-06-25 Face++ Free plan $0 → возвращает валидный 200 + canned near-zero данные → orchestrator лояльно помечал `data_quality: "full"` (ложь). 2026-06-25 evening → dual-mode с bogus-detection (`isBogusResult`) и параллельным запуском обоих провайдеров. 2026-06-26 → HF Inference API стала недоступна с Vercel → добавлен circuit breaker + global guard. Миграция БД: см. `prisma/migrations/20260625180000_provider_fallback` и `prisma/migrations/20260628000000_add_raw_face_plus`.
 
+## Админ-панель `/admin` (2026-06-26)
+
+Внутренняя страница для ручного начисления юзерам (компенсации, рефанды,
+промо-подарки, ручные фиксы подписок) — **минуя платёжные процессы**. Живёт
+за пределами Telegram Mini App, открывается в обычном браузере/планшете.
+
+### Доступ
+
+- URL: `https://facely-chi.vercel.app/admin`
+- Логин: введи `ADMIN_PANEL_SECRET` → получи HttpOnly cookie `admin_session`
+- Cookie: 8 ч TTL, HMAC-SHA256 подписан тем же секретом, SameSite=Lax,
+  Secure в проде. Браузер авто-вкладывает cookie во все `/api/trpc/admin.*`
+  и `/api/admin/*` запросы.
+- Серверная проверка: `verifyAdminToken` в [`adminAuth.ts`](src/server/utils/adminAuth.ts).
+  HMAC сравнивается через `crypto.timingSafeEqual` (защита от timing-attack).
+  Без секрета или с битым токеном → 401.
+
+### Обязательный env
+
+- `ADMIN_PANEL_SECRET` — длинная случайная строка (≥8 символов).
+  Задать в Vercel → Settings → Environment Variables → Production.
+  Без неё: `/admin` показывает "Панель отключена", все admin.tRPC падают
+  с INTERNAL_SERVER_ERROR.
+
+### Доступные гранты (`tRPC admin.grant`)
+
+| Kind | DB effect | Push notify message | audit details |
+|---|---|---|---|
+| `paidAnalyses` | `User.paidAnalyses += N` (Prisma increment, atomic) | "🎁 +N анализов кожи" | `{ from, to }` |
+| `freeChatQuestions` | `User.freeChatQuestions += N` | "🎁 +N вопросов чата" | `{ from, to }` |
+| `streakFreeze` | `User.streakFreezes += N` | "🎁 +N streak freezes" | `{ from, to }` |
+| `subscriptionDays` | `Subscription.upsert()` + `User.subscriptionEnd = max(now, current)+N` (UTC-безопасно через `setUTCDate`) | "🎁 Подписка +N дней" | `{ until, extendedBy }` |
+| `proTrialDays` | `User.proTrialUntil = max(now, current)+N` | "🎁 Pro-trial +N дней" | `{ until, extendedBy }` |
+| `xp` | `User.xp += N`, `User.level = calculateLevel(newXp)` | "🎁 +N XP" | `{ from, to, level }` |
+
+Amount: integer 1..10000 (zod.clamp). Reason: free-text ≤500 chars, optional.
+
+### Audit log
+
+Каждый грант пишет запись в таблицу `AdminGrant`:
+
+```sql
+SELECT g."createdAt", g."kind", g."amount", g."reason", g."details",
+       u."name", u."username", u."telegramId"
+FROM   "AdminGrant" g
+JOIN   "User"      u ON u."id" = g."targetUserId"
+ORDER  BY g."createdAt" DESC
+LIMIT  50;
+```
+
+UI: список `Recent 30 grants` на самой странице `/admin`. Обновляется
+после каждого успешного гранта. `adminTelegramId` пока всегда `"admin"`
+(MVP single-operator).
+
+### Ротация секрета
+
+При смене `ADMIN_PANEL_SECRET` → старые cookie автоматически
+инвалидируются (HMAC не пройдёт проверку). Все активные сессии
+становятся 401 → пользователь должен залогиниться снова. **Не нужно**
+чистить БД или писать миграцию — fail-closed само работает.
+
+### Безопасность (что защищено)
+
+- HMAC + Base64Url + timingSafeEqual в [`adminAuth.ts`](src/server/utils/adminAuth.ts).
+  Не подделывается без секрета.
+- HttpOnly cookie → `document.cookie` не прочтёт его даже при XSS.
+- SameSite=Lax → cross-site формы не отправят cookie к `/api/admin/*`.
+- Fail-closed: пустой секрет = все admin запросы 503.
+- Без CSRF не нужно: state-changing операции (`admin.grant`) — это
+  tRPC mutations с собственным Api-Key-style csrf tab (cookie auth
+  сам достаточен при SameSite=Lax). Если кто-то обновит до `Strict`,
+  добавим `.csrf` token в форму.
+
+### Что НЕ покрыто в MVP
+
+- **Multi-admin** (`adminTelegramId` всегда `"admin"`) — добавить через
+  `Admin` таблицу.
+- **Отмена / refund grants** — грант можно отменить только через
+  прямой SQL UPDATE (negative amount через API отвергнут zod).
+- **Bulk operations** — каждый грант одна транзакция, для сотен —
+  переписать на `prisma.$transaction([])`.
+- **CSV / Excel export** audit log — добавить `admin.exportGrants(format)`.
+- **Прямая RU-тактика** — пока UI только русский (как основное приложение).
+
 ## Деплой
 - Vercel авто-деплой из `main`
 - cron-job.org: `https://facely-chi.vercel.app/api/health` — каждые 5 мин (прогрев)

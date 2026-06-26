@@ -47,8 +47,36 @@ model User {
   inventory        InventoryItem[]
   routine          Routine?
   bonuses          UserBonus[]
-  
+  adminGrants      AdminGrant[]
+
   @@index([username])
+}
+
+/// 2026-06-26 — Audit log of admin grants. Every reward, refund, or
+/// manual compensation admin applies via the /admin panel (or any
+/// future tooling) writes a row here so we can trace "why does this
+/// user suddenly have +20 paidAnalyses". `adminTelegramId` is the
+/// literal "admin" in MVP (single fixed operator); expand to per-admin
+/// id when multi-admin support is added.
+model AdminGrant {
+  id              String   @id @default(cuid())
+  adminTelegramId String
+  targetUserId    String
+  /// One of: "paidAnalyses" | "freeChatQuestions" | "streakFreeze" |
+  /// "subscriptionDays" | "proTrialDays" | "xp". See adminService.grant
+  /// for the exhaustive mapping.
+  kind            String
+  amount          Int
+  reason          String?
+  /// Snapshot of what changed (e.g. { from: 0, to: 5 } for `paidAnalyses`,
+  /// or { until: "...", extendedBy: 30 } for `subscriptionDays`).
+  details         Json?
+  createdAt       DateTime @default(now())
+
+  target User @relation(fields: [targetUserId], references: [id])
+
+  @@index([targetUserId, createdAt])
+  @@index([createdAt])
 }
 
 model SkinAnalysis {
