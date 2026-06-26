@@ -48,6 +48,7 @@ model User {
   routine          Routine?
   bonuses          UserBonus[]
   adminGrants      AdminGrant[]
+  cardTransferClaims CardTransferClaim[]
 
   @@index([username])
 }
@@ -303,6 +304,7 @@ model ProcessedInvoice {
 model CardTransferClaim {
   id                  String    @id @default(cuid())
   userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   tier                String    // "single" | "pack5" | "fifteen" | "monthly"
   amount              Int
   /// Short auto-generated ref displayed to user + sent in admin notification.
