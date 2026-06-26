@@ -56,6 +56,14 @@ CREATE INDEX "InventoryItem_userId_idx" ON "InventoryItem"("userId");
 ALTER TABLE "InventoryItem" ADD CONSTRAINT "InventoryItem_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ```
 
+### rawGemini (дубли ответов Gemini 2.5 Pro Vision)
+```sql
+ALTER TABLE "SkinAnalysis" ADD COLUMN "rawGemini" JSONB;
+```
+Опциональная колонка — orchestrator ловит P2022 и retry-without-rawGemini
+(см. комментарий в `analysisService.ts`). Лучше всё-таки применить SQL
+через Supabase SQL Editor чтобы дебажить Gemini по истории.
+
 ## Переменные окружения (Vercel + .env)
 - `DATABASE_URL`
 - `FACE_PLUS_KEY`

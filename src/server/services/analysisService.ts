@@ -63,6 +63,22 @@ if (!(process as any)[__GUARD_KEY__]) {
       reason?.message ?? String(reason),
     );
   });
+  // 2026-06-26 — defense in depth. Prisma's internal query engine
+  // occasionally surfaces column-mismatch errors as `uncaughtException`
+  // (sync throw from the engine worker thread, not as a Promise
+  // rejection). The `unhandledRejection` guard above does NOT catch
+  // these by Node.js semantics. Without this listener, a Prisma
+  // error like `rawGemini column does not exist` would bubble out
+  // of the tRPC route handler and Vercel's runtime would still kill
+  // the lambda with exit code 128 — despite the unhandledRejection
+  // guard appearing to work in the logs. Now both error classes are
+  // intercepted; the process keeps serving subsequent requests.
+  process.on("uncaughtException", (err: any) => {
+    console.error(
+      "[Analysis] Global uncaughtException guard caught (continuing, NOT exiting):",
+      err?.message ?? String(err),
+    );
+  });
 }
 
 export const analysisService = {
@@ -360,32 +376,68 @@ export const analysisService = {
     // providers ran (default = 2, but Face++ bogus drop = 1).
     const oldXp = user.xp;
     const committed = await prisma.$transaction(async (tx) => {
-      const created = await tx.skinAnalysis.create({
-        data: {
-          userId: user.id,
-          photoBase64: compressedPhoto,
-          photoHash,
-          userDescription: description ?? null,
-          // Persist the rich dual-provider JSON so history lookups work
-          // the same way they did before (top-level skin_type, problems,
-          // skin_score on dominant variant; nested variants + activeProvider).
-          result: clientResultWithVariants as object,
-          rawFacePlus: fpVerdict
-            ? (fpVerdict._rawResponse as object)
-            : fpInvalidButPersisted
-              ? (fpInvalidButPersisted._rawResponse as object)
-              : undefined,
-          rawGemini: geminiVerdict
-            ? (geminiVerdict._rawResponse as object)
-            : geminiInvalidButPersisted
-              ? (geminiInvalidButPersisted._rawResponse as object)
-              : undefined,
-          rawHuggingFace: hfVerdict ? (hfVerdict._rawResponse as object) : undefined,
-          provider: providerField,
-          skinType: clientResult.skin_type,
-          isFree,
-        },
-      });
+      // Build the full insert data once so the P2022-fallback path
+      // below can replay it with `rawGemini` stripped. Extracting
+      // outside the try/catch keeps the retry path declarative.
+      const fullSkinAnalysisData = {
+        userId: user.id,
+        photoBase64: compressedPhoto,
+        photoHash,
+        userDescription: description ?? null,
+        // Persist the rich dual-provider JSON so history lookups work
+        // the same way they did before (top-level skin_type, problems,
+        // skin_score on dominant variant; nested variants + activeProvider).
+        result: clientResultWithVariants as object,
+        rawFacePlus: fpVerdict
+          ? (fpVerdict._rawResponse as object)
+          : fpInvalidButPersisted
+            ? (fpInvalidButPersisted._rawResponse as object)
+            : undefined,
+        rawGemini: geminiVerdict
+          ? (geminiVerdict._rawResponse as object)
+          : geminiInvalidButPersisted
+            ? (geminiInvalidButPersisted._rawResponse as object)
+            : undefined,
+        rawHuggingFace: hfVerdict ? (hfVerdict._rawResponse as object) : undefined,
+        provider: providerField,
+        skinType: clientResult.skin_type,
+        isFree,
+      };
+      // 2026-06-26 — graceful P2022 degradation. When the operator
+      // hasn't yet applied `prisma/migrations/<ts>_add_raw_gemini/`
+      // to the Supabase DB, Postgres returns "column rawGemini does
+      // not exist" and Prisma surfaces it as PrismaClientKnownRequestError
+      // with code=`P2022`. Without this fallback the entire transaction
+      // aborts and Vercel exits the lambda with code 128. We catch the
+      // specific P2022 error mentioning `rawGemini`, log a deployment-
+      // ops warning, and retry the same INSERT without that column —
+      //   the user's analysis still persists and rewards flow normally.
+      // Other Prisma errors (constraint violations, connection issues)
+      // are re-thrown so transaction semantics stay correct for them.
+      let createdAnalysis;
+      try {
+        createdAnalysis = await tx.skinAnalysis.create({
+          data: fullSkinAnalysisData,
+        });
+      } catch (e: any) {
+        const code = e?.code ?? "";
+        const msg = String(e?.message ?? "");
+        const isMissingGeminiColumn =
+          code === "P2022" && /rawGemini/i.test(msg);
+        if (isMissingGeminiColumn) {
+          console.warn(
+            "[Analysis] SkinAnalysis.rawGemini column missing in DB. " +
+              "Falling back to write-without-rawGemini. Apply " +
+              "prisma/migrations/20260628120000_add_raw_gemini/migration.sql " +
+              "in Supabase SQL Editor to enable persistence.",
+          );
+          createdAnalysis = await tx.skinAnalysis.create({
+            data: { ...fullSkinAnalysisData, rawGemini: undefined },
+          });
+        } else {
+          throw e;
+        }
+      }
 
       // Determine decrement source + always award XP atomically.
       let balanceField: "freeAnalyses" | "paidAnalyses";
@@ -416,7 +468,7 @@ export const analysisService = {
         select: { xp: true, level: true },
       });
 
-      return { created, newXp: updatedUser.xp, newLevelRaw: updatedUser.level };
+      return { created: createdAnalysis, newXp: updatedUser.xp, newLevelRaw: updatedUser.level };
     });
 
     // Compute derived level in JS (level is a function of xp).
