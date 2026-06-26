@@ -199,10 +199,25 @@ export interface AnalysisResult {
   daily_routine: string;
   mood: "позитивный" | "нейтральный" | "тревожный";
   product_links: ProductLink[];
+  /**
+   * 2026-06-25 — surfaced so the UI can render an honest degraded-mode
+   * banner. "full" means Face++ was used (16 features, confidence
+   * gating, trusted score). "partial" means the HuggingFace fallback
+   * was used (only acne/spot/mole/wrinkle, no skin_type, no pore,
+   * no dark_circle) — skin_score will be biased upward because
+   * HF-undetected features stay at zero confidence.
+   */
+  data_quality?: "full" | "partial";
 }
 
 export interface AnalyzeResponse {
   analysis: AnalysisResult;
+  /**
+   * Jun-25: which provider produced this analysis. Surfaced so the
+   * client can route UI affordances accordingly (e.g. hide daily
+   * routine in some cases). Currently informational only.
+   */
+  provider?: "faceplus" | "huggingface";
   xpGained: number;
   totalXp: number;
   level: number;

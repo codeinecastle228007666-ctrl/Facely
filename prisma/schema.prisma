@@ -48,10 +48,20 @@ model SkinAnalysis {
   photoBase64     String?
   photoHash       String?
   userDescription String?
+  /// Which provider produced this record. "faceplus" is the primary
+  /// path; "huggingface" is the fallback we use when Face++ quota is
+  /// exhausted (Jun-25 Free Plan outage). Lets ResultModal show a
+  /// honest degraded-mode banner when this is "huggingface".
+  provider        String   @default("faceplus")
   result          Json?
   /// Verbatim Face++ /skinanalyze response. Lets us re-score old records
   /// when scoring logic improves (avoids paying the Face++ quota again).
   rawFacePlus     Json?
+  /// Verbatim HuggingFace Inference API response (YOLO detections) —
+  /// populated only for `provider = "huggingface"` records. Stored
+  /// separately from rawFacePlus so re-scoring one provider's output
+  /// doesn't blow up the other.
+  rawHuggingFace  Json?
   skinType        String?
   isFree          Boolean  @default(true)
   createdAt       DateTime @default(now())
@@ -60,6 +70,7 @@ model SkinAnalysis {
 
   @@index([userId])
   @@index([createdAt])
+  @@index([provider])
 }
 
 model Subscription {

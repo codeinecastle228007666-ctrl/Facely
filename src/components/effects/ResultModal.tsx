@@ -141,6 +141,27 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </button>
             </div>
 
+            {result.data_quality === "partial" && (
+              <div
+                role="status"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  background: "rgba(255, 180, 162, 0.18)",
+                  border: "1px solid rgba(255, 180, 162, 0.5)",
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  color: "#A05A4A",
+                  marginBottom: 16,
+                }}
+              >
+                <strong>Сервис анализа в ограниченном режиме.</strong>{" "}
+                Основной провайдер (Face++) сейчас недоступен. Показаны проблемы, которые удалось
+                распознать на фото (акне, пигментация, морщины); тип кожи и поры не проверялись.
+                Повторите анализ через несколько часов, когда основной сервис восстановится.
+              </div>
+            )}
+
             <div className="flex items-center gap-3" style={{ marginBottom: 16 }}>
               <div
                 style={{
@@ -283,6 +304,11 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
                   {result.skin_score >= 80 ? "Отличное состояние" : result.skin_score >= 50 ? "Требует внимания" : "Нужен уход"}
                 </div>
+                {result.data_quality === "partial" && (
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
+                    ⚠ Оценка приблизительная — часть параметров не проверялась
+                  </div>
+                )}
               </div>
             )}
 

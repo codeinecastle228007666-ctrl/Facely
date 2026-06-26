@@ -1,9 +1,13 @@
-interface FacePlusItem {
+// Exported so huggingFaceSkinService.ts can synthesize a synthetic
+// FacePlusResult from YOLO detections (kept in the same shape so the
+// downstream severity/score pipeline is identical regardless of which
+// provider produced it).
+export interface FacePlusItem {
   confidence: number;
   value: number;
 }
 
-interface FacePlusResult {
+export interface FacePlusResult {
   acne: FacePlusItem;
   dark_circle: FacePlusItem;
   skin_spot: FacePlusItem;
@@ -27,12 +31,21 @@ interface FacePlusResult {
   };
 }
 
-interface FacePlusResponse {
+export interface FacePlusResponse {
   result: FacePlusResult;
   face_rectangle: { left: number; top: number; width: number; height: number };
   error_message?: string;
   time_used: number;
 }
+
+import {
+  FEATURE_WEIGHTS,
+  MIN_CONFIDENCE,
+  PROBLEM_MAP,
+  RECOMMENDATIONS_MAP,
+  severityFromValue,
+  weightedSkinScore,
+} from "../utils/skinScoring";
 
 const SKIN_TYPE_MAP: Record<number, string> = {
   0: "сухая",
@@ -40,81 +53,6 @@ const SKIN_TYPE_MAP: Record<number, string> = {
   2: "комбинированная",
   3: "нормальная",
 };
-
-const PROBLEM_MAP: Record<string, string> = {
-  acne: "акне",
-  dark_circle: "тёмные круги",
-  pore: "поры",
-  spot: "пигментация",
-  wrinkle: "морщины",
-  blackhead: "чёрные точки",
-  eye_pouch: "мешки под глазами",
-  eyelids: "отёчность век",
-};
-
-/**
- * ── Scoring model ──────────────────────────────────────────────────────
- * Each Face++ feature has its own severity "value" (0–100; usually
- * 0 / 60 / 100) AND a "confidence" (0–1). The old code averaged values
- * across 8 features blindly, which made one severe problem average
- * out as "excellent". New model:
- *
- *   badness_i    = confidence < MIN_CONFIDENCE ? 0 : value/100
- *   goodness_i   = 1 - badness_i
- *   skin_score   = round( Σ(weight_i × goodness_i) / Σ(weight_i) × 100 )
- *
- * If no feature is informative (all conf < 0.4) → default to 100
- * (no informed signal = no problem detected).
- */
-const FEATURE_WEIGHTS: Record<string, number> = {
-  acne: 0.22,        // most user-visible
-  spot: 0.18,        // pigmentation, fades visibly with care
-  wrinkle: 0.18,     // aging
-  dark_circle: 0.12,
-  pore: 0.10,
-  blackhead: 0.08,
-  eye_pouch: 0.06,
-  eyelids: 0.06,
-};
-// sum = 1.00
-
-const MIN_CONFIDENCE = 0.4;
-// Below this confidence, treat the value as noise.
-
-function severityFromValue(value: number): "лёгкое" | "умеренное" | "выраженное" | null {
-  if (value >= 90) return "выраженное";
-  if (value >= 60) return "умеренное";
-  if (value >= 30) return "лёгкое";
-  return null;
-}
-
-function badness(value: number, confidence: number): number {
-  if (confidence < MIN_CONFIDENCE) return 0;
-  return Math.max(0, Math.min(1, value / 100));
-}
-
-function weightedSkinScore(features: Record<string, { value: number; confidence: number }>, problems: { severity: "лёгкое" | "умеренное" | "выраженное" }[] = []): number {
-  let totalW = 0;
-  let goodnessSum = 0;
-  for (const [key, { value, confidence }] of Object.entries(features)) {
-    const w = FEATURE_WEIGHTS[key];
-    if (!w) continue;
-    const b = badness(value, confidence);
-    totalW += w;
-    goodnessSum += w * (1 - b);
-  }
-  if (totalW === 0) return 100; // no informed signal
-
-  // ── Score-floor: prevent the green-circle-while-problem-listed lie.
-  let score = Math.round((goodnessSum / totalW) * 100);
-  const hasSevere = problems.some((p) => p.severity === "выраженное");
-  const hasModerate = problems.some((p) => p.severity === "умеренное");
-  const hasMild = problems.some((p) => p.severity === "лёгкое");
-  if (hasSevere) score = Math.min(score, 49);
-  else if (hasModerate) score = Math.min(score, 69);
-  else if (hasMild) score = Math.min(score, 84);
-  return Math.max(0, Math.min(100, score));
-}
 
 /**
  * Resolve skin type only when the model is confident.
@@ -135,49 +73,6 @@ const PROBLEM_DESC: Record<string, string> = {
   blackhead: "Открытые комедоны — результат закупорки пор кожным салом и ороговевшими клетками. Чаще встречаются в Т-зоне.",
   eye_pouch: "Припухлость под глазами: задержка жидкости, усталость, возрастные изменения, нарушение лимфотока.",
   eyelids: "Отёчность век — скопление жидкости в тканях вокруг глаз. Причины: усталость, недосып, задержка соли.",
-};
-
-const RECOMMENDATIONS_MAP: Record<string, string[]> = {
-  acne: [
-    "Сыворотка с салициловой кислотой 2% для проблемной кожи",
-    "Лёгкий гель с цинком для успокоения воспалений",
-    "Маска с глиной для глубокого очищения пор",
-  ],
-  dark_circle: [
-    "Крем для кожи вокруг глаз с кофеином",
-    "Патчи под глаза с гиалуроновой кислотой",
-    "Сыворотка с витамином C для осветления",
-  ],
-  pore: [
-    "Сыворотка с ниацинамидом 5% для сужения пор",
-    "Энзимная пудра для мягкого отшелушивания",
-    "Тонер с AHA-кислотами для выравнивания текстуры",
-  ],
-  spot: [
-    "Сыворотка с витамином C для осветления пигментации",
-    "Крем с ретинолом для обновления кожи",
-    "SPF 50+ ежедневно для защиты от фотостарения",
-  ],
-  wrinkle: [
-    "Крем с ретинолом для стимуляции коллагена",
-    "Сыворотка с пептидами для упругости кожи",
-    "Увлажняющий крем с коэнзимом Q10",
-  ],
-  blackhead: [
-    "Сыворотка с салициловой кислотой 2%",
-    "Энзимная пудра для умывания",
-    "Маска с глиной 2 раза в неделю",
-  ],
-  eye_pouch: [
-    "Крем для век с кофеином",
-    "Патчи с гидрогелем под глаза",
-    "Лимфодренажный массаж лица",
-  ],
-  eyelids: [
-    "Лёгкий гель для век с экстрактом огурца",
-    "Патчи с зелёным чаем для снятия отёчности",
-    "Ограничить солёное на ночь",
-  ],
 };
 
 function buildRoutine(
@@ -312,9 +207,35 @@ export type AnalysisVerdict = {
    * back too — vision LLM was misclassifying nostrils / eyebrows / lips
    * as inflammatory lesions. We rely solely on Face++ structured data
    * with confidence gating for objectivity.
+   *
+   * Jun-25 evening: added HuggingFace fallback (data_quality="partial"
+   * when this provider kicks in). Set here too so Face++ writes
+   * "full" and HF writes "partial" naturally.
    */
   _rawResponse: FacePlusResult;
+  /**
+   * Jun-25: which AI provider produced this verdict. Set explicitly by
+   * huggingFaceSkinService to "partial" (only acne/spot/mole/wrinkle)
+   * and stays undefined (or "full") for Face++ records. ResultModal
+   * surfaces this as a degraded-mode banner.
+   */
+  data_quality?: "full" | "partial";
 };
+
+/**
+ * Thrown by `analyzeSkinWithFacePlus` when the upstream API explicitly
+ * tells us the account is out of credits or rate-limited. Caught by
+ * `analysisService.analyze` to swap to the HuggingFace provider.
+ *
+ * We can't use a string check (too brittle across i18n / Face++ changes),
+ * so we throw a dedicated Error subclass.
+ */
+export class AppQuotaExceededError extends Error {
+  constructor(message = "Face++ quota exceeded") {
+    super(message);
+    this.name = "AppQuotaExceededError";
+  }
+}
 
 export async function analyzeSkinWithFacePlus(
   imageBase64: string,
@@ -369,6 +290,20 @@ export async function analyzeSkinWithFacePlus(
       "INVALID_IMAGE_FORMAT": "Формат фото не поддерживается. Используйте JPEG или PNG.",
       "IMAGE_SIZE_TOO_SMALL": "Фото слишком маленькое. Сделайте снимок крупнее, лицо должно занимать большую часть кадра.",
     };
+    // Quota / auth errors → orchestrator should swap to HuggingFace
+    // fallback. We use a dedicated Error subclass so the check is
+    // structural (instanceof) rather than fragile string-match.
+    const QUOTA_ERROR_CODES = new Set([
+      "INSUFFICIENT_BALANCE",
+      "CONCURRENCY_LIMIT_EXCEEDED",
+      "OUT_OF_QUOTA",
+      "AUTHORIZATION_ERROR",
+    ]);
+    if (QUOTA_ERROR_CODES.has(data.error_message)) {
+      throw new AppQuotaExceededError(
+        `Face++ quota exhausted (${data.error_message}). Falling back to HuggingFace.`,
+      );
+    }
     const userMessage = knownErrors[data.error_message] || `Не удалось проанализировать фото. Пожалуйста, сделайте новый снимок с хорошим освещением.\n(Код ошибки: ${data.error_message})`;
     throw new Error(userMessage);
   }
@@ -456,5 +391,6 @@ export async function analyzeSkinWithFacePlus(
     mood,
     product_links: productLinks,
     _rawResponse: r,
+    data_quality: "full",
   };
 }

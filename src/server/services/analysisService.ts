@@ -6,7 +6,12 @@ import { compressImage } from "../utils/imageCompression";
 import { getPerceptualHash, hammingDistance } from "../utils/perceptualHash";
 import { XP_PER_ANALYSIS, calculateLevel, didLevelUp } from "../utils/levelSystem";
 import { pushService } from "./pushService";
-import { analyzeSkinWithFacePlus } from "./facePlusService";
+import { analyzeSkinWithFacePlus, AppQuotaExceededError } from "./facePlusService";
+import {
+  analyzeSkinWithHuggingFace,
+  HFConfigError,
+  HFUpstreamError,
+} from "./huggingFaceSkinService";
 import { achievementService } from "./achievementService";
 
 /**
@@ -89,19 +94,58 @@ export const analysisService = {
       throw new Error(access.reason || "no_analyses_left");
     }
 
-    const result = await analyzeSkinWithFacePlus(compressedPhoto);
-
-    // ── Strip `_rawResponse` from the cooked result we send to clients.
-    //    Face++ raw JSON is persisted separately as `rawFacePlus` so we
-    //    can re-score old records when scoring logic improves without
-    //    re-paying the API quota.
+    // ── Two-tier provider chain ──────────────────────────────────────────────
+    // 1. Face++ primary — trusted, 16-feature structured response,
+    //    sets `data_quality: "full"` on its AnalysisVerdict.
+    // 2. HuggingFace fallback — kicks in ONLY on quota exhaustion
+    //    (INSUFFICIENT_BALANCE / CONCURRENCY_LIMIT_EXCEEDED). Sets
+    //    `data_quality: "partial"` on its AnalysisVerdict (only detects
+    //    acne/spot/mole/wrinkle). ResultModal reads this and renders an
+    //    honest degraded-mode banner.
     //
-    // 2026-06-25: dropped Groq-based `analyzeProblemPositions` (and its
-    // visual overlay in ResultModal). llama-4-scout was misclassifying
-    // nostrils / eyebrows / lips as inflammatory lesions, undermining
-    // the "objective" feel we wanted from the overlay. Without the
-    // overlay the call is now dead weight — pure Face++ structured data
-    // (with confidence gating) is the trustworthy source.
+    // Other Face++ errors (no face, multiple faces, invalid format)
+    // are NOT swappable — they describe the user's photo and are
+    // surfaced verbatim.
+    let provider: "faceplus" | "huggingface" = "faceplus";
+    let result;
+    try {
+      result = await analyzeSkinWithFacePlus(compressedPhoto);
+    } catch (e: any) {
+      if (!(e instanceof AppQuotaExceededError)) {
+        throw e; // user-visible message (no face, image format, etc.)
+      }
+      console.warn(
+        `[Analysis] Face++ quota exceeded, swapping to HuggingFace fallback: ${e.message}`,
+      );
+      try {
+        result = await analyzeSkinWithHuggingFace(compressedPhoto);
+      } catch (hfErr: any) {
+        // Always log the actual cause BEFORE re-throwing the friendly
+        // message — even in the catch-all branch where the error
+        // type isn't recognized. Observability matters more than
+        // cosmetic code symmetry here.
+        console.error(
+          "[Analysis] HuggingFace fallback failed (both providers now exhausted):",
+          hfErr,
+        );
+        throw new Error(
+          "Сервис анализа временно недоступен. Разработчик уже работает над восстановлением. Попробуйте через час.",
+        );
+      }
+      provider = "huggingface";
+    }
+
+    // ── Strip `_rawResponse` before sending to client. Face++ raw JSON is
+    //    persisted separately as `rawFacePlus`; HF YOLO detections go to
+    //    `rawHuggingFace`. `_rawResponse` never leaves the server. Each
+    //    provider sets its own `data_quality` on the verbatim AnalysisVerdict
+    //    so this destructure carries it through naturally.
+    //
+    // 2026-06-25 history:
+    //   - Groq `analyzeProblemPositions` visual overlay dropped
+    //     (misclassifying nostrils/eyebrows/lips as inflammation).
+    //   - Jun-25 evening: HuggingFace fallback added for the Free-Plan
+    //     balance outage.
     const { _rawResponse, ...clientResult } = result;
 
     const hasActiveSubscription =
@@ -122,7 +166,9 @@ export const analysisService = {
           photoHash,
           userDescription: description ?? null,
           result: clientResult as object,
-          rawFacePlus: _rawResponse as object,
+          rawFacePlus: provider === "faceplus" ? (_rawResponse as object) : undefined,
+          rawHuggingFace: provider === "huggingface" ? (_rawResponse as object) : undefined,
+          provider,
           skinType: clientResult.skin_type,
           isFree,
         },
@@ -216,6 +262,7 @@ export const analysisService = {
 
     return {
       analysis: clientResult,
+      provider,
       xpGained: XP_PER_ANALYSIS,
       totalXp: newXp,
       level: computedLevel,

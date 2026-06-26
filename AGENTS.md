@@ -63,9 +63,13 @@ ALTER TABLE "InventoryItem" ADD CONSTRAINT "InventoryItem_userId_fkey" FOREIGN K
 - `BOT_TOKEN`
 - `GROQ_API_KEY`
 - `GEMINI_API_KEY` (Google AI Studio, бесплатно)
+- `HF_TOKEN` — HuggingFace access token (`hf_...`). Включает fallback для анализа кожи когда Face++ закончился/забанен. Получить бесплатно на https://huggingface.co/settings/tokens (Read достаточно).
 - `FEEDBACK_CHAT_ID` — ID чата для отзывов (узнать у @userinfobot)
 - `GROQ_BASE_URL` (опционально)
 - `PROVIDER_TOKEN` — токен платёжного провайдера (Smart Global). Если не задан — оплата в Telegram Stars
+
+## Fallback для анализа кожи
+Face++ — основной провайдер анализа кожи. Когда он вернёт `INSUFFICIENT_BALANCE` / `CONCURRENCY_LIMIT_EXCEEDED` / `OUT_OF_QUOTA`, `analysisService.analyze` ловит `AppQuotaExceededError` и автоматически переключается на HuggingFace Inference API (`mufasabrownie/glowlytics-skin-models`). HF возвращает только acne/spot/mole/wrinkle (нет skin_type/pore/dark_circle) → в `result.data_quality = "partial"` → ResultModal показывает баннер «Сервис анализа работает в ограниченном режиме». Если `HF_TOKEN` тоже не задан, юзер увидит «Сервис анализа временно недоступен». Миграция БД при переходе: добавить `provider` + `rawHuggingFace` колонки на `SkinAnalysis` (см. `prisma/migrations/` — последняя миграция).
 
 ## Деплой
 - Vercel авто-деплой из `main`
