@@ -209,7 +209,10 @@ export const analysisService = {
         ? fpRes.value
         : null;
     const fpError = fpRes.status === "rejected" ? fpRes.reason : null;
-    const hfError = hfRes.status === "rejected" ? hfRes.reason : null;
+    // Free tier (DUAL_PROVIDER_ENABLED=false): hfRes stays null because HF
+    // already ran inside the sequential IIFE above. Optional chaining
+    // makes this branch null-safe on both Pro and Free paths.
+    const hfError = hfRes?.status === "rejected" ? hfRes.reason : null;
 
     if (!fpVerdict && !hfVerdict) {
       // Both providers either errored or returned bogus data. Log the
