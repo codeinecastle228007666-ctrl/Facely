@@ -9,13 +9,19 @@ import superjson from "superjson";
  */
 const TRPC = "/api/trpc";
 
-async function callTrpc<T>(path: string, input: unknown): Promise<T> {
-  const serialized = superjson.serialize(input);
-  const url =
-    `${TRPC}/${path}?input=` +
-    encodeURIComponent(
+async function callTrpc<T>(path: string, input?: unknown): Promise<T> {
+  // Procedures without `.input(...)` (e.g. `admin.status`) are queried
+  // without the `?input=...` param — tRPC v11 treats this as empty input
+  // for no-input procedures. Mirror the pattern from src/services/api.ts
+  // so the same helper handles both query-with-arg and query-without-arg.
+  const serialized =
+    input !== undefined ? superjson.serialize(input) : undefined;
+  let url = `${TRPC}/${path}`;
+  if (serialized !== undefined) {
+    url += `?input=${encodeURIComponent(
       JSON.stringify({ json: serialized.json, meta: serialized.meta }),
-    );
+    )}`;
+  }
   const res = await fetch(url, { method: "GET", credentials: "include" });
   if (!res.ok) {
     const err = await res.json().catch(() => null);
@@ -31,14 +37,25 @@ async function callTrpc<T>(path: string, input: unknown): Promise<T> {
   return data as T;
 }
 
-async function postTrpc<T>(path: string, input: unknown): Promise<T> {
-  const serialized = superjson.serialize(input);
-  const res = await fetch(`${TRPC}/${path}`, {
+async function postTrpc<T>(path: string, input?: unknown): Promise<T> {
+  // Defensive: today only `admin.grant` calls this and always passes input,
+  // but matching the GET-helper contract keeps the surface uniform.
+  // For a future no-input mutation, omit the body entirely (tRPC v11
+  // treats an empty POST as no-input).
+  const serialized =
+    input !== undefined ? superjson.serialize(input) : undefined;
+  const fetchInit: RequestInit = {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ json: serialized.json, meta: serialized.meta }),
-  });
+  };
+  if (serialized !== undefined) {
+    fetchInit.body = JSON.stringify({
+      json: serialized.json,
+      meta: serialized.meta,
+    });
+  }
+  const res = await fetch(`${TRPC}/${path}`, fetchInit);
   if (!res.ok) {
     const err = await res.json().catch(() => null);
     throw new Error(
