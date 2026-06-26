@@ -34,6 +34,28 @@ const HASH_SIMILARITY_THRESHOLD = 20;
  */
 const DUAL_PROVIDER_ENABLED = process.env.DUAL_PROVIDER_ENABLED !== "false";
 
+// 2026-06-26 — Vercel runtime hardening: in production, an
+// unhandledRejection somewhere downstream of the orchestrator
+// (Next.js bundling, Fetch API, etc.) can fire AFTER the rejection
+// handler chain (`hfPromise.then(s, e)`) ostensibly attached the
+// rejection handler, and Vercel then exits the lambda with code 128
+// even though our code "handled" the rejection. This catch-all guard
+// logs the rejection without crashing — so Face++'s good result and
+// the prepared response still reach the client even when HF throws
+// an unhandled rejection in the same tick. Survives Next.js HMR
+// module re-evaluation by storing the install flag on `process`
+// itself, not a module closure.
+const __GUARD_KEY__ = Symbol.for("reveli.unhandledRejectionGuard");
+if (!(process as any)[__GUARD_KEY__]) {
+  (process as any)[__GUARD_KEY__] = true;
+  process.on("unhandledRejection", (reason: any) => {
+    console.error(
+      "[Analysis] Global unhandled-rejection guard caught (continuing, NOT exiting):",
+      reason?.message ?? String(reason),
+    );
+  });
+}
+
 export const analysisService = {
   async analyze(
     telegramId: string,

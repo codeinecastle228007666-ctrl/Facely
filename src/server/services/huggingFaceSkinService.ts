@@ -83,9 +83,73 @@ export class HFUpstreamError extends Error {
 
 const HF_MODEL = "mufasabrownie/glowlytics-skin-models";
 const HF_API_URL = `https://api-inference.huggingface.co/models/${HF_MODEL}`;
-const HF_TIMEOUT_MS = 25_000;        // generous: cold start ~5-15s, then ~1-3s
+export async function analyzeSkinWithHuggingFace(
+  imageBase64: string,
+): Promise<AnalysisVerdict> {
+  // 2026-06-26 — circuit breaker: if HF failed recently, skip the call
+  // entirely. Tested runtime when `api-inference.huggingface.co` is
+  // unreachable from Vercel: 24ms to fail with HFUpstreamError, so
+  // tripping on first failure and skipping for the next 60s is the
+  // cheapest way to stay fast on Free tier.
+  if (isHfCircuitOpen()) {
+    const ageSec = Math.round(((Date.now() - (lastHfFailureAt ?? Date.now())) / 1000));
+    console.warn(
+      `[HuggingFace] Circuit breaker OPEN — skipping call (last failure ${ageSec}s ago, TTL ${HF_CIRCUIT_TTL_MS / 1000}s).`,
+    );
+    throw new HFUpstreamError(
+      `HuggingFace circuit breaker open (last failure ${ageSec}s ago).`,
+    );
+  }
+
+  const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+  const sizeKB = Math.round((cleanBase64.length * 3) / 4 / 1024);
+  if (sizeKB < 10) {
+    throw new Error("Фото слишком маленькое. Сделайте новый снимок.");
+  }
+
+  console.log(`[HuggingFace] Calling ${HF_MODEL} (${sizeKB}KB)…`);
+  // Single trip-point for the circuit breaker: ANY HFUpstreamError from
+  // any inner path (network, JSON parse, non-2xx, 503-after-retry,
+  // exhausted retries) trips the breaker. Without this, only
+  // `doFetch`'s network catch tripped it — leaving HTTP 429 / 503-stuck-
+  // warming / non-JSON paths paying 10s timeout per call even after
+  // HF started failing.
+  let detections: Array<{
+    label: string;
+    score: number;
+    box: { xmin: number; ymin: number; xmax: number; ymax: number };
+  }>;
+  try {
+    detections = await callHuggingFace(cleanBase64);
+  } catch (e: any) {
+    if (e instanceof HFUpstreamError) {
+      tripHfCircuit();
+    }
+    throw e;
+  }
+  console.log(`[HuggingFace] Returned ${detections.length} detections`);
+                                      // tier caps lambdas at 10s; Pro has 60s. The
+                                      // circuit-breaker below trips on the FIRST
+                                      // HFUpstreamError and skips HF entirely for
+                                      // HF_CIRCUIT_TTL_MS, so cold-boot warming
+                                      // (~5-15s) won't burn the lambda budget.
 const HF_COLD_START_RETRY_DELAY_MS = 6_000;
 const HF_COLD_START_RETRY_COUNT = 1;
+
+// 2026-06-26 — circuit breaker for HF upstream unreachability.
+// `api-inference.huggingface.co` was observed unreachable from Vercel
+// (FetchError in 24ms with HFUpstreamError, see Vercel runtime logs).
+// We trip the breaker on the FIRST failure so the next call in the
+// same lambda / same minute skips HF altogether — saves 10-25s of
+// outbound latency and prevents the unhandled-rejection HandlerChain
+// from racing the orchestrator's `.then(s, e)` and crashing the
+// process with exit code 128.
+const HF_CIRCUIT_TTL_MS = 60_000;
+let lastHfFailureAt: number | null = null;
+function tripHfCircuit() { lastHfFailureAt = Date.now(); }
+function isHfCircuitOpen(): boolean {
+  return lastHfFailureAt !== null && Date.now() - lastHfFailureAt < HF_CIRCUIT_TTL_MS;
+}
 
 // ── Severity bucketing yolo "score" → "{value, confidence}" pair ─────
 // YOLO confidence is 0–1 (we treat >= 0.5 as moderate; >= 0.8 as severe).
@@ -150,7 +214,9 @@ async function callHuggingFace(cleanBase64: string): Promise<Array<{
     } catch (e: any) {
       // Network reach failure (DNS, ECONNREFUSED, TLS) — same handling
       // path as HTTP errors so the orchestrator doesn't leak the raw
-      // fetch message to the user.
+      // fetch message to the user. The single circuit-breaker trip-
+      // point lives in `analyzeSkinWithHuggingFace`'s try/catch below,
+      // so we don't need to trip here as well.
       throw new HFUpstreamError(
         `HuggingFace network unreachable: ${e?.message ?? String(e)}`,
       );

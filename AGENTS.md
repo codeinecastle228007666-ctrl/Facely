@@ -69,7 +69,20 @@ ALTER TABLE "InventoryItem" ADD CONSTRAINT "InventoryItem_userId_fkey" FOREIGN K
 - `PROVIDER_TOKEN` — токен платёжного провайдера (Smart Global). Если не задан — оплата в Telegram Stars
 
 ## Fallback для анализа кожи
-Face++ — основной провайдер анализа кожи. Когда он вернёт `INSUFFICIENT_BALANCE` / `CONCURRENCY_LIMIT_EXCEEDED` / `OUT_OF_QUOTA`, `analysisService.analyze` ловит `AppQuotaExceededError` и автоматически переключается на HuggingFace Inference API (`mufasabrownie/glowlytics-skin-models`). HF возвращает только acne/spot/mole/wrinkle (нет skin_type/pore/dark_circle) → в `result.data_quality = "partial"` → ResultModal показывает баннер «Сервис анализа работает в ограниченном режиме». Если `HF_TOKEN` тоже не задан, юзер увидит «Сервис анализа временно недоступен». Миграция БД при переходе: добавить `provider` + `rawHuggingFace` колонки на `SkinAnalysis` (см. `prisma/migrations/` — последняя миграция).
+
+**Dual-mode (default, Pro tier only)** — Face++ и HuggingFace запускаются параллельно. ResultModal показывает вкладки `[Face++]` `[HuggingFace]` если вернулись оба. Если один bogus (HTTP 200 + all-zero features) — другая провайдер-мода попадает в `data_quality: "invalid"` и тихо выкидывается из `variants`. `result.provider: "dual" | "faceplus" | "huggingface"`.
+
+**Circuit breaker на HF** (2026-06-26) — `api-inference.huggingface.co` недоступна с Vercel network. Реализован в `huggingFaceSkinService.ts`:
+- `HF_TIMEOUT_MS = 10_000` (было 25_000) — fail fast на Free tier 10s бюджете.
+- При первом `HFUpstreamError` → `tripHfCircuit()` → следующие 60с вызовы сразу кидают HFUpstreamError без outbound fetch. TTL продлевается на каждой неудаче.
+- Лог: `[HuggingFace] Circuit breaker OPEN — skipping call`.
+
+**Force sequential (Free tier)** — переменная окружения `DUAL_PROVIDER_ENABLED=false`. `analysisService` запускает Face++ первым; на `AppQuotaExceededError` ИЛИ bogus-verdict (data_quality="invalid") swap на HF. Укладывается в 10s Vercel Free бюджет (HF после Face++ стартует только когда нужен fallback).
+
+**Глобальная защита от process crash** (2026-06-26) — `process.on("unhandledRejection")` ставится один раз в `analysisService.ts`. Если Vercel-баблинг пропустил необработанный rejection между Next.js Request handler и нашим `.then(s, e)`, лог пишется, но процесс **НЕ** завершается с exit 128. Face++ result всё равно дойдёт до юзера.
+
+## Исторический контекст
+Раньше: Face++ → при quota error → HF fallback (только при явной ошибке). С 2026-06-25 Face++ Free plan $0 → возвращает валидный 200 + canned near-zero данные → orchestrator лояльно помечал `data_quality: "full"` (ложь). 2026-06-25 evening → dual-mode с bogus-detection (`isBogusResult`) и параллельным запуском обоих провайдеров. 2026-06-26 → HF Inference API стала недоступна с Vercel → добавлен circuit breaker + global guard. Миграция БД: см. `prisma/migrations/20260625180000_provider_fallback` и `prisma/migrations/20260628000000_add_raw_face_plus`.
 
 ## Деплой
 - Vercel авто-деплой из `main`
