@@ -209,7 +209,7 @@ export const subscriptionService = {
     }
 
     return { url: data.result, currency: PAYMENT_CURRENCY, amount, tier };
-  },,
+  },
 
   async createChatStarsInvoice(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
