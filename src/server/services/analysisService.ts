@@ -166,6 +166,7 @@ export const analysisService = {
     // provider between Face++ (richest signals) and HuggingFace YOLO
     // (sparse features).
     const fpPromise = analyzeSkinWithFacePlus(compressedPhoto);
+    const geminiPromise = analyzeSkinWithGemini(compressedPhoto);
     const hfPromise = analyzeSkinWithHuggingFace(compressedPhoto);
 
     // ── Vercel Free tier guard: when DUAL_PROVIDER_ENABLED=false, run
