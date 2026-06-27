@@ -72,7 +72,7 @@ export const SkinDiary: React.FC = () => {
             <span style={{ fontSize: 28 }}>{moods[today.mood]?.emoji || "😊"}</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
-                Самочувствие кожи
+                Состояние кожи сегодня
               </div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 {today.note || moods[today.mood]?.label || "Нормально"}
