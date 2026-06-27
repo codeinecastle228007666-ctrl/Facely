@@ -103,7 +103,13 @@ export const api = {
     me: () => query<UserProfile>("auth.me"),
   },
   analysis: {
-    analyze: (data: { photoBase64: string; description?: string }) =>
+    /**
+     * 2026-06-27 — `provider` parameter added so user can pre-choose
+     * Face++ or Gemini before submit. Default "auto" preserves the
+     * parallel three-provider path for older callers / unset state.
+     * Routing in tRPC: `src/server/routers/analysisRouter.ts`.
+     */
+    analyze: (data: { photoBase64: string; description?: string; provider?: "auto" | "faceplus" | "gemini" }) =>
       mutation<AnalyzeResponse>("analysis.analyze", data),
     history: (data?: { limit?: number; offset?: number }) =>
       query<{ analyses: AnalysisHistoryItem[]; total: number }>("analysis.history", data),

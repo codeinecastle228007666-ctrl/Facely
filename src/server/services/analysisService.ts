@@ -82,10 +82,29 @@ if (!(process as any)[__GUARD_KEY__]) {
 }
 
 export const analysisService = {
+  /**
+   * Analyze a skin photo for the given user.
+   *
+   * 2026-06-27 — added `providerChoice` parameter. When the client
+   * passes "auto" (default, preserved for backward compat) the existing
+   * three-provider parallel pipeline runs. When the client passes
+   * "faceplus" or "gemini", only that lane runs (hf stays available
+   * for Face++ as a silent quota fallback — same as today on the
+   * free-tier sequential path). Gemini-only mode is STRICT: no
+   * cross-provider fallback if Gemini fails; user gets a focused
+   * Russian error message pointing back to the choice modal.
+   *
+   * Result shape is unchanged: top-level fields mirror the picked
+   * verdict; `variants` carries only the providers that actually ran;
+   * `provider` field reads as "dual" if multiple lanes succeeded
+   * (e.g. Face++ + HF quota fallback), or single provider name
+   * otherwise.
+   */
   async analyze(
     telegramId: string,
     photoBase64: string,
     description?: string,
+    providerChoice: "auto" | "faceplus" | "gemini" = "auto",
   ) {
     const user = await prisma.user.findUnique({
       where: { telegramId },
@@ -181,9 +200,24 @@ export const analysisService = {
     // (now added) is reachable and becomes the preferred mid-tier
     // provider between Face++ (richest signals) and HuggingFace YOLO
     // (sparse features).
-    const fpPromise = analyzeSkinWithFacePlus(compressedPhoto);
-    const geminiPromise = analyzeSkinWithGemini(compressedPhoto);
-    const hfPromise = analyzeSkinWithHuggingFace(compressedPhoto);
+    // 2026-06-27 — lane selection from the `provider` tRPC input.
+    //
+    //   "auto"     → fp + gemini + hf (parallel, dual-mode tab UX)
+    //   "faceplus" → fp + hf (hf as silent quota fallback only —
+    //                 same as today's free-tier sequential path;
+    //                 user picked Face++ explicitly for objective scores
+    //                 so we don't substitute Gemini's vermouth over HF)
+    //   "gemini"   → gemini only (strict, no fallback, friendly error
+    //                 on failure so user can re-pick in modal)
+    const runFacePlus = providerChoice === "auto" || providerChoice === "faceplus";
+    const runGemini =
+      providerChoice === "gemini" ||
+      (providerChoice === "auto" && GEMINI_PROVIDER_ENABLED);
+    const runHF = providerChoice === "auto" || providerChoice === "faceplus";
+
+    const fpPromise = runFacePlus ? analyzeSkinWithFacePlus(compressedPhoto) : null;
+    const geminiPromise = runGemini ? analyzeSkinWithGemini(compressedPhoto) : null;
+    const hfPromise = runHF ? analyzeSkinWithHuggingFace(compressedPhoto) : null;
 
     // ── Vercel Free tier guard: when DUAL_PROVIDER_ENABLED=false, run
     // Face++ sequentially first; only swap to HF on AppQuotaExceededError.
@@ -192,63 +226,69 @@ export const analysisService = {
     // the function timeout — so we never waste a cold HF start).
     //
     // Pro tier path: parallel Promise.allSettled for the dual-mode tab UX.
-    const fpRes = DUAL_PROVIDER_ENABLED
-      ? await fpPromise.then(
-          (v) => ({ status: "fulfilled" as const, value: v }),
-          (e) => ({ status: "rejected" as const, reason: e }),
-        )
-      : await (async () => {
-          try {
-            const v = await fpPromise;
-            // On Free tier / sequential mode, also fall back to HF when
-            // Face++ succeeded but returned a bogus verdict (data_quality
-            // = "invalid") — otherwise the user sees "service unavailable"
-            // when in fact HF could have produced something useful.
-            if (v.data_quality === "invalid") {
-              console.warn(
-                "[Analysis] Face++ returned bogus verdict (sequential mode), swapping to HF.",
-              );
-              try {
-                const hv = await hfPromise;
-                return { status: "fulfilled" as const, value: hv };
-              } catch {
-                // HF unavailable too — keep Face++'s bogus verdict so the
-                // orchestrator can detect both-extracted-null and surface
-                // the friendly error to the user.
-                return { status: "fulfilled" as const, value: v };
-              }
-            }
-            return { status: "fulfilled" as const, value: v };
-          } catch (e: any) {
-            if (e instanceof AppQuotaExceededError) {
-              console.warn(
-                `[Analysis] Face++ quota exceeded (sequential mode), swapping to HF: ${e.message}`,
-              );
-              try {
-                const v = await hfPromise;
-                return { status: "fulfilled" as const, value: v };
-              } catch (hfErr: any) {
-                console.error("[Analysis] Sequential HF fallback failed:", hfErr);
-                throw new Error(
-                  "Сервис анализа временно недоступен. Разработчик уже работает над восстановлением. Попробуйте через час.",
+    const fpRes = !fpPromise
+      ? null
+      : DUAL_PROVIDER_ENABLED
+        ? await fpPromise.then(
+            (v) => ({ status: "fulfilled" as const, value: v }),
+            (e) => ({ status: "rejected" as const, reason: e }),
+          )
+        : await (async () => {
+            try {
+              const v = await fpPromise;
+              // On Free tier / sequential mode, also fall back to HF when
+              // Face++ succeeded but returned a bogus verdict (data_quality
+              // = "invalid") — otherwise the user sees "service unavailable"
+              // when in fact HF could have produced something useful.
+              if (v.data_quality === "invalid") {
+                console.warn(
+                  "[Analysis] Face++ returned bogus verdict (sequential mode), swapping to HF.",
                 );
+                try {
+                  const hv = await hfPromise;
+                  return { status: "fulfilled" as const, value: hv };
+                } catch {
+                  // HF unavailable too — keep Face++'s bogus verdict so the
+                  // orchestrator can detect both-extracted-null and surface
+                  // the friendly error to the user.
+                  return { status: "fulfilled" as const, value: v };
+                }
               }
+              return { status: "fulfilled" as const, value: v };
+            } catch (e: any) {
+              if (e instanceof AppQuotaExceededError) {
+                console.warn(
+                  `[Analysis] Face++ quota exceeded (sequential mode), swapping to HF: ${e.message}`,
+                );
+                try {
+                  const v = await hfPromise;
+                  return { status: "fulfilled" as const, value: v };
+                } catch (hfErr: any) {
+                  console.error("[Analysis] Sequential HF fallback failed:", hfErr);
+                  throw new Error(
+                    "Сервис анализа временно недоступен. Разработчик уже работает над восстановлением. Попробуйте через час.",
+                  );
+                }
+              }
+              return { status: "rejected" as const, reason: e };
             }
-            return { status: "rejected" as const, reason: e };
-          }
-        })();
-    const geminiRes = DUAL_PROVIDER_ENABLED && GEMINI_PROVIDER_ENABLED
-      ? await geminiPromise.then(
-          (v) => ({ status: "fulfilled" as const, value: v }),
-          (e) => ({ status: "rejected" as const, reason: e }),
-        )
-      : null; // Sequential mode or Gemini opt-out: 60s cold-boot exceeds Vercel Free 10s budget
-    const hfRes = DUAL_PROVIDER_ENABLED
-      ? await hfPromise.then(
-          (v) => ({ status: "fulfilled" as const, value: v }),
-          (e) => ({ status: "rejected" as const, reason: e }),
-        )
-      : null; // Free tier: HF already ran inside the sequential IIFE above; outer `hfRes` stays null
+          })();
+    const geminiRes = !geminiPromise
+      ? null
+      : DUAL_PROVIDER_ENABLED && GEMINI_PROVIDER_ENABLED
+        ? await geminiPromise.then(
+            (v) => ({ status: "fulfilled" as const, value: v }),
+            (e) => ({ status: "rejected" as const, reason: e }),
+          )
+        : null; // Sequential mode or Gemini opt-out: 60s cold-boot exceeds Vercel Free 10s budget
+    const hfRes = !hfPromise
+      ? null
+      : DUAL_PROVIDER_ENABLED
+        ? await hfPromise.then(
+            (v) => ({ status: "fulfilled" as const, value: v }),
+            (e) => ({ status: "rejected" as const, reason: e }),
+          )
+        : null; // Free tier: HF already ran inside the sequential IIFE above; outer `hfRes` stays null
 
     // ── Aggregated verdicts from the parallel/sequential result bags ──────
     // IMPORTANT: order matters — `fpVerdict`, `geminiVerdict` and
@@ -256,8 +296,11 @@ export const analysisService = {
     // branch below, which references them. Previous attempt left the
     // declarations after the `if` check, causing a TypeScript "Cannot
     // access 'fpVerdict' before initialization" TDZ error.
+    // 2026-06-27 — null-guards added on `fpRes` / `fpVerdict` extraction
+    // because the user pre-choice may disable the Face++ lane
+    // (providerChoice === "gemini" makes fpPromise stay null).
     const fpVerdict =
-      fpRes.status === "fulfilled" && fpRes.value && fpRes.value.data_quality !== "invalid"
+      fpRes && fpRes.status === "fulfilled" && fpRes.value && fpRes.value.data_quality !== "invalid"
         ? fpRes.value
         : null;
     const geminiVerdict =
@@ -271,19 +314,42 @@ export const analysisService = {
           : null
         : null;
     const fpInvalidButPersisted =
-      fpRes.status === "fulfilled" && fpRes.value.data_quality === "invalid"
+      fpRes && fpRes.status === "fulfilled" && fpRes.value.data_quality === "invalid"
         ? fpRes.value
         : null;
     const geminiInvalidButPersisted =
       geminiRes && geminiRes.status === "fulfilled" && geminiRes.value && geminiRes.value.data_quality === "invalid"
         ? geminiRes.value
         : null;
-    const fpError = fpRes.status === "rejected" ? fpRes.reason : null;
+    // Optional chaining since fpRes may now be null (Gemini-only path).
+    const fpError = fpRes?.status === "rejected" ? fpRes.reason : null;
     // Free tier (DUAL_PROVIDER_ENABLED=false): hfRes stays null because HF
     // already ran inside the sequential IIFE above. Optional chaining
     // makes this branch null-safe on both Pro and Free paths.
     const hfError = hfRes?.status === "rejected" ? hfRes.reason : null;
     const geminiError = geminiRes?.status === "rejected" ? geminiRes.reason : null;
+
+    // 2026-06-27 — strict-mode errors for explicit user choices.
+    // When the user picked a single provider lane and it failed, the
+    // generic "service unavailable" message below is unhelpful — they
+    // specifically asked for one provider. Two focused Russian messages
+    // point them back to the choice modal so they can re-pick.
+    if (providerChoice === "gemini" && !geminiVerdict) {
+      console.error(
+        "[Analysis] User pre-chose 'gemini' but Gemini failed/exhausted; surfacing focused error.",
+      );
+      throw new Error(
+        "Gemini временно недоступен. Попробуй Face++ или повтори анализ через час.",
+      );
+    }
+    if (providerChoice === "faceplus" && !fpVerdict && !hfVerdict) {
+      console.error(
+        "[Analysis] User pre-chose 'faceplus' but Face++ failed and HF fallback unavailable.", 
+      );
+      throw new Error(
+        "Face++ сейчас недоступен. Попробуй Gemini или повтори через час.",
+      );
+    }
 
     if (!fpVerdict && !geminiVerdict && !hfVerdict) {
       // All three providers either errored or returned bogus data.

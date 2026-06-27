@@ -104,7 +104,16 @@ export const ResultModal: React.FC<ResultModalProps> = ({
   // Dual-mode: pick the variant for the currently active tab. Defaults
   // to whichever provider the orchestrator flagged as `activeProvider`.
   // Single-mode: variants undefined → fall back to top-level fields.
+  // 2026-06-27 — `variantKeys` materialised here so the JSX tablist
+  // can check count > 1 in one place (otherwise the unused-var lint
+  // would be the only way to reach the JSX). Side benefit: ignoring
+  // null/undefined entries from the variants map.
   const hasVariants = !!(result.variants && (result.variants.faceplus || result.variants.gemini || result.variants.huggingface));
+  const variantKeys: VariantKey[] = hasVariants
+    ? (Object.keys(result.variants!) as VariantKey[]).filter(
+        (k) => !!(result.variants as Record<VariantKey, AnalysisResult | undefined>)[k],
+      )
+    : [];
   const pickedVariant: AnalysisResult | null = hasVariants
     ? (result.variants![activeTab ?? (result.activeProvider ?? "faceplus")] ?? null)
     : null;
@@ -196,7 +205,16 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </div>
             )}
 
-            {hasVariants && result.variants && (
+            {/*
+              2026-06-27 — Hide the tab switcher when only one variant
+              ran (single-provider pre-choice in AnalysisInput).
+              Otherwise the tabs render one inactive chip that looks
+              broken and signals "you can switch" when there is nothing
+              to switch to. The condition uses `variantCount > 1` instead
+              of just `hasVariants` so a solo Gemini or solo Face++
+              record renders a clean header without tab UI.
+            */}
+            {hasVariants && result.variants && variantKeys.length > 1 && (
               <div
                 role="tablist"
                 style={{

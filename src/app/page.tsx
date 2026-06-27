@@ -80,10 +80,14 @@ export default function Dashboard() {
     }).catch(() => {});
   }, [user]);
   const handleSubmit = useCallback(
-    async (photoBase64: string, description?: string) => {
+    async (
+      photoBase64: string,
+      description?: string,
+      provider: "auto" | "faceplus" | "gemini" = "auto",
+    ) => {
       setAnalyzing(true);
       try {
-        const res = await api.analysis.analyze({ photoBase64, description });
+        const res = await api.analysis.analyze({ photoBase64, description, provider });
         setPhotoData(photoBase64);
         setResult(res.analysis);
         setXpGained(res.xpGained);

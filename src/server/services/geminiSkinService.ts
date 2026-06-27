@@ -1,14 +1,23 @@
 /**
- * Google Gemini 2.5 Pro Vision skin-analysis service.
+ * Google Gemini 2.5 Flash Vision skin-analysis service.
  *
  * 2026-06-26 — added because `api-inference.huggingface.co` was observed
  * unreachable from Vercel network (FetchError in 24ms, see Vercel
  * runtime logs). Gemini's `generativelanguage.googleapis.com` endpoint
  * IS reachable from Vercel — confirmed by parallel tests. The orchestrator
- * now runs Face++ + Gemini + HuggingFace in parallel; the user sees up
- * to 3 variants in the ResultModal tab switcher.
+ * runs Face++ + Gemini + HuggingFace in parallel; the user sees up
+ * to 3 variants in the ResultModal tab switcher. Or, when the user
+ * explicitly picks a single provider in AnalysisInput, only that one runs.
  *
- * Uses `gemini-2.5-pro` model with structured JSON output
+ * 2026-06-27 — model swapped from `gemini-2.5-pro` → `gemini-2.5-flash`
+ * per user instruction. Flash is ~3× faster on cold-start, has higher
+ * free-tier rate limits (15 RPM vs Pro's 5 RPM), and is permissive with
+ * GEMINI_API_KEY from Google AI Studio. Schema output is identical
+ * (responseSchema is model-agnostic) so the downstream scoring pipeline
+ * is unchanged. Pro can be re-introduced later as a paid-tier upgrade
+ * by setting `GEMINI_MODEL=gemini-2.5-pro` env var (not yet wired).
+ *
+ * Uses `gemini-2.5-flash` model with structured JSON output
  * (`responseMimeType: "application/json"` + `responseSchema`). The model
  * returns 8 skin-feature values with confidence, plus a `skin_type`
  * integer (0=сухая, 1=жирная, 2=комбинированная, 3=нормальная).
@@ -75,7 +84,11 @@ export class GeminiUpstreamError extends Error {
   }
 }
 
-const GEMINI_MODEL = "gemini-2.5-pro";
+// User pre-choice mode (gemini-2.5-flash) — see file header. Flash is
+// the production-default model. Pro was previously the default; the
+// swap was made because flash has higher free-tier quotas (15 RPM,
+// 50 RPD vs Pro 5 RPM, 2 RPD) and lower latency on cold-start.
+const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_API_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
