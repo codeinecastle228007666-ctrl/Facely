@@ -1,4 +1,5 @@
 import { prisma } from "../db";
+import { pushService } from "./pushService";
 
 export const ritualService = {
   async updateStreak(userId: string) {
@@ -148,5 +149,114 @@ export const ritualService = {
   isMilestone(streak: number): number | null {
     if (this.MILESTONES.includes(streak)) return streak;
     return null;
+  },
+
+  /**
+   * 2026-06-27 — Daily sweep that catches users whose streak broke
+   * because they missed a day. Runs from /api/remind (cron-job.org pings
+   * it daily). pushScheduler.ts owns the same intent but uses node-cron
+   * which doesn't survive Vercel's serverless lifetime — /api/remind is
+   * the only reliable trigger in production.
+   *
+   * Per candidate (User with streak > 0 AND Ritual.lastDate < threshold):
+   *   - streakFreezes > 0 → consume one freeze, set Ritual.lastDate = now
+   *     (so updateStreak won't see "missed day" on next analysis), push
+   *     "Streak saved 🧊" notification.
+   *   - streakFreezes == 0 → reset Ritual.streak to 0 AND clear
+   *     lastSentMilestone (so when streak climbs back, milestones
+   *     re-fire cleanly), push "Streak broken 😔" notification.
+   *
+   * Why 36h threshold (vs 24h): cron-job.org daily is jitter-prone, and
+   * lastDate is server-stored UTC while users see local. 36h catches
+   * users whose last analysis was anywhere in "yesterday's window"
+   * regardless of timezone edges.
+   *
+   * Idempotent on same-day re-fires: after first run, Ritual.lastDate =
+   * now (≈ today), so threshold filter excludes the user on re-run.
+   *
+   * NOT transactional: best-effort separate updates. Worst-case on
+   * process crash mid-loop is "freeze decremented but DB write for
+   * lastDate failed" (recoverable on next day's run — user loses one
+   * freeze but streak still breaks correctly). Acceptable for MVP.
+   */
+  async breakMissedStreaks() {
+    const now = new Date();
+    const threshold = new Date(now.getTime() - 36 * 3600 * 1000);
+
+    // Batch 1: users WITH streakFreezes → consume one, save streak.
+    const freezeCandidates = await prisma.user.findMany({
+      where: {
+        streakFreezes: { gt: 0 },
+        rituals: {
+          some: {
+            lastDate: { lt: threshold },
+            streak: { gt: 0 },
+          },
+        },
+      },
+      select: {
+        id: true,
+        telegramId: true,
+        streakFreezes: true,
+        rituals: { select: { id: true, streak: true }, take: 1 },
+      },
+    });
+
+    let savedCount = 0;
+    for (const user of freezeCandidates) {
+      const ritual = user.rituals[0];
+      if (!ritual) continue;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { streakFreezes: { decrement: 1 } },
+      });
+      await prisma.ritual.update({
+        where: { id: ritual.id },
+        data: { lastDate: now },
+      });
+      await pushService.sendStreakFrozen(
+        user.telegramId,
+        user.streakFreezes - 1,
+        ritual.streak,
+      );
+      savedCount++;
+    }
+
+    // Batch 2: users WITHOUT freezes → reset streak + clear milestone sentinel.
+    const resetCandidates = await prisma.user.findMany({
+      where: {
+        streakFreezes: 0,
+        rituals: {
+          some: {
+            lastDate: { lt: threshold },
+            streak: { gt: 0 },
+          },
+        },
+      },
+      select: {
+        id: true,
+        telegramId: true,
+        rituals: { select: { id: true, streak: true }, take: 1 },
+      },
+    });
+
+    let brokenCount = 0;
+    for (const user of resetCandidates) {
+      const ritual = user.rituals[0];
+      if (!ritual) continue;
+      await prisma.ritual.update({
+        where: { id: ritual.id },
+        data: { streak: 0, lastSentMilestone: null },
+      });
+      await pushService.sendStreakBroken(user.telegramId, ritual.streak);
+      brokenCount++;
+    }
+
+    if (savedCount + brokenCount > 0) {
+      console.log(
+        `[ritual] breakMissedStreaks: saved=${savedCount} broken=${brokenCount}`,
+      );
+    }
+    return { brokenCount, savedCount };
   },
 };

@@ -97,4 +97,43 @@ export const pushService = {
       `Спасибо! 🙏`;
     return sendTelegramMessage(telegramId, text);
   },
+
+  /**
+   * 2026-06-27 — Streak saved by streak-freeze (auto-consumed by
+   * ritualService.breakMissedStreaks when a user's last analysis is
+   * older than 36h and they have at least one freeze in inventory).
+   * Sympathetic copy: tell them what they saved and how many freezes
+   * remain.
+   */
+  async sendStreakFrozen(
+    telegramId: string,
+    remainingFreezes: number,
+    currentStreak: number,
+  ) {
+    const freezesText = remainingFreezes === 1
+      ? "осталась 1 заморозка"
+      : `осталось ${remainingFreezes} ${pluralize(remainingFreezes, "заморозка", "заморозки", "заморозок")}`;
+    const daysText = currentStreak === 1
+      ? "1 день"
+      : `${currentStreak} ${pluralize(currentStreak, "день", "дня", "дней")}`;
+    const text =
+      `🧊 Стрик спасён!\n` +
+      `Ты пропустил(а) день, но streak-freeze сработал — стрик в ${daysText} сохранён.\n` +
+      `${freezesText.charAt(0).toUpperCase()}${freezesText.slice(1)} в запасе — береги их на чёрный день.`;
+    return sendTelegramMessage(telegramId, text);
+  },
+
+  /**
+   * 2026-06-27 — Streak broken (no freezes left to consume). Sympathetic
+   * copy: dropped from N days → reset to 0, encourage re-start.
+   */
+  async sendStreakBroken(telegramId: string, lostDays: number) {
+    const daysWord = pluralize(lostDays, "день", "дня", "дней");
+    const daysText = `${lostDays} ${daysWord}`;
+    const text =
+      `😔 Стрик прервался.\n` +
+      `${daysText.charAt(0).toUpperCase()}${daysText.slice(1)} подряд не получилось — сочувствуем.\n` +
+      `Не расстраивайся — начни заново. Каждый новый день считается с нуля!`;
+    return sendTelegramMessage(telegramId, text);
+  },
 };
