@@ -314,7 +314,7 @@ export const analysisService = {
           : null
         : null;
     const fpInvalidButPersisted =
-      fpRes && fpRes.status === "fulfilled" && fpRes.value.data_quality === "invalid"
+      fpRes && fpRes.status === "fulfilled" && fpRes.value && fpRes.value.data_quality === "invalid"
         ? fpRes.value
         : null;
     const geminiInvalidButPersisted =
