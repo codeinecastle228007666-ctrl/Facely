@@ -17,7 +17,7 @@ import { AchievementsModal } from "@/components/dashboard/AchievementsModal";
 import { LastAnalysisCard } from "@/components/dashboard/LastAnalysisCard";
 import { StreakCard } from "@/components/dashboard/StreakCard";
 import { RoutineSection } from "@/components/routine/RoutineSection";
-import { FireIcon, MicroscopeIcon } from "@/components/ui/Icons";
+import { MicroscopeIcon } from "@/components/ui/Icons";
 import { useUser } from "@/hooks/useUser";
 import { useTelegram } from "@/hooks/useTelegram";
 import { api, type AnalysisResult, type AnalysisHistoryItem } from "@/services/api";
@@ -150,11 +150,7 @@ export default function Dashboard() {
       <>
         <div style={{ paddingTop: 8 }}>
           <ProfileSkeleton />
-          <div className="flex gap-2" style={{ marginBottom: 12 }}>
-            <div className="card" style={{ flex: 1, height: 64 }} />
-            <div className="card" style={{ flex: 1, height: 64 }} />
-            <div className="card" style={{ flex: 1, height: 64 }} />
-          </div>
+          <div className="card" style={{ marginBottom: 12, height: 64 }} />
         </div>
         <TabBar />
       </>
@@ -218,22 +214,7 @@ export default function Dashboard() {
           onAchievementsClick={() => setAchievementsOpen(true)}
         />
 
-        <div className="flex gap-2" style={{ marginBottom: 12 }}>
-          <motion.div
-            className="card flex items-center gap-2"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.1 }}
-            style={{ flex: 1, padding: "14px 16px" }}
-          >
-            <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(255, 143, 163, 0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <FireIcon size={18} />
-            </div>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>{streak}</div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>дней стрика</div>
-            </div>
-          </motion.div>
+        <div style={{ marginBottom: 12 }}>
           <motion.button
             onClick={() => setPurchaseOpen(true)}
             className="card flex items-center gap-2"
@@ -241,7 +222,7 @@ export default function Dashboard() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.15 }}
             whileTap={{ scale: 0.97 }}
-            style={{ flex: 1, padding: "14px 16px", border: "none", cursor: "pointer", textAlign: "left" }}
+            style={{ width: "100%", padding: "14px 16px", border: "none", cursor: "pointer", textAlign: "left" }}
           >
             <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(255, 180, 162, 0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <MicroscopeIcon size={18} />
