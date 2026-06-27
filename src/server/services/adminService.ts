@@ -433,9 +433,11 @@ export const adminService = {
       await pushService.send(
         claim.user.telegramId,
         "Оплата подтверждена",
-        `🎉 Спасибо! Админ подтвердил твой перевод — ${
-          tier === "monthly" ? "подписка активирована" : `${qty} анализ(ов) зачислено`
-        }.`,
+        `🎉 Спасибо за покупку!\n${
+          tier === "monthly"
+            ? "Подписка активирована — пользуйся!"
+            : `Зачислено ${qty} анализ(ов) — пользуйся!`
+        }`,
       );
     } catch (e: any) {
       console.warn(`[admin] confirm push failed: ${e?.message ?? e}`);
