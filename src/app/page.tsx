@@ -217,20 +217,51 @@ export default function Dashboard() {
         <div style={{ marginBottom: 12 }}>
           <motion.button
             onClick={() => setPurchaseOpen(true)}
-            className="card flex items-center gap-2"
+            className="card flex items-center gap-3"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.15 }}
             whileTap={{ scale: 0.97 }}
-            style={{ width: "100%", padding: "14px 16px", border: "none", cursor: "pointer", textAlign: "left" }}
+            style={{ width: "100%", padding: "14px 16px", border: "none", cursor: "pointer" }}
           >
-            <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(255, 180, 162, 0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 12,
+                background: "rgba(255, 180, 162, 0.15)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
               <MicroscopeIcon size={18} />
             </div>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>{freeAnalyses + paidAnalyses}</div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>Доступно анализов</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.1 }}>
+                {freeAnalyses + paidAnalyses}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.1 }}>
+                Доступно анализов
+              </div>
             </div>
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              style={{ flexShrink: 0, opacity: 0.5 }}
+              aria-hidden="true"
+            >
+              <path
+                d="M9 5l7 7-7 7"
+                stroke="var(--text-secondary)"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </motion.button>
         </div>
 
