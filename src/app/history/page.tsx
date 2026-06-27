@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TabBar } from "@/components/ui/TabBar";
 import { AnalysisCard } from "@/components/history/AnalysisCard";
+import { SkinHealthIndex } from "@/components/history/SkinHealthIndex";
 import { api, type AnalysisHistoryItem, type AnalysisResult } from "@/services/api";
 import { HistoryIcon, CloseIcon } from "@/components/ui/Icons";
 import { motion, AnimatePresence } from "framer-motion";
@@ -198,55 +199,59 @@ export default function HistoryPage() {
             </p>
           </motion.div>
         ) : (
-          <div>
-            {items.map((item, i) => {
-              const sb = isSelectedBefore(item.id);
-              const sa = isSelectedAfter(item.id);
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    if (compareMode) {
-                      handleCompareClick(item);
-                    } else {
-                      setSelected(item);
-                    }
-                  }}
-                  style={{
-                    borderRadius: 16,
-                    border: sa
-                      ? "2px solid #7EC4D8"
-                      : sb
-                      ? "2px solid #A8D8EA"
-                      : "2px solid transparent",
-                    marginBottom: 2,
-                    transition: "border 0.2s",
-                    cursor: compareMode ? "pointer" : undefined,
-                  }}
-                >
-                  {sb && (
-                    <div style={{
-                      position: "absolute", marginLeft: 8, marginTop: 8,
-                      fontSize: 10, fontWeight: 700, color: "white",
-                      background: "#A8D8EA", padding: "2px 8px", borderRadius: 8,
-                    }}>
-                      ДО
-                    </div>
-                  )}
-                  {sa && (
-                    <div style={{
-                      position: "absolute", marginLeft: 8, marginTop: 8,
-                      fontSize: 10, fontWeight: 700, color: "white",
-                      background: "#7EC4D8", padding: "2px 8px", borderRadius: 8,
-                    }}>
-                      ПОСЛЕ
-                    </div>
-                  )}
-                  <AnalysisCard item={item} index={i} showCheckbox={compareMode} checked={sb || sa} onCheck={() => handleCompareClick(item)} />
-                </div>
-              );
-            })}
-          </div>
+          <>
+            {/* 2026-06-27 — at-a-glance dashboard card: gauge + line chart */}
+            <SkinHealthIndex items={items} />
+            <div>
+              {items.map((item, i) => {
+                const sb = isSelectedBefore(item.id);
+                const sa = isSelectedAfter(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      if (compareMode) {
+                        handleCompareClick(item);
+                      } else {
+                        setSelected(item);
+                      }
+                    }}
+                    style={{
+                      borderRadius: 16,
+                      border: sa
+                        ? "2px solid #7EC4D8"
+                        : sb
+                        ? "2px solid #A8D8EA"
+                        : "2px solid transparent",
+                      marginBottom: 2,
+                      transition: "border 0.2s",
+                      cursor: compareMode ? "pointer" : undefined,
+                    }}
+                  >
+                    {sb && (
+                      <div style={{
+                        position: "absolute", marginLeft: 8, marginTop: 8,
+                        fontSize: 10, fontWeight: 700, color: "white",
+                        background: "#A8D8EA", padding: "2px 8px", borderRadius: 8,
+                      }}>
+                        ДО
+                      </div>
+                    )}
+                    {sa && (
+                      <div style={{
+                        position: "absolute", marginLeft: 8, marginTop: 8,
+                        fontSize: 10, fontWeight: 700, color: "white",
+                        background: "#7EC4D8", padding: "2px 8px", borderRadius: 8,
+                      }}>
+                        ПОСЛЕ
+                      </div>
+                    )}
+                    <AnalysisCard item={item} index={i} showCheckbox={compareMode} checked={sb || sa} onCheck={() => handleCompareClick(item)} />
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
