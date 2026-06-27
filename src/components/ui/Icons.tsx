@@ -119,21 +119,23 @@ export const ArrowRight: React.FC<IconProps> = ({ size = 20, className }) => (
 /**
  * 2026-06-27 — Microscope (анализ кожи). The "Доступно N анализов"
  * counter used 💎 (gem) before, which is semantically wrong: users
- * saw "diamonds" with skin-test context. Lucide-aligned microscope
- * shape, brand pink (#C47A8F stroke + #FFB4A2 fill for highlights)
- * to match FireIcon / DiamondIcon / CrownIcon palette.
+ * saw "diamonds" with skin-test context.
+ *
+ * 2026-06-27 (later) — first SVG draft had filled eyepiece body +
+ * filled lens that overlapped the focus knob and stage; at 18-22px
+ * (Telegram Mini App dashboard counter) the shapes collapsed into a
+ * muddy blob. Rewritten as Lucide-microscope stroke-only, brand pink
+ * #C47A8F, strokeWidth 1.6, matching the HistoryIcon / ChartIcon /
+ * ShareIcon / ArrowRight stroke family. Pure stroke reads cleanly at
+ * every size and avoids the multi-fill overlap.
  */
 export const MicroscopeIcon: React.FC<IconProps> = ({ size = 24, className }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
-    {/* Stage base */}
-    <path d="M6 18h8M3 22h18" stroke="#C47A8F" strokeWidth="1.5" strokeLinecap="round" />
-    {/* Big round lens at base-right */}
-    <circle cx="14" cy="15" r="6.5" fill="#FFB4A2" stroke="#C47A8F" strokeWidth="1.5" />
-    {/* Focus knob connecting lens to body */}
-    <path d="M9 14h2" stroke="#C47A8F" strokeWidth="1.5" strokeLinecap="round" />
-    {/* Upper eyepiece body */}
-    <path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z" fill="#FFB4A2" stroke="#C47A8F" strokeWidth="1.5" strokeLinejoin="round" />
-    {/* Eyepiece tube */}
-    <path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3" stroke="#C47A8F" strokeWidth="1.5" strokeLinecap="round" />
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#C47A8F" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M6 18h8" />
+    <path d="M3 22h18" />
+    <path d="M14 22a7 7 0 1 0 0-14h-1" />
+    <path d="M9 14h2" />
+    <path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z" />
+    <path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3" />
   </svg>
 );
