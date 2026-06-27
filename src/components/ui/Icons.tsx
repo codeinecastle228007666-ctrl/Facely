@@ -115,3 +115,25 @@ export const ArrowRight: React.FC<IconProps> = ({ size = 20, className }) => (
     <path d="M5 12h14M13 5l7 7-7 7" stroke="#C47A8F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
+
+/**
+ * 2026-06-27 — Microscope (анализ кожи). The "Доступно N анализов"
+ * counter used 💎 (gem) before, which is semantically wrong: users
+ * saw "diamonds" with skin-test context. Lucide-aligned microscope
+ * shape, brand pink (#C47A8F stroke + #FFB4A2 fill for highlights)
+ * to match FireIcon / DiamondIcon / CrownIcon palette.
+ */
+export const MicroscopeIcon: React.FC<IconProps> = ({ size = 24, className }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+    {/* Stage base */}
+    <path d="M6 18h8M3 22h18" stroke="#C47A8F" strokeWidth="1.5" strokeLinecap="round" />
+    {/* Big round lens at base-right */}
+    <circle cx="14" cy="15" r="6.5" fill="#FFB4A2" stroke="#C47A8F" strokeWidth="1.5" />
+    {/* Focus knob connecting lens to body */}
+    <path d="M9 14h2" stroke="#C47A8F" strokeWidth="1.5" strokeLinecap="round" />
+    {/* Upper eyepiece body */}
+    <path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z" fill="#FFB4A2" stroke="#C47A8F" strokeWidth="1.5" strokeLinejoin="round" />
+    {/* Eyepiece tube */}
+    <path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3" stroke="#C47A8F" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);

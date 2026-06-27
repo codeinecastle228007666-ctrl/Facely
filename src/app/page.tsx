@@ -17,7 +17,7 @@ import { AchievementsModal } from "@/components/dashboard/AchievementsModal";
 import { LastAnalysisCard } from "@/components/dashboard/LastAnalysisCard";
 import { StreakCard } from "@/components/dashboard/StreakCard";
 import { RoutineSection } from "@/components/routine/RoutineSection";
-import { FireIcon } from "@/components/ui/Icons";
+import { FireIcon, MicroscopeIcon } from "@/components/ui/Icons";
 import { useUser } from "@/hooks/useUser";
 import { useTelegram } from "@/hooks/useTelegram";
 import { api, type AnalysisResult, type AnalysisHistoryItem } from "@/services/api";
@@ -243,12 +243,12 @@ export default function Dashboard() {
             whileTap={{ scale: 0.97 }}
             style={{ flex: 1, padding: "14px 16px", border: "none", cursor: "pointer", textAlign: "left" }}
           >
-            <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(255, 215, 0, 0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-              💎
+            <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(255, 180, 162, 0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <MicroscopeIcon size={18} />
             </div>
             <div>
               <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.2 }}>{freeAnalyses + paidAnalyses}</div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>доступно</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>Доступно анализов</div>
             </div>
           </motion.button>
         </div>

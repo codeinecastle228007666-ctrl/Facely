@@ -144,7 +144,7 @@ export const AllUsersList: React.FC<Props> = ({ onPick, selectedId, refreshKey }
                     alignSelf: "center",
                   }}
                 >
-                  {u.paidAnalyses > 0 ? `💎 ${u.paidAnalyses}` : "—"}
+                  {u.paidAnalyses > 0 ? `🔬 ${u.paidAnalyses}` : "—"}
                 </span>
               </button>
             );

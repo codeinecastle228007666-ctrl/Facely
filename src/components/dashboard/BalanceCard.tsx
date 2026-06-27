@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { FireIcon, DiamondIcon, CrownIcon } from "@/components/ui/Icons";
+import { FireIcon, MicroscopeIcon, CrownIcon } from "@/components/ui/Icons";
 import { motion } from "framer-motion";
 
 interface BalanceCardProps {
@@ -58,7 +58,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
               justifyContent: "center",
             }}
           >
-            <DiamondIcon size={22} />
+            <MicroscopeIcon size={22} />
           </div>
           <span style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }}>
             {paidAnalyses}

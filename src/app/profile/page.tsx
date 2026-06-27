@@ -11,6 +11,7 @@ import { ReportsSection } from "@/components/dashboard/ReportsSection";
 import { FeedbackModal } from "@/components/dashboard/FeedbackModal";
 import { BalanceCard } from "@/components/dashboard/BalanceCard";
 import { AchievementsInline } from "@/components/dashboard/AchievementsInline";
+import { MicroscopeIcon } from "@/components/ui/Icons";
 import { useUser } from "@/hooks/useUser";
 import { getLevelPerks } from "@/server/utils/levelSystem";
 import { ProfileSkeleton } from "@/components/ui/Skeleton";
@@ -72,7 +73,7 @@ export default function ProfilePage() {
               border: "none", background: "transparent", cursor: "pointer",
             }}
           >
-            <span style={{ fontSize: 20 }}>💎</span>
+            <MicroscopeIcon size={20} />
             <div style={{ flex: 1, textAlign: "left" }}>
               <div style={{ fontSize: 14, fontWeight: 600 }}>Магазин</div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
