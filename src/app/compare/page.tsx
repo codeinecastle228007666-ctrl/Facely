@@ -39,6 +39,53 @@ const FIELD_ICONS: Record<string, string> = {
   wrinkle: "◯",
 };
 
+/**
+ * 2026-06-27 — full-page spinner shared by both "fetching analyses" and
+ * "comparing photos" loading states. Sized bigger than the in-slider
+ * overlay so the first content the user sees on `/compare` is clearly
+ * progress, not a half-loaded slider.
+ */
+function FullLoader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div
+      style={{
+        paddingTop: 60,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 14,
+        minHeight: "50vh",
+      }}
+    >
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          border: "4px solid var(--border)",
+          borderTopColor: "var(--primary)",
+          borderRadius: "50%",
+          animation: "spin 0.8s linear infinite",
+        }}
+      />
+      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
+        {title}
+      </div>
+      {subtitle && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--text-secondary)",
+            textAlign: "center",
+            maxWidth: 280,
+          }}
+        >
+          {subtitle}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ImageSlider({ before, after }: { before: string; after: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(50);
@@ -190,6 +237,7 @@ function CompareContent() {
   const [selected2, setSelected2] = useState(id2 || "");
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [fetchingIds, setFetchingIds] = useState(true);
 
   useEffect(() => {
@@ -214,31 +262,47 @@ function CompareContent() {
     if (selected1 && selected2 && selected1 !== selected2 && analyses.length > 0) {
       handleCompare();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected1, selected2, analyses]);
 
   const handleCompare = async () => {
     if (!selected1 || !selected2) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await api.analysis.getComparison({ analysis1Id: selected1, analysis2Id: selected2 });
       setComparison(res);
     } catch {
-      alert("Ошибка сравнения");
+      setError("Не удалось сравнить анализы. Попробуй ещё раз.");
     } finally {
       setLoading(false);
     }
   };
 
-  const getPhoto = (id: string) => {
-    const a = analyses.find((x) => x.id === id);
-    return (a as any)?.photoBase64 || null;
-  };
-
   const sel1 = analyses.find((a) => a.id === selected1);
   const sel2 = analyses.find((a) => a.id === selected2);
 
-  const photo1 = comparison?.analysis1?.photoBase64 || getPhoto(selected1);
-  const photo2 = comparison?.analysis2?.photoBase64 || getPhoto(selected2);
+  // 2026-06-27 — page-level state machine so the user always sees:
+  //   loader → photos → params (in that order).
+  // Branches are mutually exclusive; "showPicker" requires the manual
+  // flow (no URL ids) because URL-driven flow auto-fires handleCompare
+  // and goes straight to isComparing → hasResult.
+  const bothIds = !!selected1 && !!selected2 && selected1 !== selected2;
+  const cameFromUrl = !!id1 && !!id2;
+  const hasResult = !!comparison && bothIds;
+  const isComparing = loading && !hasResult && bothIds;
+  const isFetchingAnalyses = fetchingIds && !hasResult && !error;
+  // 2026-06-27 — showEmptyState no longer guards on cameFromUrl: if a
+  // deep-link (?id1=X&id2=Y) lands on a user with 0 analyses (or stale
+  // ids), every other branch is false and the page would render only
+  // the "Сравнение" header. The empty-state CTA fills that gap.
+  const showEmptyState =
+    !hasResult && !isComparing && !isFetchingAnalyses && !error &&
+    analyses.length === 0;
+  const showPicker =
+    !hasResult && !isComparing && !isFetchingAnalyses && !error &&
+    !cameFromUrl && analyses.length > 0;
+  const showErrorState = !!error && !hasResult && !isComparing;
 
   return (
     <div style={{ paddingTop: 8, paddingBottom: 80 }}>
@@ -259,182 +323,464 @@ function CompareContent() {
         <h1 style={{ fontSize: 18, fontWeight: 600, flex: 1 }}>Сравнение</h1>
       </div>
 
-      {photo1 && photo2 && (
-        <div style={{ marginBottom: 20, position: "relative" }}>
-          <ImageSlider before={photo1} after={photo2} />
-          <AnimatePresence>
-            {loading && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                style={{
-                  position: "absolute", inset: 0,
-                  display: "flex", flexDirection: "column",
-                  alignItems: "center", justifyContent: "center", gap: 12,
-                  background: "rgba(255,255,255,0.65)",
-                  backdropFilter: "blur(6px)",
-                  borderRadius: 20, zIndex: 20,
-                }}
-              >
-                <div style={{
-                  width: 40, height: 40, borderRadius: "50%",
-                  border: "3px solid var(--border)",
-                  borderTopColor: "var(--primary)",
-                  animation: "spin 0.8s linear infinite",
-                }} />
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>
-                  Сравниваем фото...
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                  Анализируем {pluralRu(2, ["изменение", "изменения", "изменений"])} между анализами
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
+      <AnimatePresence mode="wait">
+        {isFetchingAnalyses && (
+          <motion.div
+            key="fetch"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <FullLoader
+              title="Загружаем анализы…"
+              subtitle="Подбираем твою историю"
+            />
+          </motion.div>
+        )}
 
-      {!photo1 || !photo2 ? (
-        <>
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <select
-              value={selected1}
-              onChange={(e) => { setSelected1(e.target.value); setComparison(null); }}
-              style={{ flex: 1, padding: "12px", borderRadius: 14, border: "1px solid var(--border)", fontSize: 13, background: "white" }}
-            >
-              <option value="">Анализ 1</option>
-              {analyses.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {new Date(a.createdAt).toLocaleDateString("ru-RU")} - {a.skinType || "Анализ"}
-                </option>
-              ))}
-            </select>
-            <select
-              value={selected2}
-              onChange={(e) => { setSelected2(e.target.value); setComparison(null); }}
-              style={{ flex: 1, padding: "12px", borderRadius: 14, border: "1px solid var(--border)", fontSize: 13, background: "white" }}
-            >
-              <option value="">Анализ 2</option>
-              {analyses.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {new Date(a.createdAt).toLocaleDateString("ru-RU")} - {a.skinType || "Анализ"}
-                </option>
-              ))}
-            </select>
-          </div>
+        {isComparing && (
+          <motion.div
+            key="compare"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <FullLoader
+              title="Сравниваем фото…"
+              subtitle={`Анализируем ${pluralRu(2, ["изменение", "изменения", "изменений"])} между анализами`}
+            />
+          </motion.div>
+        )}
 
-          {sel1 && sel2 && (
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {[sel1, sel2].map((s, i) => (
-                <div key={i} style={{ flex: 1, height: 100, borderRadius: 14, overflow: "hidden", background: "var(--bg)" }}>
-                  {(s as any).photoBase64 ? (
-                    <img src={`data:image/jpeg;base64,${(s as any).photoBase64}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  ) : (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: 12, color: "var(--text-muted)" }}>
-                      Нет фото
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <motion.button
-            onClick={handleCompare}
-            disabled={!selected1 || !selected2 || loading || selected1 === selected2}
-            whileTap={{ scale: 0.97 }}
+        {showEmptyState && (
+          <motion.div
+            key="empty"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
             style={{
-              width: "100%",
-              padding: "14px",
-              borderRadius: 16,
-              background: !selected1 || !selected2 || selected1 === selected2 ? "var(--border)" : "linear-gradient(135deg, var(--primary), var(--secondary))",
-              color: "white",
-              fontSize: 15,
-              fontWeight: 600,
-              border: "none",
-              marginBottom: 20,
-              cursor: !selected1 || !selected2 || selected1 === selected2 ? "default" : "pointer",
+              paddingTop: 60,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 14,
+              textAlign: "center",
             }}
           >
-            {loading ? "Сравниваем..." : "Сравнить"}
-          </motion.button>
-        </>
-      ) : (
-        <>
-          {sel1 && sel2 && (
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, fontSize: 12, color: "var(--text-secondary)" }}>
-              <div style={{ textAlign: "center", flex: 1 }}>
-                <div style={{ fontWeight: 600, color: "var(--text)", fontSize: 13, marginBottom: 2 }}>{sel1.skinType || "—"}</div>
-                {new Date(sel1.createdAt).toLocaleDateString("ru-RU")}
-              </div>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-                <path d="M5 12h14M13 5l7 7-7 7" stroke="var(--primary-dark)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <div style={{ textAlign: "center", flex: 1 }}>
-                <div style={{ fontWeight: 600, color: "var(--text)", fontSize: 13, marginBottom: 2 }}>{sel2.skinType || "—"}</div>
-                {new Date(sel2.createdAt).toLocaleDateString("ru-RU")}
-              </div>
-            </div>
-          )}
-
-          {comparison && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="card"
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: "50%",
+                background: "rgba(196, 122, 143, 0.12)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 28,
+              }}
             >
-              {Object.entries(comparison.differences).map(([key, diff]) => (
-                <div
-                  key={key}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "12px 0",
-                    borderBottom: "1px solid var(--border)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
-                    <span style={{ fontSize: 18, opacity: 0.4 }}>{FIELD_ICONS[key] || "•"}</span>
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>{FIELD_NAMES[key] || key}</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: diff.improved ? "#7EC4D8" : "var(--text)", transition: "color 0.3s" }}>
-                      {diff.from}
-                    </span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path d="M5 12h14M13 5l7 7-7 7" stroke={diff.improved ? "#A8D8EA" : "#E8A0B4"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: !diff.improved ? "#E8A0B4" : "var(--text)", transition: "color 0.3s" }}>
-                      {diff.to}
-                    </span>
-                  </div>
-                  <div style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    padding: "2px 10px",
-                    borderRadius: 10,
-                    background: diff.diff === 0 ? "var(--bg)" : diff.improved ? "rgba(168, 216, 234, 0.15)" : "rgba(232, 160, 180, 0.15)",
-                    color: diff.diff === 0 ? "var(--text-muted)" : diff.improved ? "#7EC4D8" : "#E07A8E",
-                    marginLeft: 8,
-                    minWidth: 40,
-                    textAlign: "center",
-                  }}>
-                    {diff.diff === 0 ? "—" : diff.improved ? `-${diff.diff}` : `+${Math.abs(diff.diff)}`}
-                  </div>
-                </div>
-              ))}
+              📸
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>
+              Пока нет анализов
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text-secondary)",
+                maxWidth: 280,
+                lineHeight: 1.5,
+              }}
+            >
+              Чтобы сравнить «до/после», сделай первый снимок — мы построим динамику автоматически.
+            </div>
+            <motion.a
+              href="/"
+              whileTap={{ scale: 0.97 }}
+              style={{
+                display: "inline-block",
+                marginTop: 6,
+                padding: "12px 22px",
+                borderRadius: 16,
+                background: "linear-gradient(135deg, var(--primary), var(--secondary))",
+                color: "white",
+                fontSize: 14,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              Перейти к анализу
+            </motion.a>
+          </motion.div>
+        )}
 
-              {comparison.analysis1.skinType !== comparison.analysis2.skinType && (
-                <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 12, background: "var(--bg)", fontSize: 12, color: "var(--text-secondary)", textAlign: "center" }}>
-                  Тип кожи изменился с &laquo;{comparison.analysis1.skinType}&raquo; на &laquo;{comparison.analysis2.skinType}&raquo;
+        {showErrorState && (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+            style={{
+              paddingTop: 60,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 14,
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 36 }}>🤔</div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>Не получилось</div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text-secondary)",
+                maxWidth: 280,
+                lineHeight: 1.5,
+              }}
+            >
+              {error}
+            </div>
+            <motion.button
+              onClick={() => {
+                setError(null);
+                handleCompare();
+              }}
+              whileTap={{ scale: 0.97 }}
+              style={{
+                padding: "12px 22px",
+                borderRadius: 16,
+                background: "linear-gradient(135deg, var(--primary), var(--secondary))",
+                color: "white",
+                fontSize: 14,
+                fontWeight: 600,
+                border: "none",
+                marginTop: 6,
+              }}
+            >
+              Попробовать снова
+            </motion.button>
+          </motion.div>
+        )}
+
+        {showPicker && (
+          <motion.div
+            key="picker"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <select
+                value={selected1}
+                onChange={(e) => {
+                  setSelected1(e.target.value);
+                  setComparison(null);
+                  setError(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  borderRadius: 14,
+                  border: "1px solid var(--border)",
+                  fontSize: 13,
+                  background: "white",
+                }}
+              >
+                <option value="">Анализ 1</option>
+                {analyses.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {new Date(a.createdAt).toLocaleDateString("ru-RU")} - {a.skinType || "Анализ"}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={selected2}
+                onChange={(e) => {
+                  setSelected2(e.target.value);
+                  setComparison(null);
+                  setError(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  borderRadius: 14,
+                  border: "1px solid var(--border)",
+                  fontSize: 13,
+                  background: "white",
+                }}
+              >
+                <option value="">Анализ 2</option>
+                {analyses.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {new Date(a.createdAt).toLocaleDateString("ru-RU")} - {a.skinType || "Анализ"}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {sel1 && sel2 && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                {[sel1, sel2].map((s, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      flex: 1,
+                      height: 100,
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      background: "var(--bg)",
+                    }}
+                  >
+                    {(s as any).photoBase64 ? (
+                      <img
+                        src={`data:image/jpeg;base64,${(s as any).photoBase64}`}
+                        alt=""
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                          fontSize: 12,
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        Нет фото
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <motion.button
+              onClick={handleCompare}
+              disabled={!selected1 || !selected2 || loading || selected1 === selected2}
+              whileTap={{ scale: 0.97 }}
+              style={{
+                width: "100%",
+                padding: "14px",
+                borderRadius: 16,
+                background:
+                  !selected1 || !selected2 || selected1 === selected2
+                    ? "var(--border)"
+                    : "linear-gradient(135deg, var(--primary), var(--secondary))",
+                color: "white",
+                fontSize: 15,
+                fontWeight: 600,
+                border: "none",
+                marginBottom: 20,
+                cursor:
+                  !selected1 || !selected2 || selected1 === selected2 ? "default" : "pointer",
+              }}
+            >
+              {loading ? "Сравниваем..." : "Сравнить"}
+            </motion.button>
+          </motion.div>
+        )}
+
+        {hasResult && (
+          <motion.div
+            key="result"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {comparison?.analysis1?.photoBase64 && comparison?.analysis2?.photoBase64 && (
+              <div style={{ marginBottom: 20 }}>
+                <ImageSlider
+                  before={comparison.analysis1.photoBase64}
+                  after={comparison.analysis2.photoBase64}
+                />
+              </div>
+            )}
+
+            {sel1 && sel2 && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: 16,
+                  fontSize: 12,
+                  color: "var(--text-secondary)",
+                }}
+              >
+                <div style={{ textAlign: "center", flex: 1 }}>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      color: "var(--text)",
+                      fontSize: 13,
+                      marginBottom: 2,
+                    }}
+                  >
+                    {sel1.skinType || "—"}
+                  </div>
+                  {new Date(sel1.createdAt).toLocaleDateString("ru-RU")}
                 </div>
-              )}
-            </motion.div>
-          )}
-        </>
-      )}
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  style={{ flexShrink: 0 }}
+                >
+                  <path
+                    d="M5 12h14M13 5l7 7-7 7"
+                    stroke="var(--primary-dark)"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <div style={{ textAlign: "center", flex: 1 }}>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      color: "var(--text)",
+                      fontSize: 13,
+                      marginBottom: 2,
+                    }}
+                  >
+                    {sel2.skinType || "—"}
+                  </div>
+                  {new Date(sel2.createdAt).toLocaleDateString("ru-RU")}
+                </div>
+              </div>
+            )}
+
+            {comparison && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="card"
+              >
+                {Object.entries(comparison.differences).map(([key, diff]) => (
+                  <div
+                    key={key}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "12px 0",
+                      borderBottom: "1px solid var(--border)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flex: 1,
+                      }}
+                    >
+                      <span style={{ fontSize: 18, opacity: 0.4 }}>
+                        {FIELD_ICONS[key] || "•"}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>
+                        {FIELD_NAMES[key] || key}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: diff.improved ? "#7EC4D8" : "var(--text)",
+                          transition: "color 0.3s",
+                        }}
+                      >
+                        {diff.from}
+                      </span>
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <path
+                          d="M5 12h14M13 5l7 7-7 7"
+                          stroke={diff.improved ? "#A8D8EA" : "#E8A0B4"}
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: !diff.improved ? "#E8A0B4" : "var(--text)",
+                          transition: "color 0.3s",
+                        }}
+                      >
+                        {diff.to}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: "2px 10px",
+                        borderRadius: 10,
+                        background:
+                          diff.diff === 0
+                            ? "var(--bg)"
+                            : diff.improved
+                              ? "rgba(168, 216, 234, 0.15)"
+                              : "rgba(232, 160, 180, 0.15)",
+                        color:
+                          diff.diff === 0
+                            ? "var(--text-muted)"
+                            : diff.improved
+                              ? "#7EC4D8"
+                              : "#E07A8E",
+                        marginLeft: 8,
+                        minWidth: 40,
+                        textAlign: "center",
+                      }}
+                    >
+                      {diff.diff === 0
+                        ? "—"
+                        : diff.improved
+                          ? `-${diff.diff}`
+                          : `+${Math.abs(diff.diff)}`}
+                    </div>
+                  </div>
+                ))}
+
+                {comparison.analysis1.skinType !== comparison.analysis2.skinType && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: "10px 14px",
+                      borderRadius: 12,
+                      background: "var(--bg)",
+                      fontSize: 12,
+                      color: "var(--text-secondary)",
+                      textAlign: "center",
+                    }}
+                  >
+                    Тип кожи изменился с &laquo;{comparison.analysis1.skinType}&raquo; на &laquo;{comparison.analysis2.skinType}&raquo;
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
