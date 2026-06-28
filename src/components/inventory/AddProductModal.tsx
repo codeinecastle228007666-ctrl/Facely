@@ -551,22 +551,19 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     position: "relative",
   };
 
+  // 2026-06-28 — Barcode entry removed from UI. Open Beauty Facts and
+  // alternatives have poor Russian/CIS coverage (Natura Siberica, etc.
+  // aren't indexed). Backend still accepts source="barcode"|"barcode_photo"
+  // so we can re-enable this card later by uncommenting the entry below
+  // and removing the `useState<Step>("barcode")` dead branches later.
   const METHODS = [
-    {
-      key: "barcode" as Step,
-      icon: "▦",
-      title: "Штрих-код / QR",
-      desc: "Наведи камеру — найдём состав в открытой базе косметики",
-      badge: { label: "Быстрее", color: "var(--primary)" },
-      highlighted: true,
-    },
     {
       key: "photo" as Step,
       icon: "📷",
       title: "Фото состава",
       desc: "Сфотографируй INCI-состав — ИИ прочитает текст с упаковки",
-      badge: { label: "", color: "" },
-      highlighted: false,
+      badge: { label: "Быстрее", color: "var(--primary)" },
+      highlighted: true,
     },
     {
       key: "manual" as Step,
@@ -582,8 +579,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 
   const headerTitle = (() => {
     if (step === "choose") return "Добавить средство";
-    if (step === "barcode") return "Штрих-код";
-    if (step === "photo") return isBarcodePhoto ? "Фото штрих-кода" : "Фото состава";
+    if (step === "photo") return "Фото состава";
     if (step === "manual") {
       if (pendingBarcode) return "Проверь данные";
       return "Вручную";
@@ -656,15 +652,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                     key={m.key}
                     whileTap={{ scale: 0.97 }}
                     onClick={() => {
-                      if (m.key === "barcode") {
-                        setStep("barcode");
-                        // Auto-start camera if BarcodeDetector supported.
-                        if (barcodeSupported) {
-                          setTimeout(() => startScanner(), 100);
-                        }
-                      } else {
-                        setStep(m.key);
-                      }
+                      setStep(m.key);
                     }}
                     style={{
                       ...optionCardStyle,
@@ -704,183 +692,11 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
               </div>
             )}
 
-            {/* ── BARCODE ── */}
-            {step === "barcode" && (
-              <div>
-                {/* Camera path */}
-                {scanning && barcodeSupported && (
-                  <div style={{ position: "relative" }}>
-                    <video
-                      ref={scanVideoRef}
-                      autoPlay playsInline muted
-                      style={{
-                        width: "100%", borderRadius: 18,
-                        aspectRatio: "4/3", objectFit: "cover", background: "#000",
-                      }}
-                    />
-                    {/* Reticle + animated scan line */}
-                    <div style={{
-                      position: "absolute", inset: "12% 8%",
-                      border: "2px solid var(--primary)",
-                      borderRadius: 14,
-                      pointerEvents: "none",
-                      boxShadow: "0 0 0 9999px rgba(0,0,0,0.35)",
-                      overflow: "hidden",
-                    }}>
-                      {/* Four-corner brackets */}
-                      {[
-                        { top: -2, left: -2, borderTop: "3px solid white", borderLeft: "3px solid white", borderTopLeftRadius: 12 },
-                        { top: -2, right: -2, borderTop: "3px solid white", borderRight: "3px solid white", borderTopRightRadius: 12 },
-                        { bottom: -2, left: -2, borderBottom: "3px solid white", borderLeft: "3px solid white", borderBottomLeftRadius: 12 },
-                        { bottom: -2, right: -2, borderBottom: "3px solid white", borderRight: "3px solid white", borderBottomRightRadius: 12 },
-                      ].map((s, i) => (
-                        <span key={i} style={{ position: "absolute", width: 18, height: 18, ...s }} />
-                      ))}
-                      {/* Animated scan line */}
-                      <div
-                        className="animate-scan-line"
-                        style={{
-                          position: "absolute",
-                          left: 8, right: 8,
-                          height: 2,
-                          background: "var(--primary)",
-                          boxShadow: "0 0 8px rgba(232, 160, 180, 0.7)",
-                          borderRadius: 2,
-                        }}
-                      />
-                    </div>
-                    <button
-                      onClick={stopScanner}
-                      style={{
-                        position: "absolute", bottom: 16, left: "50%",
-                        transform: "translateX(-50%)",
-                        background: "rgba(255,255,255,0.95)",
-                        border: "none", borderRadius: 20,
-                        padding: "8px 22px",
-                        fontSize: 13, fontWeight: 600,
-                        cursor: "pointer", color: "var(--text)",
-                      }}
-                    >
-                      Отмена
-                    </button>
-                  </div>
-                )}
-
-                {/* Camera unavailable / manual fallback */}
-                {!scanning && (
-                  <div>
-                    {!barcodeSupported && (
-                      <div style={{
-                        padding: "10px 14px", borderRadius: 12,
-                        background: "var(--bg)", border: "1px solid var(--border)",
-                        fontSize: 12, color: "var(--text-secondary)",
-                        marginBottom: 14, lineHeight: 1.4,
-                      }}>
-                        📷 Камера-сканер недоступна в этом браузере. Введи штрих-код вручную — попробуем найти в базе косметики.
-                      </div>
-                    )}
-
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
-                      Штрих-код (EAN-13 / UPC-A / QR)
-                    </div>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      placeholder="например: 4601234567890"
-                      value={manualBarcode}
-                      onChange={(e) => setManualBarcode(e.target.value.replace(/\D/g, "").slice(0, 14))}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && manualBarcode.length >= 8) {
-                          submitManualBarcode(manualBarcode);
-                        }
-                      }}
-                      style={{
-                        width: "100%", padding: "14px 16px",
-                        borderRadius: 14, border: "1px solid var(--border)",
-                        fontSize: 14, background: "var(--bg)",
-                        color: "var(--text)", marginBottom: 10,
-                        letterSpacing: "0.5px", fontFamily: "ui-monospace, monospace",
-                      }}
-                    />
-                    <motion.button
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => submitManualBarcode(manualBarcode)}
-                      disabled={loading || manualBarcode.length < 8}
-                      style={btnPrimary({ opacity: (loading || manualBarcode.length < 8) ? 0.5 : 1 })}
-                    >
-                      {loading ? "Ищем в базе..." : "Найти"}
-                    </motion.button>
-
-                    {/* 2026-06-28 — Photo-barcode fallback. Routes the user
-                        into the photo step but with `isBarcodePhoto=true`
-                        so the final API call uses `source: "barcode_photo"`.
-                        Works on every device with a camera, regardless of
-                        BarcodeDetector support. */}
-                    <motion.button
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => {
-                        setPhoto(null);
-                        setError(""); setHint("");
-                        setIsBarcodePhoto(true);
-                        setStep("photo");
-                      }}
-                      style={{
-                        marginTop: 10, width: "100%",
-                        padding: "14px", borderRadius: 14,
-                        border: "2px solid var(--border)",
-                        background: "var(--bg)",
-                        color: "var(--text)",
-                        fontSize: 14, fontWeight: 600,
-                        display: "flex", alignItems: "center",
-                        justifyContent: "center", gap: 8,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <CameraIcon size={20} />
-                      Сфотографируй штрих-код
-                    </motion.button>
-
-                    {/* Try again camera button (in case camera fails after first attempt) */}
-                    {barcodeSupported && (
-                      <button
-                        onClick={startScanner}
-                        style={{
-                          marginTop: 12, fontSize: 13,
-                          color: "var(--primary)", fontWeight: 600,
-                          background: "none", border: "none",
-                          cursor: "pointer", width: "100%",
-                        }}
-                      >
-                        📷 Попробовать камеру
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Inline status / hint */}
-                {hint && <div style={{
-                  marginTop: 12, padding: "8px 12px", borderRadius: 10,
-                  background: "var(--bg)", fontSize: 12,
-                  color: "var(--text-secondary)", textAlign: "center",
-                  borderLeft: "3px solid var(--primary)",
-                }}>{hint}</div>}
-
-                {loading && (
-                  <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--text-secondary)" }}>
-                    Распознаём штрих-код...
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* ── PHOTO ── */}
             {step === "photo" && !showCamera && !photo && (
               <div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.6 }}>
-                  {isBarcodePhoto
-                    ? "Сфотографируй штрих-код на упаковке. Держи ровно, без бликов — чем чётче, тем точнее распознавание."
-                    : "Держи камеру ровно, без бликов. Лучший результат — фото открытого состава на сайте бренда."}
+                  Держи камеру ровно, без бликов. Лучший результат — фото открытого состава на сайте бренда.
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
                   <motion.button
