@@ -114,6 +114,12 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   // the final InventoryItem.source column truthfully reflects the
   // provenance (vs. lying as "manual").
   const [pendingBarcode, setPendingBarcode] = useState<string | null>(null);
+  // 2026-06-28 — `isBarcodePhoto` distinguishes "photo for INCI OCR"
+  // (default) from "photo for barcode-digit OCR" (fallback when native
+  // BarcodeDetector unsupported). Both reuse the existing photo step
+  // — only the final API call's `source` differs: "photo" vs
+  // "barcode_photo".
+  const [isBarcodePhoto, setIsBarcodePhoto] = useState(false);
   const scanVideoRef = useRef<HTMLVideoElement>(null);
   const scanStreamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<any | null>(null);
@@ -154,7 +160,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     setName(""); setBrand(""); setIngredients("");
     setError(""); setHint(""); setPhoto(null);
     setBarcodeSupported(true); setManualBarcode("");
-    setFoundProduct(null); setPendingBarcode(null);
+    setFoundProduct(null); setPendingBarcode(null); setIsBarcodePhoto(false);
     stopCamera(); stopScanner();
   }, [stopCamera, stopScanner]);
 
@@ -263,6 +269,43 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     [onSuccess, onClose, reset],
   );
 
+  // 2026-06-28 — Server-side barcode-digit OCR via photo. Used when
+  // the user's browser lacks native BarcodeDetector (iOS < 17, Firefox,
+  // old WebView). The capture/photo UI is shared with the ingredient
+  // photo path; only the API call and error mapping differ.
+  const uploadBarcodePhoto = useCallback(
+    async (base64: string) => {
+      setLoading(true);
+      setError(""); setHint("Идёт чтение штрих-кода...");
+      try {
+        await api.inventory.add({ source: "barcode_photo", imageBase64: base64 });
+        setHint("Готово!");
+        onSuccess();
+        reset();
+        onClose();
+      } catch (err: any) {
+        // Server throws specific messages — see inventoryService.
+        const code: string = err?.message ?? "";
+        if (code.includes("barcode_photo_unreadable")) {
+          setError("Не удалось распознать штрих-код на фото. Сфотографируй чётче при хорошем освещении или введи цифры вручную.");
+          // Stay on photo step so user can either retake or back-out.
+          retakePhoto();
+        } else if (code.includes("barcode_not_found")) {
+          // OCR worked but OBF missed. Slip into manual step with a
+          // generic hint — user can then supply their own data.
+          setPendingBarcode(null);
+          setHint("Штрих-код не найден в базе косметики. Введи данные вручную.");
+          setStep("manual");
+        } else {
+          setError("Ошибка сервера. Попробуй ещё раз.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [onSuccess, reset, onClose, retakePhoto],
+  );
+
   const retakePhoto = useCallback(() => {
     setPhoto(null);
     setHint("");
@@ -271,8 +314,12 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 
   const confirmPhoto = useCallback(async () => {
     if (!photo) return;
+    if (isBarcodePhoto) {
+      await uploadBarcodePhoto(photo);
+      return;
+    }
     await uploadPhoto(photo);
-  }, [photo, uploadPhoto]);
+  }, [photo, isBarcodePhoto, uploadBarcodePhoto, uploadPhoto]);
 
   // ── Barcode helpers ────────────────────────────────────────────
 
@@ -534,7 +581,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const headerTitle = (() => {
     if (step === "choose") return "Добавить средство";
     if (step === "barcode") return "Штрих-код";
-    if (step === "photo") return "Фото состава";
+    if (step === "photo") return isBarcodePhoto ? "Фото штрих-кода" : "Фото состава";
     if (step === "manual") {
       if (pendingBarcode) return "Проверь данные";
       return "Вручную";
@@ -581,14 +628,13 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
               {step === "choose" ? (
                 <span style={{ width: 24 }} />
               ) : (
-                <button
-                  onClick={() => {
-                    setError(""); setHint(""); setPhoto(null);
-                    setFoundProduct(null); setManualBarcode("");
-                    setPendingBarcode(null);
-                    stopCamera(); stopScanner();
-                    setStep("choose");
-                  }}
+                <button                  onClick={() => {
+                      setError(""); setHint(""); setPhoto(null);
+                      setFoundProduct(null); setManualBarcode("");
+                      setPendingBarcode(null); setIsBarcodePhoto(false);
+                      stopCamera(); stopScanner();
+                      setStep("choose");
+                    }}
                   style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "var(--text-muted)", padding: 0, lineHeight: 1 }}
                 >
                   ←
@@ -764,6 +810,35 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                       {loading ? "Ищем в базе..." : "Найти"}
                     </motion.button>
 
+                    {/* 2026-06-28 — Photo-barcode fallback. Routes the user
+                        into the photo step but with `isBarcodePhoto=true`
+                        so the final API call uses `source: "barcode_photo"`.
+                        Works on every device with a camera, regardless of
+                        BarcodeDetector support. */}
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => {
+                        setPhoto(null);
+                        setError(""); setHint("");
+                        setIsBarcodePhoto(true);
+                        setStep("photo");
+                      }}
+                      style={{
+                        marginTop: 10, width: "100%",
+                        padding: "14px", borderRadius: 14,
+                        border: "2px solid var(--border)",
+                        background: "var(--bg)",
+                        color: "var(--text)",
+                        fontSize: 14, fontWeight: 600,
+                        display: "flex", alignItems: "center",
+                        justifyContent: "center", gap: 8,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <CameraIcon size={20} />
+                      Сфотографируй штрих-код
+                    </motion.button>
+
                     {/* Try again camera button (in case camera fails after first attempt) */}
                     {barcodeSupported && (
                       <button
@@ -801,7 +876,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             {step === "photo" && !showCamera && !photo && (
               <div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.6 }}>
-                  Держи камеру ровно, без бликов. Лучший результат — фото открытого состава на сайте бренда.
+                  {isBarcodePhoto
+                    ? "Сфотографируй штрих-код на упаковке. Держи ровно, без бликов — чем чётче, тем точнее распознавание."
+                    : "Держи камеру ровно, без бликов. Лучший результат — фото открытого состава на сайте бренда."}
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
                   <motion.button

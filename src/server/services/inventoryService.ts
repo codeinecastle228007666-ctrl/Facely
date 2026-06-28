@@ -231,6 +231,122 @@ interface BarcodeResult {
   ingredients: string;
 }
 
+/**
+ * 2026-06-28 — Server-side barcode digit OCR. Companion to native
+ * BarcodeDetector (works on Safari 17+ / Chrome / Android WebView). This
+ * path lets iOS <17, Firefox, and old WebViews scan a barcode by
+ * photographing it — no ZXing bundle bloat (~+200KB).
+ *
+ * Model picks chosen for digit-precision:
+ *   - Gemini 2.5 flash first (tight constraints, strong OCR)
+ *   - Groq llama-3.2 vision as fallback
+ * Each attempt has a 5500ms timeout so two-failures stay under the
+ * Vercel 10s free-tier hard limit with margin.
+ *
+ * Returns the extracted digit string (8..14 chars, prioritizing
+ * 12/13-digit EAN/UPC lengths) or null on total failure. Caller is
+ * expected to throw barcode_photo_unreadable when null is returned.
+ */
+async function readBarcodeFromImage(imageBase64: string): Promise<string | null> {
+  const prompt =
+    "Read the barcode (EAN-13, EAN-8, UPC-A, UPC-E, or Code-128) in this image. " +
+    "Reply with ONLY the digits of the barcode — no letters, no spaces, no markdown, no explanation. " +
+    "Just the 8 to 14 digits (e.g. 4601234567890).";
+
+  // 1) Gemini first — best at constrained digit extraction.
+  if (GEMINI_API_KEY) {
+    for (const model of ["gemini-2.5-flash", "gemini-2.0-flash"]) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: AbortSignal.timeout(5500),
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { text: prompt },
+                  { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
+                ],
+              }],
+            }),
+          },
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+          const digits = extractBarcodeDigits(text);
+          if (digits) {
+            console.log(`[inventory] barcode photo ${model} → ${digits.length} digits`);
+            return digits;
+          }
+          console.warn(`[inventory] barcode photo ${model} returned no valid digits`);
+        } else {
+          console.warn(`[inventory] barcode photo ${model} HTTP ${res.status}`);
+        }
+      } catch (e: any) {
+        console.warn(`[inventory] barcode photo ${model} error:`, e?.message ?? e);
+      }
+    }
+  }
+
+  // 2) Groq llama-vision fallback.
+  if (GROQ_API_KEY) {
+    for (const model of ["llama-3.2-90b-vision-preview", "llama-3.2-11b-vision-preview"]) {
+      try {
+        const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+          },
+          signal: AbortSignal.timeout(5500),
+          body: JSON.stringify({
+            model,
+            max_tokens: 60,
+            temperature: 0.0,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageBase64}` } },
+              ],
+            }],
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const text = data.choices?.[0]?.message?.content ?? "";
+          const digits = extractBarcodeDigits(text);
+          if (digits) {
+            console.log(`[inventory] barcode photo Groq ${model} → ${digits.length} digits`);
+            return digits;
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[inventory] barcode photo Groq ${model} error:`, e?.message ?? e);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extracts a plausible barcode digit string from model output. Filters
+ * by length (8..14 chars — covers EAN-8/13, UPC-A/E, Code-128) and
+ * prefers 12/13-digit formats because those are what Open Beauty Facts
+ * actually indexes (OBF rarely has EAN-8 entries).
+ */
+function extractBarcodeDigits(text: string): string | null {
+  const candidates = text.match(/\d{8,14}/g);
+  if (!candidates || candidates.length === 0) return null;
+  // Prefer standard EAN-13 (13) / UPC-A (12) over shorter batch codes.
+  const standard = candidates.find((c) => c.length === 12 || c.length === 13);
+  return standard ?? candidates[0];
+}
+
 async function lookupByBarcode(barcode: string): Promise<BarcodeResult | null> {
   try {
     const res = await fetch(`https://world.openbeautyfacts.org/api/v2/product/${barcode}.json`, {
@@ -266,7 +382,7 @@ export const inventoryService = {
       name?: string;
       brand?: string;
       ingredients?: string;
-      source: "manual" | "link" | "photo" | "barcode";
+      source: "manual" | "link" | "photo" | "barcode" | "barcode_photo";
       sourceUrl?: string;
       imageBase64?: string;
     },
@@ -278,7 +394,55 @@ export const inventoryService = {
     let brand = input.brand || null;
     let ingredients = input.ingredients || "";
 
-    if (input.source === "barcode" && input.sourceUrl) {
+    // 2026-06-28 — source already-resolved guard. The barcode_photo
+    // branch below performs the same cache+OBF lookup as the live
+    // barcode branch. Without this guard, mutating input.source to
+    // "barcode" after a successful photo OCR would re-trigger the
+    // existing `barcode` branch and waste an OBF roundtrip or hit
+    // the OBF rate limit unnecessarily.
+    let barcodeResolved = false;
+
+    if (input.source === "barcode_photo" && input.imageBase64) {
+      // 2026-06-28 — Server-side OCR fallback for users whose browser
+      // lacks native BarcodeDetector (iOS <17, Firefox, old WebView).
+      // The user takes a photo of the barcode; Gemini/Groq read the
+      // digits server-side; we then apply the same cache+OBF lookup
+      // pattern as the live-scan path so a re-scan of the same code
+      // (camera OR photo) hits the cache and dedupes correctly.
+      const digits = await readBarcodeFromImage(input.imageBase64);
+      if (!digits) throw new Error("barcode_photo_unreadable");
+
+      const cached = await prisma.inventoryItem.findFirst({
+        where: { sourceUrl: digits, name: { not: "Средство" } },
+        orderBy: { createdAt: "desc" },
+      });
+      let lookup: BarcodeResult | null = null;
+      if (cached) {
+        lookup = {
+          name: cached.name,
+          brand: cached.brand,
+          ingredients: cached.ingredients || "",
+        };
+      } else {
+        lookup = await lookupByBarcode(digits);
+      }
+      if (!lookup || !lookup.name) {
+        throw new Error("barcode_not_found");
+      }
+
+      name = name || lookup.name;
+      brand = brand || lookup.brand;
+      ingredients = ingredients || lookup.ingredients || "";
+
+      // Persist as `barcode` source for analytics — the OCR'd digits
+      // are the same identifier as a live-scanned code. Storing
+      // sourceUrl = digits lets the cache path dedupe re-scans.
+      input.source = "barcode";
+      input.sourceUrl = digits;
+      barcodeResolved = true;
+    }
+
+    if (input.source === "barcode" && input.sourceUrl && !barcodeResolved) {
       const cached = await prisma.inventoryItem.findFirst({
         where: { sourceUrl: input.sourceUrl, name: { not: "Средство" } },
         orderBy: { createdAt: "desc" },

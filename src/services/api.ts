@@ -201,8 +201,19 @@ export const api = {
   },
   inventory: {
     list: () => query<InventoryItem[]>("inventory.list"),
-    add: (data: { name?: string; brand?: string; ingredients?: string; source: "manual" | "link" | "photo" | "barcode"; sourceUrl?: string; imageBase64?: string }) =>
-      mutation<InventoryItem>("inventory.add", data),
+    // 2026-06-28 — `"barcode_photo"` source added for browsers without
+    // native BarcodeDetector (iOS <17, Firefox, old WebView). User
+    // takes a photo of the barcode; server OCRs the digits via
+    // Gemini/Groq and looks them up in Open Beauty Facts. Same UX as
+    // live-scan, just one extra tap (photo button).
+    add: (data: {
+      name?: string;
+      brand?: string;
+      ingredients?: string;
+      source: "manual" | "link" | "photo" | "barcode" | "barcode_photo";
+      sourceUrl?: string;
+      imageBase64?: string;
+    }) => mutation<InventoryItem>("inventory.add", data),
     update: (data: { id: string; name?: string; brand?: string; ingredients?: string }) =>
       mutation<InventoryItem>("inventory.update", data),
     remove: (data: { id: string }) =>
