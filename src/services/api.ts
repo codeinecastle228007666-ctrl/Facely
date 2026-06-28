@@ -136,9 +136,10 @@ export const api = {
     activate: (data: { type: "trial" | "paid" }) =>
       mutation<unknown>("subscription.activate", data),
     purchaseAnalysis: (data: { quantity: number }) =>
-      mutation<PurchaseResult>("subscription.purchaseAnalysis", data),
-    purchaseSubscription: () =>
-      mutation<PurchaseResult>("subscription.purchaseSubscription"),
+      mutation<PurchaseResult>("subscription.purchaseAnalysis", data),    // 2026-06-28 — REMOVED `purchaseSubscription` from client API. The
+    // server route was deleted (see `subscriptionRouter.purchaseSubscription`
+    // removal note). Subscription activation now goes ONLY through
+    // `/api/webhook` on a confirmed Telegram Stars payment.
     // 2026-06-26 — tier-based (single | pack5 | monthly). Monthly via
     // Stars is implemented as a one-time payment that internally activates
     // a 30-day Subscription (Telegram Stars do NOT support recurring).

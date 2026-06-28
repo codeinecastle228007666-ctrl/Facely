@@ -107,43 +107,73 @@ export const monthlyWinnerService = {
       };
     }
 
-    // Pick the winner. All-time referralCount ranking — already maintained
-    // atomically by `referralService.claimReferralBonus`. Tiebreaker: user
-    // id ASC (deterministic).
-    const candidates = await prisma.user.findMany({
-      where: { referralCount: { gt: 0 } },
-      orderBy: [{ referralCount: "desc" }, { id: "asc" }],
-      take: 2,
-      select: { id: true, telegramId: true, name: true, referralCount: true },
-    });
-    if (candidates.length === 0) {
-      console.log(`[monthlyWinner] ${month}/${category}: no qualifying user`);
+    // 2026-06-28 — month-window count from the Referral table (NOT the
+    // all-time `User.referralCount` scalar). Audit finding: prior ranking
+    // was monotonically non-decreasing, so the same top-1 retained the
+    // win forever — defeating the "1st of next month = different winner"
+    // promise on the /rating page. Now restricted to `createdAt` in the
+    // [monthStart, monthEnd) half-open interval so each closing month
+    // actually crowns whoever invited the most during that month.
+    const monthWindow = monthWindowUtc(month);
+    if (!monthWindow) {
+      console.error(`[monthlyWinner] malformed month "${month}"; skipping`);
       return {
-        ok: true,
-        outcome: "no_winner",
-        month,
-        category,
-        telegramId: null,
-        payoutPaidAnalyses: 0,
-        metricValue: 0,
+        ok: true, outcome: "no_winner", month, category,
+        telegramId: null, payoutPaidAnalyses: 0, metricValue: 0,
       };
     }
-    const [first, second] = candidates;
-    if (second && second.referralCount === first.referralCount) {
-      // Head-to-head tie at top-1 — skip payout to keep behavior
-      // predictable. (MVP limitation; admin can manually award.)
+    const { startUtc, endUtc } = monthWindow;
+
+    // groupBy top-2 inside the month window so we can detect ties
+    // without a separate count query.
+    const grouped = await prisma.referral.groupBy({
+      by: ["referrerId"],
+      where: { createdAt: { gte: startUtc, lt: endUtc } },
+      _count: { referrerId: true },
+      orderBy: { _count: { referrerId: "desc" } },
+      take: 2,
+    });
+
+    if (grouped.length === 0) {
+      console.log(`[monthlyWinner] ${month}/${category}: no referrals in window`);
+      return {
+        ok: true, outcome: "no_winner", month, category,
+        telegramId: null, payoutPaidAnalyses: 0, metricValue: 0,
+      };
+    }
+
+    // groupBy doesn't auto-join the FK target — resolve telegramIds
+    // separately. Bounded by `take: 2` so this is O(1).
+    const refIds = grouped.map((g) => g.referrerId);
+    const refUsers = await prisma.user.findMany({
+      where: { id: { in: refIds } },
+      select: { id: true, telegramId: true },
+    });
+    const tgtById = new Map(refUsers.map((u) => [u.id, u]));
+
+    // Tie-break determinism: same `count` → lower referrerId wins the
+    // tied slot. Stable across re-runs so cron retries don't pick
+    // different winners on race.
+    const orderedCandidates = grouped
+      .map((g) => ({
+        id: g.referrerId,
+        telegramId: tgtById.get(g.referrerId)?.telegramId ?? "",
+        count: g._count.referrerId,
+      }))
+      .sort((a, b) =>
+        b.count - a.count || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+      );
+
+    const [first, second] = orderedCandidates;
+    if (second && second.count === first.count) {
       console.log(
-        `[monthlyWinner] ${month}/${category}: TIE at ${first.referralCount} ` +
+        `[monthlyWinner] ${month}/${category}: TIE at ${first.count} ` +
         `(${first.id} & ${second.id}); skipping payout`,
       );
       return {
-        ok: true,
-        outcome: "tied",
-        month,
-        category,
-        telegramId: first.telegramId,
-        payoutPaidAnalyses: 0,
-        metricValue: first.referralCount,
+        ok: true, outcome: "tied", month, category,
+        telegramId: first.telegramId, payoutPaidAnalyses: 0,
+        metricValue: first.count,
       };
     }
 
@@ -160,15 +190,15 @@ export const monthlyWinnerService = {
         if (existingRaceWinner) {
           throw new RaceDetected();
         }
-        await tx.monthlyWinner.create({
-          data: {
-            month,
-            category,
-            userId: winner.id,
-            payout: PAYOUT_ANALYSES,
-            metricValue: winner.referralCount,
-          },
-        });
+      await tx.monthlyWinner.create({
+        data: {
+          month,
+          category,
+          userId: winner.id,
+          payout: PAYOUT_ANALYSES,
+          metricValue: winner.count,
+        },
+      });
         const userRow = await tx.user.findUniqueOrThrow({
           where: { id: winner.id },
           select: { xp: true, paidAnalyses: true },
@@ -193,22 +223,30 @@ export const monthlyWinnerService = {
             details: {
               from: userRow.paidAnalyses,
               to: userRow.paidAnalyses + PAYOUT_ANALYSES,
-              metric: "referralCount",
-              metricValue: winner.referralCount,
+          // 2026-06-28 — `metric: "monthly_referrals"` aligns with the
+          // new month-window count so admins reading the audit row
+          // see the same number that the winner saw on the /rating
+          // banner (was all-time, which was misleading).
+          metric: "monthly_referrals",
+          metricValue: winner.count,
             },
           },
         });
       });
-    } catch (e) {
-      if (e instanceof RaceDetected) {
+    } catch (e: any) {
+      // 2026-06-28 — accept both the custom `RaceDetected` sentinel
+      // (lexical collision from in-tx re-check) AND Prisma's native
+      // P2002 (DB-layer UNIQUE collision when two Vercel lambdas pass
+      // the re-check simultaneously before either commits). Either
+      // path returns the idempotent response so cron-job.org never
+      // sees a 500 from a benign race.
+      if (e instanceof RaceDetected || e?.code === "P2002") {
         return {
-          ok: true,
-          outcome: "already_granted",
-          month,
-          category,
+          ok: true, outcome: "already_granted",
+          month, category,
           telegramId: winner.telegramId,
           payoutPaidAnalyses: PAYOUT_ANALYSES,
-          metricValue: winner.referralCount,
+          metricValue: winner.count,
         };
       }
       throw e;
@@ -217,7 +255,7 @@ export const monthlyWinnerService = {
     console.log(
       `[monthlyWinner] ${month}/${category}: GRANTED +${PAYOUT_ANALYSES} ` +
       `paidAnalyses to userId=${winner.id} (telegramId=${winner.telegramId}, ` +
-      `referralCount=${winner.referralCount})`,
+      `monthlyReferralCount=${winner.count})`,
     );
     return {
       ok: true,
@@ -226,10 +264,34 @@ export const monthlyWinnerService = {
       category,
       telegramId: winner.telegramId,
       payoutPaidAnalyses: PAYOUT_ANALYSES,
-      metricValue: winner.referralCount,
+      metricValue: winner.count,
     };
   },
 };
+
+/**
+ * 2026-06-28 — Internal helper to convert `"YYYY-MM"` into a UTC
+ * `[start, end)` interval. Returns null on unparseable input so the
+ * caller can short-circuit with `no_winner`. Using half-open semantics
+ * (`gte startUtc, lt endUtc`) matches Prisma's expectation and avoids
+ * the classic off-by-one bug that's easy to introduce with month-edge
+ * anchors.
+ */
+function monthWindowUtc(
+  month: string,
+): { startUtc: Date; endUtc: Date } | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!m) return null;
+  const yy = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (!Number.isFinite(yy) || !Number.isFinite(mm) || mm < 1 || mm > 12) {
+    return null;
+  }
+  return {
+    startUtc: new Date(Date.UTC(yy, mm - 1, 1)),
+    endUtc: new Date(Date.UTC(yy, mm, 1)),
+  };
+}
 
 /**
  * Internal sentinel thrown inside the transaction to abort cleanly when

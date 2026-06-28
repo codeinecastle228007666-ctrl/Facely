@@ -11,11 +11,13 @@ import {
 import { randomBytes } from "node:crypto";
 
 /**
- * Card-transfer tier union. Includes "fifteen" (proposed in 2026-06-26
- * tier plan) so the schema flag `tier` doesn't reject future tiers.
- * Pricing entry for "fifteen" lives in `lib/pricing.ts` once it's added.
+ * Card-transfer tier union. ONLY tiers that have a corresponding entry
+ * in `PRICES.RUB` — adding a new tier requires updating `pricing.ts`
+ * first, otherwise `priceForCard()` returns 0 and a user can generate a
+ * free CardTransferClaim. Keep this list in lockstep with PRICES.RUB
+ * keys.
  */
-export type CardTierId = "single" | "pack5" | "monthly" | "fifteen";
+export type CardTierId = "single" | "pack5" | "monthly";
 
 const PROVIDER_TOKEN = process.env.PROVIDER_TOKEN || "";
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
@@ -34,11 +36,15 @@ function priceFor(tier: TierId): number {
  * isn't set; the underlying price is always the RUB tier price).
  */
 function priceForCard(tier: CardTierId): number {
-  // PRICES.RUB might not have an entry for every CardTierId (e.g. "fifteen"
-  // before it's added to pricing.ts). Fall through gracefully rather than
-  // blowing up — admin can still see the user's reported amount and try to
-  // match.
-  return PRICES.RUB[tier as TierId] ?? 0;
+  const price = PRICES.RUB[tier as TierId];
+  // Refuse to silently fall through to 0 if the caller supplies an
+  // unknown tier. Better throw at this layer than persist a 0-amount
+  // CardTransferClaim into the admin queue (which would mis-credit the
+  // user once admin approves).
+  if (price === undefined) {
+    throw new Error(`price_for_card_unknown_tier:${tier}`);
+  }
+  return price;
 }
 
 export const subscriptionService = {
@@ -191,7 +197,11 @@ export const subscriptionService = {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    // 2026-06-28 — shrunk from 15000 → 8000ms. Vercel free tier
+    // lambdas hard-cap at 10s; aborting at 8s leaves a 2s window for
+    // graceful error rendering instead of a 504. Same effect on cold
+    // paths (most Telegram createInvoiceLink returns in <2s).
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch(
       `https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`,
@@ -230,7 +240,11 @@ export const subscriptionService = {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    // 2026-06-28 — shrunk from 15000 → 8000ms. Vercel free tier
+    // lambdas hard-cap at 10s; aborting at 8s leaves a 2s window for
+    // graceful error rendering instead of a 504. Same effect on cold
+    // paths (most Telegram createInvoiceLink returns in <2s).
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch(
       `https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`,

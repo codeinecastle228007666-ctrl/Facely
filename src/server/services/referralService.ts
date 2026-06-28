@@ -9,12 +9,45 @@ export const referralService = {
 
     if (!referral || referral.bonusGiven) return false;
 
-    const referrer = await prisma.user.findUnique({
-      where: { id: referral.referrerId },
+    // 2026-06-28 — atomic race guard. The original flow did
+    // `findUnique` → `prisma.referral.update` in two round-trips. Two
+    // concurrent callers could each pass the `bonusGiven === false`
+    // check before either committed the update → both ran the
+    // descendant $transaction that credited `freeAnalyses += 2` and
+    // `referralCount += 1` to the referrer, double-bonusing them.
+    //
+    // `updateMany` with `bonusGiven: false` in the WHERE clause is the
+    // atomic primitive: PostgreSQL flips the row only for the caller
+    // that won the update; the loser reads `count: 0` and short-
+    // circuits. Single round-trip, no transaction needed for the
+    // sentinel flip itself.
+    const claimResult = await prisma.referral.updateMany({
+      where: { id: referral.id, bonusGiven: false },
+      data: { bonusGiven: true },
     });
-    const referee = await prisma.user.findUnique({
-      where: { id: referral.refereeId },
-    });
+    if (claimResult.count === 0) {
+      // Another concurrent caller already claimed this referral's
+      // bonus. Idempotent short-circuit — return false so caller
+      // doesn't double-credit downstream.
+      return false;
+    }
+
+    // Read XP baselines for both sides. We need them to compute the
+    // new `xp` and `level` fields inside the tx (no raw `'increase
+    // by N'` operator since level is derived from xp via
+    // `calculateLevel`). Reads are slightly stale vs the just-
+    // committed `bonusGiven` flip, but that's only behind the "did
+    // you just claim this?" gate, not behind the credit math.
+    const [referrer, referee] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: referral.referrerId },
+        select: { id: true, xp: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: referral.refereeId },
+        select: { id: true, xp: true },
+      }),
+    ]);
     if (!referrer || !referee) return false;
 
     const referrerNewXp = referrer.xp + XP_PER_REFERRAL;
@@ -38,6 +71,11 @@ export const referralService = {
           level: calculateLevel(refereeNewXp),
         },
       }),
+      // Re-affirm `bonusGiven: true` inside the tx — the user-credit
+      // commit and the referral-row commit happen atomically. If we
+      // ever crash between user.update and referral.update, the
+      // idempotent step in the catch path can safely re-fire without
+      // double-crediting (the UPDATE above already flipped the flag).
       prisma.referral.update({
         where: { id: referral.id },
         data: { bonusGiven: true },

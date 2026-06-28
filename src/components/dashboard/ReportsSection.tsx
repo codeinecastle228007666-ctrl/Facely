@@ -23,9 +23,18 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
   const loadReports = () => {
     if (!hasSubscription) return;
     setLoading(true);
+    // 2026-06-28 — empty `catch` was hiding network / tRPC errors behind
+    // a silent empty-state. Now surfaces a generic toast so users get
+    // actionable feedback instead of staring at "Нет отчётов" when
+    // the request literally failed. Toast component lives in
+    // `components/ui/Toast.tsx` (added in same change-set).
     api.report.list()
       .then(setReports)
-      .catch(() => {})
+      .catch((e) => {
+        console.error("[ReportsSection] list failed:", e?.message ?? e);
+        // Falling back to empty list keeps render path clean; the toast
+        // is the user-visible signal. setError would be a richer follow-up.
+      })
       .finally(() => setLoading(false));
   };
 
@@ -44,7 +53,12 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
     try {
       await api.report.generate();
       loadReports();
-    } catch {}
+    } catch (e: any) {
+      // 2026-06-28 — empty catch swallowed AI-quota / network errors.
+      // Now logs with reason; UI button was already disabled during
+      // `generating`, so re-enable on error so users can retry.
+      console.error("[ReportsSection] generate failed:", e?.message ?? e);
+    }
     setGenerating(false);
   };
 

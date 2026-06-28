@@ -79,12 +79,50 @@ export const authService = {
       if (pending && !pending.bonusGiven) {
         try {
           console.log(`[auth] Claiming pending referral for existing user ${user.id}`);
-          const referrer = await prisma.user.findUnique({ where: { id: pending.referrerId } });
-          if (referrer) {
-            await prisma.referral.update({ where: { id: pending.id }, data: { bonusGiven: true } });
-            await prisma.user.update({ where: { id: referrer.id }, data: { freeAnalyses: { increment: 2 }, referralCount: { increment: 1 } } });
-            await prisma.user.update({ where: { id: user.id }, data: { freeAnalyses: { increment: 1 } } });
-            console.log(`[auth] Pending referral claimed: referrer +2, existing user +1`);
+          // 2026-06-28 — atomic race guard via updateMany. Same pattern
+          // as `referralService.claimReferralBonus` — this branch can
+          // race against itself when two `auth.me` calls fire in
+          // parallel (Telegram opens its WebApp twice on the first
+          // launch, causing double protocol-bonus events on the user).
+          const claimResult = await prisma.referral.updateMany({
+            where: { id: pending.id, bonusGiven: false },
+            data: { bonusGiven: true },
+          });
+          if (claimResult.count === 0) {
+            console.log(`[auth] Pending referral already claimed by concurrent call`);
+          } else {
+            const referrer = await prisma.user.findUnique({
+              where: { id: pending.referrerId },
+              select: { id: true, xp: true },
+            });
+            if (referrer) {
+              const referrerNewXp = referrer.xp + 20;
+              const refereeNewXp = user.xp + 10;
+              await prisma.$transaction([
+                prisma.user.update({
+                  where: { id: referrer.id },
+                  data: {
+                    freeAnalyses: { increment: 2 },
+                    xp: referrerNewXp,
+                    level: calculateLevel(referrerNewXp),
+                    referralCount: { increment: 1 },
+                  },
+                }),
+                prisma.user.update({
+                  where: { id: user.id },
+                  data: {
+                    freeAnalyses: { increment: 1 },
+                    xp: refereeNewXp,
+                    level: calculateLevel(refereeNewXp),
+                  },
+                }),
+                prisma.referral.update({
+                  where: { id: pending.id },
+                  data: { bonusGiven: true },
+                }),
+              ]);
+              console.log(`[auth] Pending referral claimed: referrer +2, existing user +1`);
+            }
           }
         } catch (e: any) {
           console.error(`[auth] Error claiming pending referral: ${e.message}`, e);
@@ -111,30 +149,45 @@ export const authService = {
           console.log(`[auth] Looking up referrer by telegramId=${input.referrerId}`);
           const referrer = await prisma.user.findUnique({
             where: { telegramId: input.referrerId },
+            select: { id: true, xp: true },
           });
 
           if (referrer) {
             console.log(`[auth] Awarding referral: referrer=${referrer.id} -> referee=${created.id}`);
-            await prisma.referral.create({
-              data: {
-                referrerId: referrer.id,
-                refereeId: created.id,
-                bonusGiven: true,
-              },
-            });
-            await prisma.user.update({
-              where: { id: referrer.id },
-              data: {
-                freeAnalyses: { increment: 2 },
-                referralCount: { increment: 1 },
-              },
-            });
-            await prisma.user.update({
-              where: { id: created.id },
-              data: {
-                freeAnalyses: { increment: 1 },
-              },
-            });
+            // 2026-06-28 — atomic batch: row insert + both users credit
+            // (with XP/level recalculation) in one tx. Prevents the
+            // pattern where `User.update(referrer)` commits but the
+            // matching `User.update(referee)` crashes mid-flight,
+            // leaving the system with only the referrer paid out
+            // (visible as a "+2 referrer" without a paired "+1 referee").
+            const referrerNewXp = referrer.xp + 20;
+            const refereeNewXp = 10; // newly created user starts at xp=0
+            await prisma.$transaction([
+              prisma.referral.create({
+                data: {
+                  referrerId: referrer.id,
+                  refereeId: created.id,
+                  bonusGiven: true,
+                },
+              }),
+              prisma.user.update({
+                where: { id: referrer.id },
+                data: {
+                  freeAnalyses: { increment: 2 },
+                  xp: referrerNewXp,
+                  level: calculateLevel(referrerNewXp),
+                  referralCount: { increment: 1 },
+                },
+              }),
+              prisma.user.update({
+                where: { id: created.id },
+                data: {
+                  freeAnalyses: { increment: 1 },
+                  xp: refereeNewXp,
+                  level: calculateLevel(refereeNewXp),
+                },
+              }),
+            ]);
             console.log(`[auth] Referral bonus awarded: referrer +2, referee +1`);
           } else {
             console.log(`[auth] Referrer NOT FOUND for telegramId=${input.referrerId}`);

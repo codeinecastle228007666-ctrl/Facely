@@ -101,8 +101,12 @@ function parseJsonLd(html: string): Record<string, unknown>[] {
   const blocks: Record<string, unknown>[] = [];
   const regex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
   let match: RegExpExecArray | null;
-  while ((match = regex.exec(html)) !== null) {
-    try { blocks.push(JSON.parse(match[1].trim())); } catch {}
+  while ((match = regex.exec(html)) !== null) {      // 2026-06-28 — previously `catch {}` silently dropped unparseable
+      // JSON blocks. Now logs and continues so we can spot regex drift /
+      // model output format changes in Vercel logs.
+      try { blocks.push(JSON.parse(match[1].trim())); } catch (e: any) {
+        console.warn("[inventoryService] JSON block parse failed:", e?.message ?? e, "block-length:", match[1]?.length ?? 0);
+      }
   }
   return blocks;
 }
@@ -189,7 +193,13 @@ async function extractFromUrl(url: string): Promise<{ name: string; brand: strin
       if (groqRes.ok) {
         const data = await groqRes.json();
         const text = data.choices?.[0]?.message?.content || "";
-        try { ingredients = JSON.parse(text.replace(/```json|```/g, "").trim()).ingredients || ""; } catch {}
+        // 2026-06-28 — surface parse failures (model output drift) instead
+        // of returning empty ingredients silently.
+        try {
+          ingredients = JSON.parse(text.replace(/```json|```/g, "").trim()).ingredients || "";
+        } catch (e: any) {
+          console.warn("[inventoryService] ingredient JSON parse failed:", e?.message ?? e);
+        }
       }
     }
 

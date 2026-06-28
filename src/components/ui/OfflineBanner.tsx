@@ -40,7 +40,12 @@ export const OfflineBanner: React.FC = () => {
             transform: "translateX(-50%)",
             width: "100%",
             maxWidth: 430,
-            zIndex: 500,
+            // 2026-06-28 — bumped from 500 → 999. Onboarding (zIndex
+            // 600) would otherwise render OVER an offline banner,
+            // leaving the user on the welcome screen with no clue
+            // they're disconnected. 999 keeps it above everything
+            // except modals we explicitly promote (e.g. error overlays).
+            zIndex: 999,
             padding: "10px 16px",
             background: "linear-gradient(135deg, #E07A8E, #E8A0B4)",
             color: "white",

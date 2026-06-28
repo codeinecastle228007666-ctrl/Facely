@@ -27,7 +27,18 @@ export function getLevelProgress(xp: number): {
   const nextThreshold = getXpForLevel(currentLevel + 1);
 
   if (currentLevel >= 50) {
-    return { currentLevel, currentXp: xp, nextLevelXp: currentThreshold, progress: 100 };
+    // 2026-06-28 — at level cap, `currentXp` (which can be > currentThreshold
+    // because users keep earning XP past cap) was paired with the cap
+    // threshold as `nextLevelXp`, creating an inversion `nextLevelXp <
+    // currentXp` that some UI components treat as a negative progress.
+    // Clamp `nextLevelXp` to be ≥ currentXp so contract "nextTarget ≥
+    // current" holds under all measurement lag.
+    return {
+      currentLevel,
+      currentXp: xp,
+      nextLevelXp: Math.max(currentThreshold, xp),
+      progress: 100,
+    };
   }
 
   const xpInLevel = xp - currentThreshold;

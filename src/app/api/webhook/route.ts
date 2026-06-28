@@ -42,8 +42,14 @@ function getExpectedStarsAmount(
   const seg1 = parts[1];
 
   if (prefix === "chat") {
-    const q = parseInt(seg1, 10) || 10;
-    return { amount: CHAT_PRICE.XTR, kind: "chat", quantity: q };
+    // 2026-06-28 — strict equality on `chat_10_<uid>`. The previous
+    // parser accepted any integer (e.g. `chat_100_<uid>`) but priced
+    // it at the flat CHAT_PRICE.XTR (350 ⭐), letting a forged
+    // payload buy unlimited questions for the cost of a 10-pack.
+    // Pre-checkout_query would also accept the forged payload since
+    // amount stayed flat, so this was an end-to-end matrix-price bug.
+    if (seg1 !== "10") return null;
+    return { amount: CHAT_PRICE.XTR, kind: "chat", quantity: 10 };
   }
 
   // 2026-06-26 NEW: monthly via one-time Stars — activate 30-day Sub.

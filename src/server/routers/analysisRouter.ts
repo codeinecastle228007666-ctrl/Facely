@@ -15,8 +15,18 @@ export const analysisRouter = router({
   analyze: protectedProcedure
     .input(
       z.object({
-        photoBase64: z.string().min(1, "Photo is required"),
-        description: z.string().optional(),
+        photoBase64: z
+          .string()
+          // 2026-06-28 — security: explicit upper bound on photo payload.
+          // Client-side `compressImage` shrinks to ≤1080px JPEG / quality
+          // 0.85 which never exceeds ~600 KB at base64; 10 MB ceiling is
+          // a generous safety margin for slow connections / curved-camera
+          // edge cases while still blocking DoS-via-50MB-raw-base64
+          // strings that would OOM Vercel lambdas or exceed Prisma's
+          // row-size limit. Tighten later once we see real max sizes.
+          .min(1, "Photo is required")
+          .max(10_000_000, "Photo too large (max 10 MB)"),
+        description: z.string().max(500).optional(),
         provider: ProviderChoice.optional().default("auto"),
       }),
     )
