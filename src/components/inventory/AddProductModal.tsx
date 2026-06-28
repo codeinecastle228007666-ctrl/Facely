@@ -285,6 +285,11 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         onClose();
       } catch (err: any) {
         // Server throws specific messages — see inventoryService.
+        // `barcode_not_found` is no longer thrown for the photo path:
+        // server now saves a placeholder row tagged with the OCR'd
+        // digits so users always get something in inventory (which
+        // they can edit later). Only `barcode_photo_unreadable` (true
+        // OCR failure) and other server errors land here.
         const code: string = err?.message ?? "";
         if (code.includes("barcode_photo_unreadable")) {
           setError("Не удалось распознать штрих-код на фото. Сфотографируй чётче при хорошем освещении или введи цифры вручную.");
@@ -293,12 +298,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           setPhoto(null);
           setHint("");
           startCamera();
-        } else if (code.includes("barcode_not_found")) {
-          // OCR worked but OBF missed. Slip into manual step with a
-          // generic hint — user can then supply their own data.
-          setPendingBarcode(null);
-          setHint("Штрих-код не найден в базе косметики. Введи данные вручную.");
-          setStep("manual");
         } else {
           setError("Ошибка сервера. Попробуй ещё раз.");
         }

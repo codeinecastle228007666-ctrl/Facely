@@ -426,13 +426,32 @@ export const inventoryService = {
       } else {
         lookup = await lookupByBarcode(digits);
       }
-      if (!lookup || !lookup.name) {
-        throw new Error("barcode_not_found");
-      }
 
-      name = name || lookup.name;
-      brand = brand || lookup.brand;
-      ingredients = ingredients || lookup.ingredients || "";
+      if (lookup && lookup.name) {
+        // OBF hit — use real product data.
+        name = name || lookup.name;
+        brand = brand || lookup.brand;
+        ingredients = ingredients || lookup.ingredients || "";
+      } else {
+        // 2026-06-28 — Russian / CIS local cosmetics are usually
+        // absent from Open Beauty Facts (it's EU/US-skewed, volunteer-
+        // maintained). Forcing `barcode_not_found` made the photo-
+        // barcode flow feel broken — users took a clear photo, the
+        // server clearly read the digits, but then nothing got saved.
+        //
+        // Instead we save a placeholder row tagged with the OCR'd
+        // digits in sourceUrl so:
+        //   1) the product appears in inventory immediately (no
+        //      frustrating dead-end on manual-entry screen),
+        //   2) the user can tap the row to fill in real name and
+        //      ingredients later,
+        //   3) future re-scans of the same digits via camera OR photo
+        //      dedupe via the cache path (findFirst matches sourceUrl,
+        //      not name — so we'll still re-query OBF if cached row is
+        //      still a placeholder).
+        name = name || `Средство ${digits}`;
+        ingredients = ingredients || "Состав не указан";
+      }
 
       // Persist as `barcode` source for analytics — the OCR'd digits
       // are the same identifier as a live-scanned code. Storing
