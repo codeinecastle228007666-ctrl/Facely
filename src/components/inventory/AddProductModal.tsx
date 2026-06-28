@@ -288,8 +288,11 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         const code: string = err?.message ?? "";
         if (code.includes("barcode_photo_unreadable")) {
           setError("Не удалось распознать штрих-код на фото. Сфотографируй чётче при хорошем освещении или введи цифры вручную.");
-          // Stay on photo step so user can either retake or back-out.
-          retakePhoto();
+          // Inlined (`retakePhoto` is declared further down — referencing
+          // it here would be a TS "used before declaration" error).
+          setPhoto(null);
+          setHint("");
+          startCamera();
         } else if (code.includes("barcode_not_found")) {
           // OCR worked but OBF missed. Slip into manual step with a
           // generic hint — user can then supply their own data.
@@ -303,7 +306,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         setLoading(false);
       }
     },
-    [onSuccess, reset, onClose, retakePhoto],
+    [onSuccess, reset, onClose, startCamera],
   );
 
   const retakePhoto = useCallback(() => {
