@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { TabBar } from "@/components/ui/TabBar";
 import { ReferralStats } from "@/components/referral/ReferralStats";
 import { ShareIcon } from "@/components/ui/Icons";
+import { MonthlyPrizesBanner } from "@/components/rating/MonthlyPrizesBanner";
 import { useTelegram } from "@/hooks/useTelegram";
 import { api, type LeaderboardEntry, type ReferralStatsResult } from "@/services/api";
 import { motion } from "framer-motion";
@@ -152,6 +153,11 @@ export default function RatingPage() {
                 Лучшие пользователи этого месяца
               </span>
             </motion.div>
+
+            {/* 2026-06-28 — Static monthly-prize info card. Loaded
+                unconditionally above the leaderboard so the page feels
+                rewarding even when the ranking query is still in flight. */}
+            <MonthlyPrizesBanner />
 
             {/* Leaderboard sub-tabs */}
             <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>

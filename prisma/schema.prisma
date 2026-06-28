@@ -49,8 +49,36 @@ model User {
   bonuses          UserBonus[]
   adminGrants      AdminGrant[]
   cardTransferClaims CardTransferClaim[]
+  monthlyWins      MonthlyWinner[]
 
   @@index([username])
+}
+
+/// 2026-06-28 — Monthly Top-1 winner ledger. Each row records the
+/// system-granted reward for the user who ranked #1 in a given leaderboard
+/// category for a given calendar month. UNIQUE on (month, category)
+/// guarantees the cron-job.org driver can retry the payout route
+/// (`/api/cron/grant-monthly-winner`) without ever double-crediting.
+/// `month` is "YYYY-MM" in UTC (server tz). `category` is one of the
+/// three leaderboard dimensions — only "referrers" pays out today;
+/// the column exists so the same ledger can carry streak/level winners
+/// in a future change without migration.
+model MonthlyWinner {
+  id        String   @id @default(cuid())
+  /// "YYYY-MM" UTC (e.g. "2026-06"). Composite UNIQUE with `category`.
+  month     String
+  category  String   // "referrers" | "streaks" | "level"
+  userId    String
+  /// Payout value, paid in `paidAnalyses` increments (5 = pack5-equivalent).
+  payout    Int
+  /// Snapshot of the metric value at award time (e.g. referralCount=12).
+  metricValue Int
+  grantedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([month, category])
+  @@index([userId, grantedAt])
 }
 
 /// 2026-06-26 — Audit log of admin grants. Every reward, refund, or
