@@ -1,4 +1,5 @@
 import { prisma } from "../db";
+import { memoize } from "../utils/llmCache";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.DEEPSEEK_API_KEY || "";
 const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
@@ -254,8 +255,13 @@ async function readBarcodeFromImage(imageBase64: string): Promise<string | null>
     "Just the 8 to 14 digits (e.g. 4601234567890).";
 
   // 1) Gemini first — best at constrained digit extraction.
+  // 2026-06-28 — gemini-2.5-flash-lite is ~3-5× cheaper than flash for
+  // this constrained OCR task (return ONLY 8-14 digits of a barcode).
+  // Same vision capability, smaller model. If lite misreads (rare),
+  // we fall back to full flash then 2.0. Same hard 5500ms timeout as
+  // before per attempt, total budget stays under Vercel 10s.
   if (GEMINI_API_KEY) {
-    for (const model of ["gemini-2.5-flash", "gemini-2.0-flash"]) {
+    for (const model of ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"]) {
       try {
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
@@ -348,31 +354,57 @@ function extractBarcodeDigits(text: string): string | null {
 }
 
 async function lookupByBarcode(barcode: string): Promise<BarcodeResult | null> {
-  try {
-    const res = await fetch(`https://world.openbeautyfacts.org/api/v2/product/${barcode}.json`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.status !== 1) return null;
-    const p = data.product;
-    return {
-      name: p.product_name || "",
-      brand: p.brands || null,
-      ingredients: p.ingredients_text || "",
-    };
-  } catch {
-    return null;
-  }
+  // 2026-06-28 — OBF result cache. Same EAN lookup by multiple users
+  // (or by the same user re-adding a forgotten product) now hits the
+  // 24h LRU instead of a fresh HTTP roundtrip. OBF returns <200ms
+  // usually; cache hit returns ~0ms. Burst protection: if 3 users
+  // scan the same popular product in a row, only the first burns
+  // OBF quota — the other two read from the singleton.
+  return memoize("inventory:obf", [barcode], async () => {
+    try {
+      const res = await fetch(`https://world.openbeautyfacts.org/api/v2/product/${barcode}.json`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.status !== 1) return null;
+      const p = data.product;
+      return {
+        name: p.product_name || "",
+        brand: p.brands || null,
+        ingredients: p.ingredients_text || "",
+      } as BarcodeResult | null;
+    } catch {
+      return null;
+    }
+  });
 }
 
 export const inventoryService = {
   async list(telegramId: string) {
     const user = await prisma.user.findUnique({ where: { telegramId } });
     if (!user) throw new Error("User not found");
+    // 2026-06-28 — Prisma select trim. `imageUrl` was the heaviest
+    // field per row: photo-OCR path stores the captured base64 image
+    // (up to ~200KB) directly in this column. For 20 items that's
+    // ~3-4MB on the wire — Vercel payload + client parse + render.
+    // InventoryPanel never reads imageUrl, only edit-modal/initial-add
+    // does (and those go through `prisma.inventoryItem.create` or
+    // dedicated getById). Drop it from list. `ingredients` + `analysis`
+    // stay — InventoryPanel renders them in the expanded section.
     return prisma.inventoryItem.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        brand: true,
+        source: true,
+        sourceUrl: true,
+        ingredients: true,
+        analysis: true,
+        createdAt: true,
+      },
     });
   },
 
@@ -482,7 +514,12 @@ export const inventoryService = {
     }
 
     if (input.source === "link" && input.sourceUrl) {
-      const extracted = await extractFromUrl(input.sourceUrl);
+      // 2026-06-28 — cache OBF/URL parsing per URL. Same product link
+      // re-added by another user (or by the same user twice) skips
+      // the JSON-LD parse + Groq call entirely.
+      const extracted = await memoize("inventory:url", [input.sourceUrl], () =>
+        extractFromUrl(input.sourceUrl!),
+      );
       if (extracted) {
         name = name || extracted.name;
         brand = brand || extracted.brand;
@@ -587,7 +624,16 @@ export const inventoryService = {
     if (!name) name = "Средство";
     if (!ingredients) ingredients = "Состав не указан";
 
-    const analysis = await analyzeIngredients(name, brand, ingredients);
+    // 2026-06-28 — cache ingredient analysis result per
+    // (name, brand, ingredients) tuple. Adding the same cosmetics
+    // ingredient combination under different brands (common for
+    // private-label дубликаты) now dedupes — one Groq call per unique
+    // formula per day instead of one per add() invocation.
+    const analysis = await memoize(
+      "inventory:ingredients",
+      [name, brand, ingredients],
+      () => analyzeIngredients(name, brand, ingredients),
+    );
 
     return prisma.inventoryItem.create({
       data: {

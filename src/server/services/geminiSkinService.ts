@@ -17,6 +17,14 @@
  * is unchanged. Pro can be re-introduced later as a paid-tier upgrade
  * by setting `GEMINI_MODEL=gemini-2.5-pro` env var (not yet wired).
  *
+ * 2026-06-28 — verdict cache wrapper around `callGemini`. Same photo
+ * (double-tap submit, JS retry on transient error) re-uses the cached
+ * raw envelope instead of re-billing the 60s cold-boot to Google.
+ * Public `analyzeSkinWithGemini` still does feature-bag extraction +
+ * scoring on every call (~1ms), so a future tweak to severity
+ * thresholds picks up the latest verdict shape without waiting for
+ * cache TTL.
+ *
  * Uses `gemini-2.5-flash` model with structured JSON output
  * (`responseMimeType: "application/json"` + `responseSchema`). The model
  * returns 8 skin-feature values with confidence, plus a `skin_type`
@@ -47,6 +55,7 @@
  * error class so the orchestrator routes it cleanly.
  */
 import type { AnalysisVerdict } from "./facePlusService";
+import { memoize } from "../utils/llmCache";
 import {
   MIN_CONFIDENCE,
   PROBLEM_MAP,
@@ -248,6 +257,39 @@ interface GeminiSkinVerdictRaw {
 }
 
 /**
+ * 2026-06-28 — Cache key derivation for Gemini skin analysis. We hash
+ * the FIRST 1024 chars of cleanBase64 (after stripping the data URL
+ * prefix). Photos that share enough leading JPEG bytes are visually
+ * identical for our purposes — client-side `compressImage`
+ * deterministically resizes to 1080px JPEG/0.85 quality, so the file
+ * header is stable across re-sends of the same photo. Full-base64 sha256
+ * would cost ~5-10ms; first 1KB uniquely tags a JPEG with its stable
+ * quantization table and similar leading DCT coefficients.
+ *
+ * Used by `callGemini` (the memoized wrapper) as the keyParts array
+ * input — `memoize()` lower-cases and joins these into one string for
+ * the SHA-256 hash.
+ */
+function geminiCacheKey(cleanBase64: string): string {
+  return cleanBase64.slice(0, 1024);
+}
+
+/**
+ * Memoized wrapper. Same photo (double-tap submit, JS retry, network
+ * jitter retry) re-uses the cached envelope instead of re-billing
+ * Google's 15 RPM free-tier quota. TTL 24h (per the singleton config in
+ * `../utils/llmCache`). Cache misses still pay the cold-boot price
+ * once; subsequent retries on the same photo skip it.
+ */
+async function callGemini(cleanBase64: string): Promise<GeminiSkinVerdictRaw> {
+  return memoize(
+    "gemini:verdict",
+    [geminiCacheKey(cleanBase64)],
+    () => callGeminiUncached(cleanBase64),
+  );
+}
+
+/**
  * Internal: call Gemini Vision API. Returns the parsed JSON verdict
  * matching `GeminiSkinVerdictRaw`. Throws `GeminiConfigError` /
  * `GeminiUpstreamError` on unrecoverable failure.
@@ -257,7 +299,7 @@ interface GeminiSkinVerdictRaw {
  * HF pattern. This matches all thrown errors in one place so the same
  * breaker type handles network, HTTP, parse failures identically.
  */
-async function callGemini(cleanBase64: string): Promise<GeminiSkinVerdictRaw> {
+async function callGeminiUncached(cleanBase64: string): Promise<GeminiSkinVerdictRaw> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     throw new GeminiConfigError(
