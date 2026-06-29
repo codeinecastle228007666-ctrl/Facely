@@ -11,23 +11,27 @@ interface SkinHealthIndexProps {
   items: AnalysisHistoryItem[];
 }
 
-// 2026-06-27 — Pin the chart's Y-axis to [0, 100] so the visual is comparable
-// across users / analysis counts. A dynamic min/max (as in DynamicsChart) would
-// let an unlucky user with three 40-point analyses feel great when their
-// chart auto-scales to fill the height. Skin score is always 0-100, so the
-// fixed range is semantically honest.
-const Y_MIN = 0;
-const Y_MAX = 100;
+// 2026-06-29 — Y-axis now auto-fits to actual data with a 6-point padding
+// on each side, floored at 0 and ceiled at 100 (skin_score semantic range).
+// A dynamic range amplifies the visual delta — three 40-point analyses
+// stop looking like one flat line. Falls back to [0, 100] when there's
+// only one data point or all points share the same value (range === 0).
+const Y_FLOOR = 0;
+const Y_CEIL = 100;
+const Y_PADDING = 6;
 
 const CHART_WIDTH = 280;
-const CHART_HEIGHT = 70;
+// 2026-06-29 — chart height 70 → 92 so dots, line strokes, and threshold
+// guides have room to breathe. Heights below ~80 made 2.5px dots overlap
+// stroke dashes on dense histories.
+const CHART_HEIGHT = 92;
 // PADDING.left widened from 10 → 22 to accommodate a left-edge Y-axis
 // label (e.g. "100", "80", "50", "0") so the chart's values are readable
 // without a legend overlay.
 const PADDING = { top: 8, right: 10, bottom: 18, left: 22 };
 
-const GAUGE_SIZE = 72;
-const GAUGE_R = 28;
+const GAUGE_SIZE = 88;
+const GAUGE_R = 34;
 
 // Score threshold palette mirrors home-page LastAnalysisCard.tsx + ResultModal.tsx.
 function scoreColor(score: number): string {
@@ -88,6 +92,23 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
   const avg = Math.round(scores.reduce((sum, v) => sum + v, 0) / scores.length);
   const max = Math.max(...scores);
   const min = Math.min(...scores);
+
+  // 2026-06-29 — auto-fit Y-axis. Range collapses to the actual data
+  // spread + breathing room so the line + dots visibly swing. If all
+  // points are identical (range === 0), pin to a stat-symmetric window
+  // around the value; otherwise use [min-PADDING, max+PADDING].
+  const minScore = min;
+  const maxScore = max;
+  const scoreSpread = maxScore - minScore;
+  const yRange =
+    scoreSpread === 0
+      ? { lo: Math.max(Y_FLOOR, minScore - Y_PADDING * 2), hi: Math.min(Y_CEIL, maxScore + Y_PADDING * 2) }
+      : {
+          lo: Math.max(Y_FLOOR, minScore - Y_PADDING),
+          hi: Math.min(Y_CEIL, maxScore + Y_PADDING),
+        };
+  const Y_MIN = yRange.lo;
+  const Y_MAX = yRange.hi;
 
   const plotW = CHART_WIDTH - PADDING.left - PADDING.right;
   const plotH = CHART_HEIGHT - PADDING.top - PADDING.bottom;
@@ -176,8 +197,9 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
         )}
       </div>
 
-      {/* Mid — gauge + chart side-by-side */}
-      <div className="flex items-center gap-4" style={{ marginBottom: 12 }}>
+      {/* Mid — gauge + chart side-by-side. gap 8 (was 16) since the
+          gauge grew from 72 → 88px; chart already uses flex:1 minWidth:0 */}
+      <div className="flex items-center gap-3" style={{ marginBottom: 12 }}>
         {/* Gauge */}
         <div style={{ flexShrink: 0, position: "relative", width: GAUGE_SIZE, height: GAUGE_SIZE }}>
           <svg
@@ -230,22 +252,23 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
 
         {/* Chart */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {scored.length >= 2 ? (
-            <svg
+          {scored.length >= 2 ? (                <svg
               viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
               style={{ width: "100%", height: "auto", display: "block" }}
             >
-              {/* baseline at y=0 */}
+              {/* baseline at y=Y_MIN (which is auto-fit floor, usually 0) */}
               <line
                 x1={PADDING.left}
-                y1={toY(0)}
+                y1={toY(Y_MIN)}
                 x2={CHART_WIDTH - PADDING.right}
-                y2={toY(0)}
+                y2={toY(Y_MIN)}
                 stroke="var(--border)"
                 strokeWidth="0.5"
               />
-              {/* threshold guides (50, 80) for color-zone intuitive reading */}
-              {[50, 80].map((v) => (
+              {/* threshold guides (50, 80) for color-zone intuitive reading;
+                  only render if the guide falls inside the current Y range
+                  (auto-fit may exclude 50 / 80 on concentrated histories). */}
+              {[50, 80].filter((v) => v >= Y_MIN && v <= Y_MAX).map((v) => (
                 <line
                   key={v}
                   x1={PADDING.left}
@@ -259,31 +282,33 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
                 />
               ))}
 
-              {/* Y-axis labels sit centered on their threshold guides,
-                  masked by a card-colored <rect> so the dashed line
-                  does not bisect the digit horizontally. fontSize
-                  bumped 8 → 11 (≈8.7px CSS once the SVG scales to
-                  ~223px on a phone viewport) so glyphs are legible.
-                  We skip the "0" label entirely — the y=0 baseline
-                  is self-evident.
-
-                  2026-06-29 — rect height 10 → 12 so 11px digits fit
-                  with 0.5px breathing; rect width 18 so "100" (the
-                  widest digits) is fully covered. PADDING.left
-                  width is unchanged so first-chart-dot at toX(0)
-                  still hugs PADDING.left with a 3.25px buffer to
-                  the rect — no overlap. */}
-              {/* "100" sits pinned at the very top of the plot (y=0..12
-                  rect, y=4 text center) so digit ink at y=0..8 leaves a
-                  ≥4px breathing gap before the dashed gridline's "80"
-                  label below. There's no dashed gridline near "100"
-                  anyway, so this rect is purely visual padding. */}
+              {/* Y-axis labels — auto-fit. The TOP label (Y_MAX) is
+                  pinned at viewBox y=0..12, y=4 text centre, so digit
+                  ink at y≈0..8 leaves a guaranteed ≥4px breathing gap
+                  before any label below it (this is the same trick we
+                  previously used to keep "80"/"50" from kissing).
+                  Mid/bottom labels render at slots [0.33, 0.66] along
+                  the Y range and skip if they collide with the
+                  pinned top label's zone (cy < 14). Each digit glyph
+                  is masked by a card-coloured rect so any dashed
+                  gridline that crosses the position does not bisect
+                  the digit horizontally. fontSize 11 ≈ 8.7 CSS px on
+                  a ~260px-wide phone viewport — legible without
+                  zooming. "0"-axis label dropped; the y=Y_MIN baseline
+                  line self-evidently marks the floor. */}
               <rect x={PADDING.left - 22} y="0" width="18" height="12" style={{ fill: "var(--bg-card)" }} />
               <text x={PADDING.left - 4} y="4" textAnchor="end" fontSize="11" fill="var(--text-muted)" dominantBaseline="central">{Y_MAX}</text>
-              <rect x={PADDING.left - 20} y={toY(80) - 6} width="18" height="12" style={{ fill: "var(--bg-card)" }} />
-              <text x={PADDING.left - 4} y={toY(80)} textAnchor="end" fontSize="11" fill="var(--text-muted)" dominantBaseline="central">80</text>
-              <rect x={PADDING.left - 20} y={toY(50) - 6} width="18" height="12" style={{ fill: "var(--bg-card)" }} />
-              <text x={PADDING.left - 4} y={toY(50)} textAnchor="end" fontSize="11" fill="var(--text-muted)" dominantBaseline="central">50</text>
+              {[0.33, 0.66].map((frac) => {
+                const v = Math.round(Y_MIN + (Y_MAX - Y_MIN) * frac);
+                const cy = toY(v);
+                if (cy < 14) return null;
+                return (
+                  <React.Fragment key={`mid-${v}`}>
+                    <rect x={PADDING.left - 20} y={cy - 6} width="18" height="12" style={{ fill: "var(--bg-card)" }} />
+                    <text x={PADDING.left - 4} y={cy} textAnchor="end" fontSize="11" fill="var(--text-muted)" dominantBaseline="central">{v}</text>
+                  </React.Fragment>
+                );
+              })}
 
               {/* filled area below line */}
               <defs>
@@ -375,9 +400,19 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
       </div>
 
       {scored.length >= 2 && (
+        /* 2026-06-29 — switched from `flex justify-around` (which had no
+            guarantee that "Средний" / "Лучший" / "Худший" wouldn't kiss on
+            narrow viewports because each column auto-sizes to its label's
+            intrinsic width) to a CSS grid with three equal 1fr columns +
+            `gap: 12px`. Each cell now claims exactly 1/3 of the row width
+            and centres its stack of number/label via flex-col with a 2px
+            inner gap. Labels can no longer overlap, no matter how wide the
+            Russian word. */
         <div
-          className="flex justify-around items-center"
           style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            columnGap: 12,
             paddingTop: 10,
             marginTop: 4,
             borderTop: "1px solid var(--border)",
@@ -385,18 +420,26 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
             color: "var(--text-secondary)",
           }}
         >
-          <div className="flex flex-col items-center" style={{ gap: 2 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>{avg}</span>
-            <span style={{ fontSize: 10, opacity: 0.85 }}>Средний</span>
-          </div>
-          <div className="flex flex-col items-center" style={{ gap: 2 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: "#3F9143", lineHeight: 1 }}>{max}</span>
-            <span style={{ fontSize: 10, opacity: 0.85 }}>Лучший</span>
-          </div>
-          <div className="flex flex-col items-center" style={{ gap: 2 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: "#E07A8E", lineHeight: 1 }}>{min}</span>
-            <span style={{ fontSize: 10, opacity: 0.85 }}>Худший</span>
-          </div>
+          {([
+            { num: avg, label: "Средний", color: "var(--text)" },
+            { num: max, label: "Лучший", color: "#3F9143" },
+            { num: min, label: "Худший", color: "#E07A8E" },
+          ] as const).map((c) => (
+            <div
+              key={c.label}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 2,
+                minWidth: 0,
+              }}
+            >
+              <span style={{ fontSize: 16, fontWeight: 700, color: c.color, lineHeight: 1 }}>{c.num}</span>
+              <span style={{ fontSize: 10, opacity: 0.85, whiteSpace: "nowrap" }}>{c.label}</span>
+            </div>
+          ))}
         </div>
       )}
     </motion.div>

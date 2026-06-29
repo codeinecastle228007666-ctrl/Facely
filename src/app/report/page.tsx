@@ -3,28 +3,56 @@
 import React, { useEffect, useState } from "react";
 import { TabBar } from "@/components/ui/TabBar";
 import { LockIcon, ChartIcon } from "@/components/ui/Icons";
-import { api, type SubscriptionStatus, type ReportItem } from "@/services/api";
+import { api, type ReportCooldownStatus, type SubscriptionStatus, type ReportItem } from "@/services/api";
 import { motion, AnimatePresence } from "framer-motion";
+
+// 2026-06-29 — Live countdown helper for the once-per-week cooldown.
+// Reused between the dashboard section and the dedicated /report page
+// so the wording stays consistent. `nowMs` is updated every minute via
+// a setInterval declared inside the component so the displayed
+// sentence doesn't go stale.
+function formatCooldownRemaining(
+  status: ReportCooldownStatus | null,
+  nowMs: number,
+): string {
+  if (!status?.nextAvailableAt) return "";
+  const totalMs = new Date(status.nextAvailableAt).getTime() - nowMs;
+  if (totalMs <= 0) return "скоро";
+  const hours = Math.ceil(totalMs / (60 * 60 * 1000));
+  if (hours >= 48) {
+    const days = Math.ceil(hours / 24);
+    return `${days} ${days === 1 ? "день" : days < 5 ? "дня" : "дней"}`;
+  }
+  if (hours >= 1) {
+    return `${hours} ${hours === 1 ? "час" : hours < 5 ? "часа" : "часов"}`;
+  }
+  return "<1 часа";
+}
 
 export default function ReportPage() {
   const [sub, setSub] = useState<SubscriptionStatus | null>(null);
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [selectedReport, setSelectedReport] = useState<ReportItem | null>(null);
+  const [cooldown, setCooldown] = useState<ReportCooldownStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // 2026-06-29 — tick to refresh countdown labels every minute.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
-  const fetchReportsAndSub = async () => {
+  const fetchAll = async () => {
     try {
-      const [subscription, reportList] = await Promise.all([
+      const [subscription, reportList, status] = await Promise.all([
         api.subscription.status().catch(() => null),
-        api.report.list().catch(() => [] as any),
+        api.report.list().catch(() => [] as ReportItem[]),
+        api.report.status().catch(() => null),
       ]);
       setSub(subscription);
-      setReports(reportList as ReportItem[]);
+      setReports(reportList);
       if (reportList && reportList.length > 0) {
-        setSelectedReport(reportList[0] as ReportItem);
+        setSelectedReport(reportList[0]);
       }
+      setCooldown(status);
     } catch (e: any) {
       console.error(e);
     } finally {
@@ -33,7 +61,12 @@ export default function ReportPage() {
   };
 
   useEffect(() => {
-    fetchReportsAndSub();
+    fetchAll();
+  }, []);
+
+  useEffect(() => {
+    const tick = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(tick);
   }, []);
 
   const handleGenerate = async () => {
@@ -42,16 +75,30 @@ export default function ReportPage() {
     try {
       const report = await api.report.generate();
       if (report) {
-        await fetchReportsAndSub();
+        await fetchAll();
       } else {
         setErrorMsg("Для составления отчёта сделай как минимум 2 анализа кожи за последние 7 дней.");
       }
     } catch (e: any) {
-      setErrorMsg(e.message || "Ошибка при генерации отчёта. Пожалуйста, попробуй позже.");
+      // 2026-06-29 — server throws `REPORT_COOLDOWN_ACTIVE` with a
+      // pre-localized message; we surface that as `errorMsg` and
+      // re-fetch status so the locked state stays authoritative.
+      setErrorMsg(e?.message ?? "Ошибка при генерации отчёта. Пожалуйста, попробуй позже.");
+      api.report.status().then(setCooldown).catch(() => {});
     } finally {
       setGenerating(false);
     }
   };
+
+  // 2026-06-29 — same reviewer-flagged distinction as ReportsSection:
+  // cooldown lock is meaningful only when there's enough recent data
+  // to even generate a report. Without this guard, a brand-new user
+  // (<2 analyses in last 7d) sees 🔒 on /report even though the
+  // real reason they're blocked is data scarcity, not cooldown.
+  const needMore = !!cooldown && !cooldown.recentAnalysesEnough;
+  const locked =
+    cooldown?.canGenerate === false && !!cooldown?.recentAnalysesEnough;
+  const countdown = formatCooldownRemaining(cooldown, nowMs);
 
   if (loading) {
     return (
@@ -127,38 +174,48 @@ export default function ReportPage() {
             </div>
           </div>
 
+          {/* 2026-06-29 — Generate button is now disabled + relabels as
+              a 🔒 countdown chip when the weekly cooldown is active.
+              Server enforces the same guard; UI never lies about state. */}
           <button
             onClick={handleGenerate}
-            disabled={generating}
+            disabled={generating || locked}
+            title={locked ? `Следующий отчёт через ${countdown}` : undefined}
             className="btn btn-primary"
             style={{
               padding: "8px 16px",
               fontSize: 12,
               borderRadius: 12,
-              background: "var(--primary)",
-              color: "#fff",
+              background: generating || locked ? "var(--border)" : "var(--primary)",
+              color: generating || locked ? "var(--text-muted)" : "#fff",
               border: "none",
-              cursor: "pointer",
+              cursor: generating || locked ? "default" : "pointer",
               fontWeight: 600,
               display: "flex",
               alignItems: "center",
               gap: 6,
             }}
           >
+            {/* 2026-06-29 — single rotating spinner inside the button
+                so JSX whitespace stays tight when locked vs ready. */}
             {generating ? (
               <span
                 style={{
                   width: 12,
                   height: 12,
                   borderRadius: "50%",
-                  border: "2px solid rgba(255,255,255,0.3)",
-                  borderTopColor: "#fff",
+                  border: "2px solid rgba(127,127,127,0.3)",
+                  borderTopColor: "var(--text-muted)",
                   animation: "spin 0.6s linear infinite",
                   display: "inline-block",
                 }}
               />
-            ) : "🧬"}
-            {generating ? "Создаём..." : "Создать отчёт"}
+            ) : locked ? "🔒" : "🧬"}
+            {generating
+              ? "Создаём..."
+              : locked
+                ? `Через ${countdown}`
+                : "Создать отчёт"}
           </button>
         </motion.div>
 
@@ -190,6 +247,27 @@ export default function ReportPage() {
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col gap-4"
           >
+            {/* 2026-06-29 — surface the "need more analyses" reason
+                explicitly when the user has data scarcity, not just a
+                silent empty card. Helps onboarding users understand
+                what to do next instead of staring at an empty box. */}
+            {needMore && (
+              <div
+                className="card"
+                style={{
+                  padding: "12px 16px",
+                  borderRadius: 14,
+                  background: "rgba(168, 216, 234, 0.1)",
+                  border: "1px solid rgba(168, 216, 234, 0.25)",
+                  color: "var(--text-secondary)",
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  marginBottom: 4,
+                }}
+              >
+                ℹ️ Сделай как минимум 2 анализа за последние 7 дней, чтобы сформировать новый отчёт.
+              </div>
+            )}
             <div className="card" style={{ padding: 20 }}>
               <div className="flex items-center gap-3" style={{ marginBottom: 12 }}>
                 <div
@@ -300,6 +378,12 @@ export default function ReportPage() {
           </motion.div>
         )}
 
+        {/* 2026-06-29 — dedicated history form for the report list.
+            When there are ≥2 reports we show every entry as a fully
+            selectable chip; the currently-inspected one is highlighted
+            with a soft pastel tint + a "сейчас" pill. The list is its
+            own block (separated from the active card by 24px) so it
+            reads as a "separate form" rather than an inline footer. */}
         {reports.length > 1 && (
           <div style={{ marginTop: 24 }}>
             <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>📜 История отчётов</h2>

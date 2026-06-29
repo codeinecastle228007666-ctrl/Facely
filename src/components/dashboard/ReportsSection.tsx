@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { api, type ReportItem } from "@/services/api";
+import { api, type ReportCooldownStatus, type ReportItem } from "@/services/api";
 
 interface ReportsSectionProps {
   hasSubscription: boolean;
@@ -14,32 +14,75 @@ const DYNAMIC_LABELS: Record<string, { icon: string; color: string }> = {
   стабильно: { icon: "➡️", color: "#FFD166" },
 };
 
+// 2026-06-29 — Compact human label for the cooldown countdown. Picks
+// days when ≥48h remain, hours when ≥1h remain, else <1h fractional.
+// Drives the "🔒 Следующий: 3 дня" caption on the locked button.
+// 2026-06-29 — Live countdown. We take `nextAvailableAt` (server
+// returns this at query time) and subtract elapsed millis since
+// page load (`nowMs` ticks once per minute). Refresh via silent
+// `status()` after every generate + on focus.
+function formatCooldownRemaining(
+  status: ReportCooldownStatus,
+  nowMs: number,
+): string {
+  if (!status.nextAvailableAt) return "";
+  const totalMs = new Date(status.nextAvailableAt).getTime() - nowMs;
+  if (totalMs <= 0) return "скоро";
+  const hours = Math.ceil(totalMs / (60 * 60 * 1000));
+  if (hours >= 48) {
+    const days = Math.ceil(hours / 24);
+    return `${days} ${days === 1 ? "день" : days < 5 ? "дня" : "дней"}`;
+  }
+  if (hours >= 1) {
+    return `${hours} ${hours === 1 ? "час" : hours < 5 ? "часа" : "часов"}`;
+  }
+  return "<1 часа";
+}
+
 export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription }) => {
   const [open, setOpen] = useState(false);
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [cooldown, setCooldown] = useState<ReportCooldownStatus | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // 2026-06-29 — derived `nowMs` refreshes every minute so the
+  // cooldown countdown stays honest without re-fetching. Uses
+  // setInterval client-side only — no SSR concern because the
+  // wrapping component is `"use client"`.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   const loadReports = () => {
     if (!hasSubscription) return;
     setLoading(true);
-    // 2026-06-28 — empty `catch` was hiding network / tRPC errors behind
-    // a silent empty-state. Now surfaces a generic toast so users get
-    // actionable feedback instead of staring at "Нет отчётов" when
-    // the request literally failed. Toast component lives in
-    // `components/ui/Toast.tsx` (added in same change-set).
     api.report.list()
       .then(setReports)
       .catch((e) => {
         console.error("[ReportsSection] list failed:", e?.message ?? e);
-        // Falling back to empty list keeps render path clean; the toast
-        // is the user-visible signal. setError would be a richer follow-up.
       })
       .finally(() => setLoading(false));
   };
 
+  const loadCooldown = () => {
+    if (!hasSubscription) return;
+    api.report.status()
+      .then(setCooldown)
+      .catch((e) => {
+        console.error("[ReportsSection] status failed:", e?.message ?? e);
+      });
+  };
+
   useEffect(() => {
-    if (hasSubscription) loadReports();
+    if (hasSubscription) {
+      loadReports();
+      loadCooldown();
+    }
+  }, [hasSubscription]);
+
+  useEffect(() => {
+    if (!hasSubscription) return;
+    const tick = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(tick);
   }, [hasSubscription]);
 
   useEffect(() => {
@@ -50,14 +93,19 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
 
   const handleGenerate = async () => {
     setGenerating(true);
+    setErrorMsg(null);
     try {
       await api.report.generate();
       loadReports();
+      loadCooldown();
     } catch (e: any) {
-      // 2026-06-28 — empty catch swallowed AI-quota / network errors.
-      // Now logs with reason; UI button was already disabled during
-      // `generating`, so re-enable on error so users can retry.
+      // 2026-06-29 — surface server-side cooldown errors as a friendly
+      // caption on the same spot the button lives, instead of just
+      // logging. The thrown Error has `code === "REPORT_COOLDOWN_ACTIVE"`
+      // and the message is already pre-localized in Russian.
       console.error("[ReportsSection] generate failed:", e?.message ?? e);
+      setErrorMsg(e?.message ?? "Не удалось сформировать отчёт");
+      loadCooldown();
     }
     setGenerating(false);
   };
@@ -151,30 +199,57 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
                   Загрузка...
                 </div>
               ) : reports.length === 0 ? (
-                <div style={{
-                  textAlign: "center",
-                  padding: "24px",
-                  background: "var(--bg)",
-                  borderRadius: 14,
-                }}>
-                  <div style={{ fontSize: 36, marginBottom: 10 }}>📋</div>
-                  <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 14 }}>
-                    Ещё нет отчётов.<br />Нужно минимум 2 анализа за последние 7 дней.
-                  </div>
-                  <button
-                    onClick={handleGenerate}
-                    disabled={generating}
-                    style={{
-                      padding: "10px 24px", borderRadius: 14,
-                      background: generating ? "var(--border)" : "var(--primary)",
-                      color: generating ? "var(--text-muted)" : "white",
-                      fontSize: 13, fontWeight: 600, border: "none", cursor: generating ? "default" : "pointer",
-                      display: "inline-flex", alignItems: "center", gap: 6,
-                    }}
-                  >
-                    {generating ? "Формируем..." : "Сформировать отчёт"}
-                  </button>
-                </div>
+                /* 2026-06-29 — Empty state branches on three distinct
+                    states (reviewer caught an earlier bug where
+                    `canGenerate === false` covered BOTH "cooldown
+                    active" AND "need more analyses in last 7 days",
+                    mislabeling new users with 🔒):
+                      • needMore     → "make more analyses" hint, button OFF, no 🔒
+                      • cooldownLock → "next in X days" hint, button OFF, 🔒
+                      • ready        → button ON, primary style */
+                (() => {
+                  const needMore = cooldown && !cooldown.recentAnalysesEnough;
+                  // Cooldown lock is meaningful only when recentAnalysesEnough
+                  // is true; otherwise we're empty because of analyses count,
+                  // not because of cooldown.
+                  const cooldownLock =
+                    cooldown?.canGenerate === false && !!cooldown?.recentAnalysesEnough;
+                  return (
+                    <div style={{
+                      textAlign: "center",
+                      padding: "24px",
+                      background: "var(--bg)",
+                      borderRadius: 14,
+                    }}>
+                      <div style={{ fontSize: 36, marginBottom: 10 }}>{cooldownLock ? "🔒" : "📋"}</div>
+                      <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 14 }}>
+                        {cooldownLock
+                          ? `Следующий отчёт будет доступен через ${formatCooldownRemaining(cooldown!, nowMs)}.`
+                          : needMore
+                            ? "Ещё нет отчётов.\nНужно минимум 2 анализа за последние 7 дней."
+                            : "Ещё нет отчётов.\nНажми кнопку, чтобы сформировать первый."}
+                      </div>
+                      <button
+                        onClick={handleGenerate}
+                        disabled={generating || !!cooldownLock}
+                        style={{
+                          padding: "10px 24px", borderRadius: 14,
+                          background: generating || cooldownLock ? "var(--border)" : "var(--primary)",
+                          color: generating || cooldownLock ? "var(--text-muted)" : "white",
+                          fontSize: 13, fontWeight: 600, border: "none",
+                          cursor: generating || cooldownLock ? "default" : "pointer",
+                          display: "inline-flex", alignItems: "center", gap: 6,
+                        }}
+                      >
+                        {generating
+                          ? "Формируем\u2026"
+                          : cooldownLock
+                            ? `🔒 через ${formatCooldownRemaining(cooldown!, nowMs)}`
+                            : "Сформировать отчёт"}
+                      </button>
+                    </div>
+                  );
+                })()
               ) : (
                 <div className="flex flex-col gap-3">
                   {reports.map((r) => {
@@ -280,18 +355,34 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
                     );
                   })}
                   <button
+                    /* Update button mirrors the same lock semantics as the
+                        empty-state button above \u2014 reuses the
+                        `cooldownLock` (recentAnalysesEnough-based) check,
+                        not just raw canGenerate. */
                     onClick={handleGenerate}
-                    disabled={generating}
+                    disabled={generating || !!cooldownLock}
+                    title={
+                      cooldownLock
+                        ? `Следующий отчёт через ${formatCooldownRemaining(cooldown!, nowMs)}`
+                        : undefined
+                    }
                     style={{
                       padding: "10px", borderRadius: 14,
-                      background: "var(--bg)", color: "var(--text-secondary)",
-                      fontSize: 12, fontWeight: 500, border: "1px dashed var(--border)",
-                      cursor: generating ? "default" : "pointer",
+                      background: "var(--bg)",
+                      color: generating || cooldownLock
+                        ? "var(--text-muted)" : "var(--text-secondary)",
+                      fontSize: 12, fontWeight: 500,
+                      border: "1px dashed var(--border)",
+                      cursor: generating || cooldownLock ? "default" : "pointer",
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                       marginTop: 8,
                     }}
                   >
-                    {generating ? "Формируем..." : "🔄 Обновить отчёт"}
+                    {generating
+                      ? "Формируем\u2026"
+                      : cooldownLock
+                        ? `🔒 Следующий отчёт через ${formatCooldownRemaining(cooldown!, nowMs)}`
+                        : "🔄 Обновить отчёт"}
                   </button>
                 </div>
               )}

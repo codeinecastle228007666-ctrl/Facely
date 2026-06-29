@@ -205,7 +205,7 @@ export default function RatingPage() {
                     <div style={{ width: 36, height: 36, borderRadius: "50%", background: entry.rank <= 3 ? "rgba(255, 215, 0, 0.12)" : "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: entry.rank <= 3 ? "#FFD700" : "var(--text-muted)", flexShrink: 0 }}>
                       {getMedal(entry.rank) || `#${entry.rank}`}
                     </div>
-                    <div style={{ flex: 1, marginLeft: 10, fontSize: 14, fontWeight: entry.isMe ? 600 : 400 }}>
+                    <div style={{ flex: 1, marginLeft: 10, fontSize: 14, fontWeight: entry.isMe ? 600 : 400, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {entry.name || "Пользователь"}
                       {entry.isMe && <span style={{ fontSize: 10, color: "var(--primary)", marginLeft: 6 }}>(вы)</span>}
                     </div>

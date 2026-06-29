@@ -180,6 +180,7 @@ export const api = {
   },
   report: {
     list: () => query<ReportItem[]>("report.list"),
+    status: () => query<ReportCooldownStatus>("report.status"),
     generate: () => mutation<ReportItem | null>("report.generate"),
   },
   chat: {
@@ -444,6 +445,24 @@ export interface ReportItem {
   dynamics: Record<string, string> | null;
   summary: string | null;
   generatedAt: string;
+}
+
+/**
+ * 2026-06-29 — Once-per-week report-generation cooldown. Returned by
+ * `api.report.status()`. Lets the UI distinguish three reasons the
+ * generate button might be disabled: (a) cooldown active, (b) not
+ * enough analyses in last 7d, (c) ready.
+ */
+export interface ReportCooldownStatus {
+  canGenerate: boolean;
+  /** ISO timestamp when next report is available. Null when canGenerate=true. */
+  nextAvailableAt: string | null;
+  /** Whole hours until next available. 0 when canGenerate=true. */
+  hoursUntilNext: number;
+  /** Last report's generatedAt ISO. Null only for brand-new accounts. */
+  lastGeneratedAt: string | null;
+  recentAnalysesEnough: boolean;
+  recentAnalysesCount: number;
 }
 
 export interface UserProfile {
