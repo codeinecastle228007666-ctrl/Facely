@@ -408,6 +408,13 @@ export interface LeaderboardEntry {
   value: number;
   rank: number;
   isMe: boolean;
+  /**
+   * 2026-06-29 — True on the appended "self" entry when the current
+   * user is outside the first 50 (or has zero value for filtered
+   * leaderboards). Lets the UI render a soft divider and "вы здесь"
+   * caption above this row.
+   */
+  outOfRange?: boolean;
 }
 
 export interface RoutineStepItem {
