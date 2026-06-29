@@ -66,7 +66,9 @@ export const reportService = {
       }),
     ]);
     const recentAnalysesEnough = recentAnalysesCount >= 2;
-    const lastGeneratedAt = lastReport?.generatedAt ?? null;
+    // Prisma Date → ISO string: wire contract expects `string | null`
+    // so the client can call `new Date(...)` directly.
+    const lastGeneratedAt = lastReport?.generatedAt?.toISOString() ?? null;
 
     if (!lastReport) {
       return {
