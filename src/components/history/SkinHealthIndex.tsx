@@ -21,7 +21,10 @@ const Y_MAX = 100;
 
 const CHART_WIDTH = 280;
 const CHART_HEIGHT = 70;
-const PADDING = { top: 8, right: 10, bottom: 18, left: 10 };
+// PADDING.left widened from 10 → 22 to accommodate a left-edge Y-axis
+// label (e.g. "100", "80", "50", "0") so the chart's values are readable
+// without a legend overlay.
+const PADDING = { top: 8, right: 10, bottom: 18, left: 22 };
 
 const GAUGE_SIZE = 72;
 const GAUGE_R = 28;
@@ -255,6 +258,25 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
                 />
               ))}
 
+              {/* Y-axis labels at zone thresholds so the chart is
+                  self-describing without a separate legend overlay.
+                  Each digit sits over the matching dashed threshold
+                  line — a tiny <rect> painted in the card's bg color
+                  "punches through" the line so it's not bisected
+                  horizontally. We skip the "0" label entirely; the
+                  y=0 baseline makes the floor self-evident.
+
+                  2026-06-29 — switched from a magic `+3` y-offset
+                  to SVG `dominantBaseline="central"` so vertical
+                  centering is font-size-independent. The <rect>
+                  masks the dashed line in the label area only. */}
+              <rect x={PADDING.left - 18} y={toY(Y_MAX) - 5} width="16" height="10" style={{ fill: "var(--bg-card)" }} />
+              <text x={PADDING.left - 4} y={toY(Y_MAX)} textAnchor="end" fontSize="8" fill="var(--text-muted)" dominantBaseline="central">{Y_MAX}</text>
+              <rect x={PADDING.left - 16} y={toY(80) - 5} width="14" height="10" style={{ fill: "var(--bg-card)" }} />
+              <text x={PADDING.left - 4} y={toY(80)} textAnchor="end" fontSize="8" fill="var(--text-muted)" dominantBaseline="central">80</text>
+              <rect x={PADDING.left - 16} y={toY(50) - 5} width="14" height="10" style={{ fill: "var(--bg-card)" }} />
+              <text x={PADDING.left - 4} y={toY(50)} textAnchor="end" fontSize="8" fill="var(--text-muted)" dominantBaseline="central">50</text>
+
               {/* filled area below line */}
               <defs>
                 <linearGradient id="shiGradient" x1="0" y1="0" x2="0" y2="1">
@@ -345,18 +367,27 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
       </div>
 
       {scored.length >= 2 && (
-        <div className="flex justify-around" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-          <div className="flex flex-col items-center">
-            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{avg}</span>
-            <span>Средний</span>
+        <div
+          className="flex justify-around items-center"
+          style={{
+            paddingTop: 10,
+            marginTop: 4,
+            borderTop: "1px solid var(--border)",
+            fontSize: 11,
+            color: "var(--text-secondary)",
+          }}
+        >
+          <div className="flex flex-col items-center" style={{ gap: 2 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>{avg}</span>
+            <span style={{ fontSize: 10, opacity: 0.85 }}>Средний</span>
           </div>
-          <div className="flex flex-col items-center">
-            <span style={{ fontSize: 14, fontWeight: 700, color: "#3F9143" }}>{max}</span>
-            <span>Лучший</span>
+          <div className="flex flex-col items-center" style={{ gap: 2 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#3F9143", lineHeight: 1 }}>{max}</span>
+            <span style={{ fontSize: 10, opacity: 0.85 }}>Лучший</span>
           </div>
-          <div className="flex flex-col items-center">
-            <span style={{ fontSize: 14, fontWeight: 700, color: "#E07A8E" }}>{min}</span>
-            <span>Худший</span>
+          <div className="flex flex-col items-center" style={{ gap: 2 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#E07A8E", lineHeight: 1 }}>{min}</span>
+            <span style={{ fontSize: 10, opacity: 0.85 }}>Худший</span>
           </div>
         </div>
       )}
