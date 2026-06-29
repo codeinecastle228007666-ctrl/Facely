@@ -124,8 +124,10 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
       animate={{ opacity: 1, y: 0 }}
       style={{ marginBottom: 14 }}
     >
-      {/* Top — title + trend chip */}
-      <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+      {/* Top — title + trend chip. flexWrap + gap ensure the chip
+          drops to a second line on narrow (<320px) viewports instead
+          of butting against the title and clipping. */}
+      <div className="flex items-center justify-between" style={{ marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 600 }}>Индекс здоровья кожи</div>
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
@@ -178,7 +180,13 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
       <div className="flex items-center gap-4" style={{ marginBottom: 12 }}>
         {/* Gauge */}
         <div style={{ flexShrink: 0, position: "relative", width: GAUGE_SIZE, height: GAUGE_SIZE }}>
-          <svg width={GAUGE_SIZE} height={GAUGE_SIZE} viewBox={`0 0 ${GAUGE_SIZE} ${GAUGE_SIZE}`}>
+          <svg
+            width={GAUGE_SIZE}
+            height={GAUGE_SIZE}
+            viewBox={`0 0 ${GAUGE_SIZE} ${GAUGE_SIZE}`}
+            role="img"
+            aria-label={`Индекс здоровья кожи: ${latestScore} из 100`}
+          >
             <circle
               cx={GAUGE_SIZE / 2}
               cy={GAUGE_SIZE / 2}
@@ -203,28 +211,21 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
             />
             <text
               x={GAUGE_SIZE / 2}
-              y={GAUGE_SIZE / 2 + 5}
+              y={GAUGE_SIZE / 2 + 7}
               textAnchor="middle"
               fontSize="20"
               fontWeight={700}
               fill="var(--text)"
+              dominantBaseline="alphabetic"
             >
               {latestScore}
             </text>
           </svg>
-          <div
-            style={{
-              position: "absolute",
-              bottom: -2,
-              left: 0,
-              right: 0,
-              textAlign: "center",
-              fontSize: 9,
-              color: "var(--text-muted)",
-            }}
-          >
-            /100
-          </div>
+          {/* /100 unit annotation removed 2026-06-29 — its previous
+              `bottom: -2` position overlapped the lower arc of the
+              ring (the ring's outer edge ends at y=67; the "/100"
+              div's text box started at y≈62). The score's context
+              (/100) is implicit from the chart Y-axis labels. */}
         </div>
 
         {/* Chart */}
@@ -258,24 +259,31 @@ export const SkinHealthIndex: React.FC<SkinHealthIndexProps> = ({ items }) => {
                 />
               ))}
 
-              {/* Y-axis labels at zone thresholds so the chart is
-                  self-describing without a separate legend overlay.
-                  Each digit sits over the matching dashed threshold
-                  line — a tiny <rect> painted in the card's bg color
-                  "punches through" the line so it's not bisected
-                  horizontally. We skip the "0" label entirely; the
-                  y=0 baseline makes the floor self-evident.
+              {/* Y-axis labels sit centered on their threshold guides,
+                  masked by a card-colored <rect> so the dashed line
+                  does not bisect the digit horizontally. fontSize
+                  bumped 8 → 11 (≈8.7px CSS once the SVG scales to
+                  ~223px on a phone viewport) so glyphs are legible.
+                  We skip the "0" label entirely — the y=0 baseline
+                  is self-evident.
 
-                  2026-06-29 — switched from a magic `+3` y-offset
-                  to SVG `dominantBaseline="central"` so vertical
-                  centering is font-size-independent. The <rect>
-                  masks the dashed line in the label area only. */}
-              <rect x={PADDING.left - 18} y={toY(Y_MAX) - 5} width="16" height="10" style={{ fill: "var(--bg-card)" }} />
-              <text x={PADDING.left - 4} y={toY(Y_MAX)} textAnchor="end" fontSize="8" fill="var(--text-muted)" dominantBaseline="central">{Y_MAX}</text>
-              <rect x={PADDING.left - 16} y={toY(80) - 5} width="14" height="10" style={{ fill: "var(--bg-card)" }} />
-              <text x={PADDING.left - 4} y={toY(80)} textAnchor="end" fontSize="8" fill="var(--text-muted)" dominantBaseline="central">80</text>
-              <rect x={PADDING.left - 16} y={toY(50) - 5} width="14" height="10" style={{ fill: "var(--bg-card)" }} />
-              <text x={PADDING.left - 4} y={toY(50)} textAnchor="end" fontSize="8" fill="var(--text-muted)" dominantBaseline="central">50</text>
+                  2026-06-29 — rect height 10 → 12 so 11px digits fit
+                  with 0.5px breathing; rect width 18 so "100" (the
+                  widest digits) is fully covered. PADDING.left
+                  width is unchanged so first-chart-dot at toX(0)
+                  still hugs PADDING.left with a 3.25px buffer to
+                  the rect — no overlap. */}
+              {/* "100" sits pinned at the very top of the plot (y=0..12
+                  rect, y=4 text center) so digit ink at y=0..8 leaves a
+                  ≥4px breathing gap before the dashed gridline's "80"
+                  label below. There's no dashed gridline near "100"
+                  anyway, so this rect is purely visual padding. */}
+              <rect x={PADDING.left - 22} y="0" width="18" height="12" style={{ fill: "var(--bg-card)" }} />
+              <text x={PADDING.left - 4} y="4" textAnchor="end" fontSize="11" fill="var(--text-muted)" dominantBaseline="central">{Y_MAX}</text>
+              <rect x={PADDING.left - 20} y={toY(80) - 6} width="18" height="12" style={{ fill: "var(--bg-card)" }} />
+              <text x={PADDING.left - 4} y={toY(80)} textAnchor="end" fontSize="11" fill="var(--text-muted)" dominantBaseline="central">80</text>
+              <rect x={PADDING.left - 20} y={toY(50) - 6} width="18" height="12" style={{ fill: "var(--bg-card)" }} />
+              <text x={PADDING.left - 4} y={toY(50)} textAnchor="end" fontSize="11" fill="var(--text-muted)" dominantBaseline="central">50</text>
 
               {/* filled area below line */}
               <defs>
