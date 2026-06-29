@@ -91,6 +91,16 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
     }
   }, [open, hasSubscription]);
 
+  // 2026-06-29 — Hoisted from the empty-state branch's IIFE: earlier
+  // attempt inlined `const cooldownLock = ...` inside an arrow
+  // expression so the "Обновить отчёт" button below the report list
+  // (which sits OUTSIDE the IIFE) couldn't see it → `tsc` failed with
+  // `Cannot find name 'cooldownLock'`. Deriving both flags here means
+  // the same logic powers empty-state and update-button copy.
+  const needMore = !!cooldown && !cooldown.recentAnalysesEnough;
+  const cooldownLock =
+    cooldown?.canGenerate === false && !!cooldown?.recentAnalysesEnough;
+
   const handleGenerate = async () => {
     setGenerating(true);
     setErrorMsg(null);
@@ -203,53 +213,46 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
                     states (reviewer caught an earlier bug where
                     `canGenerate === false` covered BOTH "cooldown
                     active" AND "need more analyses in last 7 days",
-                    mislabeling new users with 🔒):
+                    mislabeling new users with 🔒). `cooldownLock` /
+                    `needMore` are now hoisted to the component body so
+                    the same flags drive both this empty-state and the
+                    update button below.
                       • needMore     → "make more analyses" hint, button OFF, no 🔒
                       • cooldownLock → "next in X days" hint, button OFF, 🔒
                       • ready        → button ON, primary style */
-                (() => {
-                  const needMore = cooldown && !cooldown.recentAnalysesEnough;
-                  // Cooldown lock is meaningful only when recentAnalysesEnough
-                  // is true; otherwise we're empty because of analyses count,
-                  // not because of cooldown.
-                  const cooldownLock =
-                    cooldown?.canGenerate === false && !!cooldown?.recentAnalysesEnough;
-                  return (
-                    <div style={{
-                      textAlign: "center",
-                      padding: "24px",
-                      background: "var(--bg)",
-                      borderRadius: 14,
-                    }}>
-                      <div style={{ fontSize: 36, marginBottom: 10 }}>{cooldownLock ? "🔒" : "📋"}</div>
-                      <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 14 }}>
-                        {cooldownLock
-                          ? `Следующий отчёт будет доступен через ${formatCooldownRemaining(cooldown!, nowMs)}.`
-                          : needMore
-                            ? "Ещё нет отчётов.\nНужно минимум 2 анализа за последние 7 дней."
-                            : "Ещё нет отчётов.\nНажми кнопку, чтобы сформировать первый."}
-                      </div>
-                      <button
-                        onClick={handleGenerate}
-                        disabled={generating || !!cooldownLock}
-                        style={{
-                          padding: "10px 24px", borderRadius: 14,
-                          background: generating || cooldownLock ? "var(--border)" : "var(--primary)",
-                          color: generating || cooldownLock ? "var(--text-muted)" : "white",
-                          fontSize: 13, fontWeight: 600, border: "none",
-                          cursor: generating || cooldownLock ? "default" : "pointer",
-                          display: "inline-flex", alignItems: "center", gap: 6,
-                        }}
-                      >
-                        {generating
-                          ? "Формируем\u2026"
-                          : cooldownLock
-                            ? `🔒 через ${formatCooldownRemaining(cooldown!, nowMs)}`
-                            : "Сформировать отчёт"}
-                      </button>
-                    </div>
-                  );
-                })()
+                <div style={{
+                  textAlign: "center",
+                  padding: "24px",
+                  background: "var(--bg)",
+                  borderRadius: 14,
+                }}>
+                  <div style={{ fontSize: 36, marginBottom: 10 }}>{cooldownLock ? "🔒" : "📋"}</div>
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 14 }}>
+                    {cooldownLock
+                      ? `Следующий отчёт будет доступен через ${formatCooldownRemaining(cooldown!, nowMs)}.`
+                      : needMore
+                        ? "Ещё нет отчётов.\nНужно минимум 2 анализа за последние 7 дней."
+                        : "Ещё нет отчётов.\nНажми кнопку, чтобы сформировать первый."}
+                  </div>
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating || cooldownLock}
+                    style={{
+                      padding: "10px 24px", borderRadius: 14,
+                      background: generating || cooldownLock ? "var(--border)" : "var(--primary)",
+                      color: generating || cooldownLock ? "var(--text-muted)" : "white",
+                      fontSize: 13, fontWeight: 600, border: "none",
+                      cursor: generating || cooldownLock ? "default" : "pointer",
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                    }}
+                  >
+                    {generating
+                      ? "Формируем\u2026"
+                      : cooldownLock
+                        ? `🔒 через ${formatCooldownRemaining(cooldown!, nowMs)}`
+                        : "Сформировать отчёт"}
+                  </button>
+                </div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {reports.map((r) => {
@@ -355,12 +358,10 @@ export const ReportsSection: React.FC<ReportsSectionProps> = ({ hasSubscription 
                     );
                   })}
                   <button
-                    /* Update button mirrors the same lock semantics as the
-                        empty-state button above \u2014 reuses the
-                        `cooldownLock` (recentAnalysesEnough-based) check,
-                        not just raw canGenerate. */
+                    /* Update button uses the same hoisted `cooldownLock`
+                        as the empty-state button above. */
                     onClick={handleGenerate}
-                    disabled={generating || !!cooldownLock}
+                    disabled={generating || cooldownLock}
                     title={
                       cooldownLock
                         ? `Следующий отчёт через ${formatCooldownRemaining(cooldown!, nowMs)}`
