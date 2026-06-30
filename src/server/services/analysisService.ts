@@ -12,7 +12,12 @@ import {
   HFConfigError,
   HFUpstreamError,
 } from "./huggingFaceSkinService";
-import { analyzeSkinWithGemini, BadPhotoError } from "./geminiSkinService";
+import {
+  analyzeSkinWithGemini,
+  BadPhotoError,
+  GeminiConfigError,
+  GeminiUpstreamError,
+} from "./geminiSkinService";
 import { achievementService } from "./achievementService";
 
 /**
@@ -79,6 +84,75 @@ if (!(process as any)[__GUARD_KEY__]) {
       err?.message ?? String(err),
     );
   });
+}
+
+/**
+ * 2026-06-30 — Translate Gemini's typed errors into actionable Russian
+ * user-facing copy. Replaces the previous single-message "сервис
+ * временно недоступен" pattern that fired indistinguishably for
+ * missing-API-key (operator config), 429-quota-exhausted (user
+ * retryable), circuit-breaker-open (transient), safety-filter-block
+ * (Google AI's content policy) and generic upstream. The user can
+ * now tell at a glance whether the failure is theirs (bad photo),
+ * ours (config), recoverable-soon (quota / breaker), or permanent
+ * upstream. Each branch logs the raw upstream substring to
+ * `console.error` so Vercel function logs carry the actual cause
+ * for ops debugging.
+ *
+ * Branches, ordered by specificity:
+ *  1. BadPhotoError — pass-through (defense-in-depth; normally
+ *     caught upstream of this helper in `analyze()`).
+ *  2. GeminiConfigError — operator-fix; user-facing copy points at
+ *     "разработчик работает".
+ *  3. GeminiUpstreamError · circuit-breaker open — "30–60 секунд".
+ *  4. GeminiUpstreamError · 429 / quota / RESOURCE_EXHAUSTED —
+ *     "1–2 минуты".
+ *  5. GeminiUpstreamError · safety filter — "фото заблокировано
+ *     фильтрами" so the user knows it's a Google AI decision, not
+ *     our bug.
+ *  6. Generic upstream / uncategorised — conservative
+ *     "несколько минут".
+ */
+function surfaceGeminiFailure(err: unknown): Error {
+  if (err instanceof BadPhotoError) return err;
+  if (err instanceof GeminiConfigError) {
+    console.error(
+      "[Analysis] Gemini config error (most likely GEMINI_API_KEY not configured on server):",
+      err.message,
+    );
+    return new Error(
+      "ИИ-анализ временно не настроен. Разработчик уже работает над этим — попробуй через час.",
+    );
+  }
+  if (err instanceof GeminiUpstreamError) {
+    const raw = err.message ?? "";
+    if (/circuit.?breaker/i.test(raw)) {
+      console.error("[Analysis] Gemini circuit breaker open:", raw);
+      return new Error(
+        "Сервис восстанавливается после перегрузки. Подожди 30–60 секунд и попробуй снова.",
+      );
+    }
+    if (/\b429\b|rate.?limit|quota|exceed|RESOURCE_EXHAUSTED/i.test(raw)) {
+      console.error("[Analysis] Gemini rate-limit / quota exhausted:", raw);
+      return new Error(
+        "Превышен лимит запросов к ИИ. Подожди 1–2 минуты и попробуй снова.",
+      );
+    }
+    if (/safety|finishReason|blockReason|HARM_CATEGORY/i.test(raw)) {
+      console.error("[Analysis] Gemini safety filter blocked the response:", raw);
+      return new Error(
+        "Фото заблокировано фильтрами безопасности ИИ. Попробуй другое фото без крупных планов.",
+      );
+    }
+    console.error("[Analysis] Gemini generic upstream failure:", raw);
+    return new Error(
+      "Сервис анализа временно недоступен. Попробуй через несколько минут.",
+    );
+  }
+  console.error("[Analysis] Uncategorised Gemini error:", String(err));
+  return new Error(
+    "Сервис анализа временно недоступен. Попробуй через несколько минут.",
+  );
 }
 
 export const analysisService = {
@@ -377,12 +451,8 @@ export const analysisService = {
     // через несколько минут". Bad-photo branch above catches the
     // other common error source before this guard runs.
     if (providerChoice === "gemini" && !geminiVerdict) {
-      console.error(
-        "[Analysis] Galileo-only lane: Gemini returned no verdict (upstream or rate-limit). Surfacing service-down copy.",
-      );
-      throw new Error(
-        "Сервис анализа временно недоступен. Повтори через несколько минут.",
-      );
+      // 2026-06-30 — typed error → actionable UX copy via surfaceGeminiFailure.
+      throw surfaceGeminiFailure(geminiError);
     }
     if (providerChoice === "faceplus" && !fpVerdict && !hfVerdict) {
       console.error(
@@ -396,7 +466,12 @@ export const analysisService = {
     if (!fpVerdict && !geminiVerdict && !hfVerdict) {
       // All three providers either errored or returned bogus data.
       // Log the actual cause(s) so Vercel logs carry the real
-      // exception while the user sees a friendly Russian message.
+      // exception. In our Gemini-only deployment (override above),
+      // the gemini bucket IS the actionable lane — surface it via
+      // surfaceGeminiFailure which classifies config / circuit-breaker
+      // / rate-limit / safety / generic upstream into focused Russian
+      // copy. The same copy path keeps the user-facing tone consistent
+      // if some future deployment re-enables the multi-lane path.
       console.error(
         "[Analysis] All providers exhausted:",
         {
@@ -405,9 +480,7 @@ export const analysisService = {
           huggingface: hfError,
         },
       );
-      throw new Error(
-        "Сервис анализа временно недоступен. Разработчик уже работает над восстановлением. Попробуйте через час.",
-      );
+      throw surfaceGeminiFailure(geminiError);
     }
 
     // If Face++ returned a user-visible error (no face / multiple

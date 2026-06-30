@@ -169,21 +169,6 @@ export const LastAnalysisCard: React.FC<LastAnalysisCardProps> = ({ item }) => {
           )}
         </div>
       </div>
-      {daysAgo === 0 && (
-        <div
-          style={{
-            fontSize: 10,
-            padding: "3px 8px",
-            borderRadius: 8,
-            background: "rgba(126, 196, 216, 0.12)",
-            color: "#7EC4D8",
-            fontWeight: 600,
-            flexShrink: 0,
-          }}
-        >
-          NEW
-        </div>
-      )}
     </motion.div>
   );
 };
