@@ -6,6 +6,7 @@ import { TabBar } from "@/components/ui/TabBar";
 import { AnalysisCard } from "@/components/history/AnalysisCard";
 import { SkinHealthIndex } from "@/components/history/SkinHealthIndex";
 import { api, type AnalysisHistoryItem, type AnalysisResult } from "@/services/api";
+import type { RussianProductSection } from "@/services/api";
 import { HistoryIcon, CloseIcon } from "@/components/ui/Icons";
 import { motion, AnimatePresence } from "framer-motion";
 import { CardSkeleton } from "@/components/ui/Skeleton";
@@ -593,6 +594,81 @@ export default function HistoryPage() {
                         <div style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 36 }}>
                           <div style={{ marginBottom: 2 }}>{p.reason}</div>
                           <div style={{ color: "var(--primary-dark)", fontStyle: "italic" }}>✦ {p.effect}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 2026-06-30 — Mirror of ResultModal's Russian-product
+                  section, reading the same `russian_products` field
+                  already persisted on every analysis since the
+                  russianProductCatalog.middleware in analyze(). The
+                  empty-state ("Спроси в чате") is left to the UI when
+                  russian_products is undefined or empty. */}
+              {result.russian_products && result.russian_products.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+                    Средства, которые можно купить в России
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+                    Подобраны под твой тип кожи и проблемы — копируй название и ищи на Wildberries, Ozon или в аптеке
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    {result.russian_products.map((section, si) => (
+                      <div
+                        key={`${section.brand}-${section.lineName}-${si}`}
+                        style={{
+                          padding: "12px 14px",
+                          borderRadius: 14,
+                          background: "rgba(168, 216, 234, 0.08)",
+                          border: "1px solid rgba(168, 216, 234, 0.2)",
+                        }}
+                      >
+                        <div style={{ marginBottom: 6 }}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: "white",
+                              background: "linear-gradient(135deg, #A8D8EA 0%, #7EC4D8 100%)",
+                              padding: "3px 10px",
+                              borderRadius: 8,
+                              marginRight: 8,
+                            }}
+                          >
+                            {section.brand}
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>
+                            {section.lineName}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+                          {section.lineDescription}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {section.products.map((product, pi) => (
+                            <div
+                              key={`${section.brand}-${section.lineName}-${pi}`}
+                              style={{
+                                padding: "8px 10px",
+                                borderRadius: 10,
+                                background: "white",
+                              }}
+                            >
+                              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
+                                {product.name}
+                              </div>
+                              <div style={{ fontSize: 10, color: "var(--text-secondary)", marginBottom: 2 }}>
+                                <em style={{ fontStyle: "normal", opacity: 0.7 }}>{product.format}</em>
+                              </div>
+                              <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4 }}>
+                                {product.why}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     ))}

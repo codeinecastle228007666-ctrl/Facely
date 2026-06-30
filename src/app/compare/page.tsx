@@ -90,6 +90,16 @@ function ImageSlider({ before, after }: { before: string; after: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState(50);
   const [dragging, setDragging] = useState(false);
+  // 2026-06-30 — UX fix. Previously only `before` could move (it sat
+  // on top as a clipped overlay, with `after` as the static
+  // background). User reported being unable to evaluate the
+  // background picture at higher zoom. Now we expose a toggle:
+  //   `clipSide="before"` — `before` is the clipped overlay (default)
+  //   `clipSide="after"` — `after` is the clipped overlay, `before` is bg
+  // Render order flipped accordingly so labels (ДО / ПОСЛЕ) stay
+  // visually anchored to their semantic images and the toggle reads as
+  // "which photo moves under the slider".
+  const [clipSide, setClipSide] = useState<"before" | "after">("before");
 
   const handlePointer = useCallback((clientX: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -115,112 +125,199 @@ function ImageSlider({ before, after }: { before: string; after: string }) {
   };
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        position: "relative",
-        width: "100%",
-        aspectRatio: "3/4",
-        maxHeight: "70vh",
-        borderRadius: 20,
-        overflow: "hidden",
-        background: "var(--bg)",
-        userSelect: "none",
-        touchAction: "none",
-      }}
-    >
-      <img
-        src={`data:image/jpeg;base64,${after}`}
-        alt="после"
-        style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }}
-      />
+    <div>
+      {/* 2026-06-30 — «Какое фото двигать?» toggle. Pinned above the
+          slider container so it's discoverable on the first interaction
+          without scrolling. Active chip mirrors the chrome palette
+          already used elsewhere (`comparison.analysis1` uses A8D8EA, the
+          «after» column uses 7EC4D8) so the visual association with
+          the underlying photo is unambiguous. */}
       <div
+        role="tablist"
+        aria-label="Какое фото двигать"
         style={{
-          position: "absolute",
-          inset: 0,
-          width: `${position}%`,
-          overflow: "hidden",
+          display: "flex",
+          gap: 4,
+          padding: 4,
+          background: "var(--bg)",
+          borderRadius: 12,
+          marginBottom: 8,
         }}
       >
-        <img
-          src={`data:image/jpeg;base64,${before}`}
-          alt="до"
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-        />
+        {(
+          [
+            { key: "before", label: "Двигать «ДО»", chip: "rgba(168, 216, 234, 1)" },
+            { key: "after", label: "Двигать «ПОСЛЕ»", chip: "rgba(126, 196, 216, 1)" },
+          ] as const
+        ).map((opt) => {
+          const isActive = clipSide === opt.key;
+          return (
+            <button
+              key={opt.key}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setClipSide(opt.key)}
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                borderRadius: 10,
+                fontSize: 12,
+                fontWeight: isActive ? 600 : 500,
+                background: isActive ? opt.chip : "transparent",
+                color: isActive ? "white" : "var(--text-secondary)",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
       </div>
       <div
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        ref={containerRef}
         style={{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          left: `${position}%`,
-          width: 4,
-          background: "white",
-          boxShadow: "0 0 12px rgba(0,0,0,0.3)",
-          cursor: "ew-resize",
-          transform: "translateX(-50%)",
-          zIndex: 10,
+          position: "relative",
+          width: "100%",
+          aspectRatio: "3/4",
+          maxHeight: "70vh",
+          borderRadius: 20,
+          overflow: "hidden",
+          background: "var(--bg)",
+          userSelect: "none",
+          touchAction: "none",
         }}
       >
+        {clipSide === "before" ? (
+          <>
+            {/* `after` is the static background, `before` is the clipped overlay */}
+            <img
+              src={`data:image/jpeg;base64,${after}`}
+              alt="после"
+              style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: `${position}%`,
+                overflow: "hidden",
+              }}
+            >
+              <img
+                src={`data:image/jpeg;base64,${before}`}
+                alt="до"
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            {/* `before` is the static background, `after` is the clipped overlay */}
+            <img
+              src={`data:image/jpeg;base64,${before}`}
+              alt="до"
+              style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: `${position}%`,
+                overflow: "hidden",
+              }}
+            >
+              <img
+                src={`data:image/jpeg;base64,${after}`}
+                alt="после"
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              />
+            </div>
+          </>
+        )}
+        <div
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: `${position}%`,
+            width: 4,
+            background: "white",
+            boxShadow: "0 0 12px rgba(0,0,0,0.3)",
+            cursor: "ew-resize",
+            transform: "translateX(-50%)",
+            zIndex: 10,
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "white",
+              boxShadow: "0 2px 12px rgba(0,0,0,0.25)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 3,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M9 5l-7 7 7 7M15 5l7 7-7 7" stroke="#C47A8F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        </div>
+        {/*
+          2026-06-30 — бейджи «ДО» / «ПОСЛЕ» в углах теперь меняют
+          фоновый цвет при смене `clipSide`. Текст остаётся
+          семантическим ярлыком («ДО» / «ПОСЛЕ» как имя фото), но
+          цвет-VISUAL-anchor всегда совпадает с фото, которое реально
+          показано в этом углу: bottom-left переходит от синего
+          (ДО) к бирюзовому (ПОСЛЕ) при переключении режима, чтобы
+          юзер не путал текст «ДО» с цветом «ПОСЛЕ».
+        */}
         <div
           style={{
             position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 40,
-            height: 40,
-            borderRadius: "50%",
-            background: "white",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.25)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 3,
+            bottom: 12,
+            left: 12,
+            padding: "4px 12px",
+            borderRadius: 10,
+            background: clipSide === "before" ? "rgba(168, 216, 234, 0.85)" : "rgba(126, 196, 216, 0.85)",
+            color: "white",
+            fontSize: 11,
+            fontWeight: 700,
+            backdropFilter: "blur(4px)",
+            zIndex: 5,
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M9 5l-7 7 7 7M15 5l7 7-7 7" stroke="#C47A8F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          ДО
         </div>
-      </div>
-      <div
-        style={{
-          position: "absolute",
-          bottom: 12,
-          left: 12,
-          padding: "4px 12px",
-          borderRadius: 10,
-          background: "rgba(168, 216, 234, 0.85)",
-          color: "white",
-          fontSize: 11,
-          fontWeight: 700,
-          backdropFilter: "blur(4px)",
-          zIndex: 5,
-        }}
-      >
-        ДО
-      </div>
-      <div
-        style={{
-          position: "absolute",
-          bottom: 12,
-          right: 12,
-          padding: "4px 12px",
-          borderRadius: 10,
-          background: "rgba(126, 196, 216, 0.85)",
-          color: "white",
-          fontSize: 11,
-          fontWeight: 700,
-          backdropFilter: "blur(4px)",
-          zIndex: 5,
-        }}
-      >
-        ПОСЛЕ
+        <div
+          style={{
+            position: "absolute",
+            bottom: 12,
+            right: 12,
+            padding: "4px 12px",
+            borderRadius: 10,
+            background: clipSide === "before" ? "rgba(126, 196, 216, 0.85)" : "rgba(168, 216, 234, 0.85)",
+            color: "white",
+            fontSize: 11,
+            fontWeight: 700,
+            backdropFilter: "blur(4px)",
+            zIndex: 5,
+          }}
+        >
+          ПОСЛЕ
+        </div>
       </div>
     </div>
   );

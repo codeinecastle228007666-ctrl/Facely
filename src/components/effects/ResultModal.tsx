@@ -3,7 +3,7 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CloseIcon } from "@/components/ui/Icons";
-import type { AnalysisResult } from "@/services/api";
+import type { AnalysisResult, RussianProductSection } from "@/services/api";
 import { useTelegram } from "@/hooks/useTelegram";
 
 /**
@@ -39,9 +39,15 @@ interface ResultModalProps {
   totalXp?: number;
   level?: number;
   streak?: number;
-  onCompare?: () => void;
+  /**
+   * 2026-06-30 — «onShare» kept (no inline UI binds it today, but other
+   * entry points can wire it up). «onCompare» and «hasPrevAnalysis»
+   * REMOVED 2026-06-30 at user request: the «Сравнить» button in the
+   * post-analysis modal was deleted. The `/history` selection-mode
+   * (two records → tap → top-right Compare) is the only remaining
+   * compare entry point.
+   */
   onShare?: () => void;
-  hasPrevAnalysis?: boolean;
 }
 
 const MOOD_COLORS: Record<string, string> = {
@@ -93,9 +99,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
   totalXp,
   level,
   streak,
-  onCompare,
   onShare,
-  hasPrevAnalysis,
 }) => {
   const [activeTab, setActiveTab] = React.useState<VariantKey | null>(null);
 
@@ -471,6 +475,86 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </div>
             )}
 
+            {/*
+              2026-06-30 — Russian-market purchasable product cards.
+              Sourced from `russianProductCatalog.ts` (static catalog,
+              12+ brands, ~50 specific products). Each entry has brand +
+              line + products with name+format+reason — the user reads
+              it and searches the brand+name in any Russian retail app
+              (Wildberries / Ozon / Рив Гош / Летуаль / аптеки).
+              Placed BELOW the AI «Рекомендуемые продукты» section so
+              the abstract advice is first, the concrete shopping list
+              second.
+            */}
+            {display.russian_products && display.russian_products.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+                  Средства, которые можно купить в России
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+                  Подобраны под твой тип кожи и проблемы — копируй название и ищи на Wildberries, Ozon или в аптеке
+                </div>
+                <div className="flex flex-col gap-3">
+                  {display.russian_products.map((section, si) => (
+                    <div
+                      key={`${section.brand}-${section.lineName}-${si}`}
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 14,
+                        background: "rgba(168, 216, 234, 0.08)",
+                        border: "1px solid rgba(168, 216, 234, 0.2)",
+                      }}
+                    >
+                      <div style={{ marginBottom: 6 }}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "white",
+                            background: "linear-gradient(135deg, #A8D8EA 0%, #7EC4D8 100%)",
+                            padding: "3px 10px",
+                            borderRadius: 8,
+                            marginRight: 8,
+                          }}
+                        >
+                          {section.brand}
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>
+                          {section.lineName}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+                        {section.lineDescription}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {section.products.map((product, pi) => (
+                          <div
+                            key={`${section.brand}-${section.lineName}-${pi}`}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 10,
+                              background: "white",
+                            }}
+                          >
+                            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
+                              {product.name}
+                            </div>
+                            <div style={{ fontSize: 10, color: "var(--text-secondary)", marginBottom: 2 }}>
+                              <em style={{ fontStyle: "normal", opacity: 0.7 }}>{product.format}</em>
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4 }}>
+                              {product.why}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {(xpGained !== undefined || streak !== undefined) && (
               <div
                 className="card flex justify-between"
@@ -507,34 +591,14 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </div>
             )}
 
-            <div className="flex gap-2" style={{ marginTop: 12 }}>
-              {onCompare && hasPrevAnalysis && (
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={onCompare}
-                  style={{
-                    flex: 1,
-                    padding: "14px",
-                    borderRadius: 16,
-                    background: "linear-gradient(135deg, var(--primary), var(--secondary))",
-                    color: "white",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    border: "none",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path d="M5 12h14M13 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  Сравнить
-                </motion.button>
-              )}
-            </div>
+            {/* 2026-06-30 — «Сравнить» button removed at user request. The
+                selection-mode flow on /history (two records → compare
+                button at top-right) remains the canonical entry point
+                for comparing analyses; we no longer offer the in-modal
+                ad-hoc compare shortcut which competed for attention
+                with the new «Средства, которые можно купить в России»
+                recommendations block rendered just above. */}
+
           </motion.div>
         </motion.div>
       )}

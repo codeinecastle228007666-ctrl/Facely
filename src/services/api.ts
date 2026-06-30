@@ -286,6 +286,38 @@ export interface AnalysisResult {
    * switches tabs.
    */
   activeProvider?: "faceplus" | "gemini" | "huggingface";
+  /**
+   * 2026-06-30 — Russian-market product recommendations sourced from
+   * the static `russianSkincareCatalog.ts` (12 brands, ~50 specific
+   * products across lines). Each section is a brand+line combo with
+   * the most-relevant products inside, ready to copy/paste into a
+   * Russian retail search ("Wildberries", "Ozon", "Рив Гош",
+   * "Летуаль"). Empty array when matcher found nothing — client UI
+   * shows a focused empty-state nudge ("Спроси в чате").
+   */
+  russian_products?: RussianProductSection[];
+}
+
+export interface RussianProductSection {
+  /** Brand name as displayed to the user. */
+  brand: string;
+  /** Short brand description. */
+  brandDescription: string;
+  /** Brand's series/line name — the unit of UI display. */
+  lineName: string;
+  /** Short description of what this line is for. */
+  lineDescription: string;
+  /** Specific products inside this line, in display order. */
+  products: RussianProductListing[];
+}
+
+export interface RussianProductListing {
+  /** Display name (searchable on Russian retail). */
+  name: string;
+  /** Format / texture (крем, сыворотка, гель — etc.). */
+  format: string;
+  /** Short Russian justification shown in UI under the product name. */
+  why: string;
 }
 
 export interface AnalyzeResponse {

@@ -19,6 +19,7 @@ import {
   GeminiUpstreamError,
 } from "./geminiSkinService";
 import { achievementService } from "./achievementService";
+import { russianProductCatalog } from "./russianProductCatalog";
 
 /**
  * Threshold for considering two photos as duplicates (0-64).
@@ -572,6 +573,28 @@ export const analysisService = {
     if (fpVerdict) variants.faceplus = stripProvider(fpVerdict);
     if (geminiVerdict) variants.gemini = stripProvider(geminiVerdict);
     if (hfVerdict) variants.huggingface = stripProvider(hfVerdict);
+
+    // 2026-06-30 — Inject russian-market product recommendations.
+    // The matcher (`russianProductCatalog`) reads the dominant result's
+    // skin_type + problems and returns up to 5 lines (brand+series) from
+    // our static catalog of russian-retail-stocked products. Empty
+    // array is fine — UI gracefully shows an empty-state nudge.
+    // Same attachment for each variant so the user sees the recommendations
+    // regardless of which provider tab they switch to.
+    const russianProducts = russianProductCatalog.recommend(
+      clientResult.skin_type,
+      clientResult.problems ?? [],
+    );
+    clientResult.russian_products = russianProducts.sections;
+    for (const key of Object.keys(variants) as Array<keyof typeof variants>) {
+      const v = variants[key];
+      if (v) {
+        v.russian_products = russianProductCatalog.recommend(
+          v.skin_type,
+          v.problems ?? [],
+        ).sections;
+      }
+    }
 
     const validCount = (fpVerdict ? 1 : 0) + (geminiVerdict ? 1 : 0) + (hfVerdict ? 1 : 0);
     // 2026-06-26: with three providers, "dual" means ">=2 valid variants"

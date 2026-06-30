@@ -2,7 +2,6 @@
 
 import React, { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
 import { TabBar } from "@/components/ui/TabBar";
 import { UserProfile } from "@/components/dashboard/UserProfile";
 import { AnalysisButton } from "@/components/dashboard/AnalysisButton";
@@ -25,7 +24,6 @@ import { getLevelPerks } from "@/server/utils/levelSystem";
 import { ProfileSkeleton } from "@/components/ui/Skeleton";
 
 export default function Dashboard() {
-  const router = useRouter();
   const { user, loading, refetch } = useUser();
   const { impact, notify } = useTelegram();
   const [onboardingDone, setOnboardingDone] = useState(false);
@@ -43,8 +41,6 @@ export default function Dashboard() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
-  const [prevAnalysisId, setPrevAnalysisId] = useState<string | null>(null);
-  const [lastAnalysisId, setLastAnalysisId] = useState<string | null>(null);
   const [lastAnalysis, setLastAnalysis] = useState<AnalysisHistoryItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -108,10 +104,6 @@ export default function Dashboard() {
         refetch().then(() => {
           const currentLevel = user?.level ?? 1;
           api.analysis.history({ limit: 2 }).then((hist) => {
-            if (hist.analyses.length >= 2) {
-              setPrevAnalysisId(hist.analyses[1].id);
-              setLastAnalysisId(hist.analyses[0].id);
-            }
             if (hist.analyses.length > 0) {
               setLastAnalysis(hist.analyses[0]);
             }
@@ -346,8 +338,6 @@ export default function Dashboard() {
         level={newLevel || undefined}
         streak={streak}
         onShare={handleShare}
-        onCompare={prevAnalysisId && lastAnalysisId ? () => router.push(`/compare?id1=${prevAnalysisId}&id2=${lastAnalysisId}`) : undefined}
-        hasPrevAnalysis={!!prevAnalysisId}
       />
 
       <AchievementsModal
