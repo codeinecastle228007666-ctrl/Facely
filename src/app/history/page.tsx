@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TabBar } from "@/components/ui/TabBar";
 import { AnalysisCard } from "@/components/history/AnalysisCard";
@@ -66,6 +66,21 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<AnalysisHistoryItem | null>(null);
   const [fullImage, setFullImage] = useState<string | null>(null);
+  // 2026-06-30 — Lazy-loaded photo for the detail bottom-sheet. The list
+  // itself no longer carries `photoBase64` (was ~150KB per row, blowing up
+  // the first-paint JSON to ~7.5MB for users with 50+ analyses). On user
+  // click we fire `api.analysis.getPhoto({ analysisId })` and store the
+  // base64 string here; the photo container falls back to a skeleton
+  // pulse while the roundtrip is in flight. State is cleared when the
+  // user closes the detail (so next open re-fetches if they reopen).
+  const [detailPhoto, setDetailPhoto] = useState<string | null>(null);
+  const [detailPhotoLoading, setDetailPhotoLoading] = useState(false);
+  // 2026-06-30 — Holds the AbortController of the in-flight photo fetch so
+  // we can abort a stale request when the user opens a different entry
+  // before the previous one resolves. Without this, the dropped request
+  // still completes on the server (wasted cycles) and may write its
+  // result into state after a newer one already replaced `detailPhoto`.
+  const fetchControllerRef = useRef<AbortController | null>(null);
 
   const [compareMode, setCompareMode] = useState(false);
   const [compareStep, setCompareStep] = useState<1 | 2>(1);
@@ -83,6 +98,48 @@ export default function HistoryPage() {
   }, []);
 
   const result = selected?.result as AnalysisResult | null;
+
+  // 2026-06-30 — Lazy photo fetch with race-condition guard. When the user
+  // opens entry A and then quickly opens entry B before A's `getPhoto`
+  // roundtrip resolves, we must NOT set B's photo container to A's image.
+  // Pattern: increment a per-open token; the `.then`/`.catch`/`.finally`
+  // closures compare their captured token against the current one and bail
+  // out if A is no longer the latest open. Also aborts in-flight XHR via
+  // AbortController so the network layer doesn't carry the dropped
+  // request to completion just to discard the result client-side.
+  const photoFetchTokenRef = useRef(0);
+  const handleSelectItem = (item: AnalysisHistoryItem) => {
+    const token = ++photoFetchTokenRef.current;
+    setSelected(item);
+    setDetailPhoto(null);
+    setDetailPhotoLoading(true);
+    fetchControllerRef.current?.abort();
+    const ctrl = new AbortController();
+    fetchControllerRef.current = ctrl;
+    api.analysis
+      .getPhoto({ analysisId: item.id })
+      .then((res) => {
+        if (photoFetchTokenRef.current !== token) return;
+        setDetailPhoto(res.photoBase64);
+      })
+      .catch(() => {
+        if (photoFetchTokenRef.current !== token) return;
+        setDetailPhoto(null);
+      })
+      .finally(() => {
+        if (photoFetchTokenRef.current !== token) return;
+        setDetailPhotoLoading(false);
+      });
+  };
+
+  const handleCloseDetail = () => {
+    ++photoFetchTokenRef.current;
+    fetchControllerRef.current?.abort();
+    fetchControllerRef.current = null;
+    setSelected(null);
+    setDetailPhoto(null);
+    setDetailPhotoLoading(false);
+  };
 
   const handleCompareClick = (item: AnalysisHistoryItem) => {
     if (compareStep === 1) {
@@ -213,7 +270,7 @@ export default function HistoryPage() {
                       if (compareMode) {
                         handleCompareClick(item);
                       } else {
-                        setSelected(item);
+                        handleSelectItem(item);
                       }
                     }}
                     style={{
@@ -297,7 +354,7 @@ export default function HistoryPage() {
               alignItems: "flex-end",
               justifyContent: "center",
             }}
-            onClick={() => setSelected(null)}
+            onClick={handleCloseDetail}
           >
             <motion.div
               initial={{ y: "100%" }}
@@ -319,31 +376,53 @@ export default function HistoryPage() {
                 <h3 style={{ fontSize: 18, fontWeight: 600 }}>
                   {selected.skinType || "Результат анализа"}
                 </h3>
-                <button onClick={() => setSelected(null)}>
+                <button onClick={handleCloseDetail}>
                   <CloseIcon size={22} />
                 </button>
               </div>
 
-              {(selected as any).photoBase64 && (
-                <div
-                  onClick={() => setFullImage((selected as any).photoBase64)}
-                  style={{
-                    width: "100%",
-                    height: 160,
-                    borderRadius: 14,
-                    overflow: "hidden",
-                    marginBottom: 16,
-                    background: "var(--bg)",
-                    cursor: "pointer",
-                  }}
-                >
+              {/* 2026-06-30 — Photo container now driven by lazy `detailPhoto`
+                  state. Three states: skeleton while loading, real image
+                  when fetched, plain bg when fetch returned null (legacy
+                  rows without stored photo). Tapping the loaded image
+                  opens the fullscreen `fullImage` overlay as before. */}
+              <div
+                onClick={() => detailPhoto && setFullImage(detailPhoto)}
+                style={{
+                  width: "100%",
+                  height: 160,
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  marginBottom: 16,
+                  background: "var(--bg)",
+                  cursor: detailPhoto ? "pointer" : "default",
+                  position: "relative",
+                }}
+              >
+                {detailPhotoLoading && (
+                  <div
+                    className="shimmer"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      background: "linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%)",
+                      // 2026-06-30 — drives the `@keyframes shimmer` defined
+                      // in globals.css. Using existing keyframe instead of
+                      // adding a new one (less CSS bloat; matches what
+                      // Skeleton/AddProductModal already use).
+                      backgroundSize: "200% 100%",
+                      animation: "shimmer 1.4s linear infinite",
+                    }}
+                  />
+                )}
+                {!detailPhotoLoading && detailPhoto && (
                   <img
-                    src={`data:image/jpeg;base64,${(selected as any).photoBase64}`}
+                    src={`data:image/jpeg;base64,${detailPhoto}`}
                     alt="фото анализа"
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
-                </div>
-              )}
+                )}
+              </div>
 
               <div className="flex items-center gap-3" style={{ marginBottom: 16 }}>
                 <div

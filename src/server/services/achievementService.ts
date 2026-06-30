@@ -83,26 +83,57 @@ export const achievementService = {
   },
 
   async getAchievements(telegramId: string) {
-    await this.ensureDefinitions();
+    // 2026-06-30 — Removed `ensureDefinitions()` from this read-only call.
+    // Definitions are static seed data populated by `prisma/seed.ts` in
+    // the deployment pipeline. The previous behaviour ran 9 upserts on
+    // EVERY modal open — the modal feels slow because every open paid for
+    // nine `INSERT ON CONFLICT DO UPDATE` round-trips. `ensureDefinitions`
+    // still runs in `checkAndAward()` so newly shipped achievements
+    // appear without re-seeding in deploys that don't run `db seed`.
     const user = await prisma.user.findUnique({
       where: { telegramId },
+      // 2026-06-30 — `analyses: { take: 1 }` removed (left-join with row
+      // fetch that nothing reads; `_count.analyses` covers progress for
+      // `hydration_master`). `rituals` narrowed to `select: { streak }`
+      // because that's the only field the progress target reads.
       include: {
-        analyses: { take: 1 },
-        rituals: true,
+        rituals: { select: { streak: true } },
         _count: { select: { analyses: true } },
       },
     });
     if (!user) throw new Error("User not found");
 
-    const achievements = await prisma.achievement.findMany();
-    const userAchievements = await prisma.userAchievement.findMany({
-      where: { userId: user.id },
-    });
-    const earnedMap = new Map(userAchievements.map((ua) => [ua.achievementId, ua.unlockedAt]));
-
+    // 2026-06-30 — Parallel fetch: previously `findMany(achievements)`
+    // completed before `findMany(userAchievements)` started. Both hit the
+    // same Postgres pooler connection, so total latency was the SUM.
+    // Concurrent execution trims it to max(per-call). Same for the user
+    // fetch — kick it off in parallel with the two list queries below.
+    // (`user.findUnique` above already awaited; that's the only
+    // sequential dependency because earnedMap and progress both read
+    // `user.id` / `user._count.analyses`. Could shave further by issuing
+    // all three in Promise.all via the unique `telegramId` and stitching
+    // post-response, but the marginal saving is dominated by the user
+    // round-trip already in flight.)
+    const [achievements, userAchievements] = await Promise.all([
+      prisma.achievement.findMany(),
+      prisma.userAchievement.findMany({
+        where: { userId: user.id },
+        // Skinny select: only `achievementId` + `unlockedAt` are read.
+        // Default would also pull the row `id` cuid (no consumer).
+        select: { achievementId: true, unlockedAt: true },
+      }),
+    ]);
+    const earnedMap = new Map(
+      userAchievements.map((ua) => [ua.achievementId, ua.unlockedAt]),
+    );
+    // 2026-06-30 — Map lookup for `xpReward` aggregation, replaces the
+    // previous `achievements.find(...)` inside `reduce`. Small N (~9),
+    // but cleaner intent and avoids O(N²) re-scans if defs grow.
+    const rewardById = new Map(
+      achievements.map((a) => [a.id, a.xpReward] as const),
+    );
     const totalXpFromAchievements = userAchievements.reduce((sum, ua) => {
-      const ach = achievements.find((a) => a.id === ua.achievementId);
-      return sum + (ach?.xpReward ?? 0);
+      return sum + (rewardById.get(ua.achievementId) ?? 0);
     }, 0);
 
     return {

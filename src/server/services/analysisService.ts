@@ -2,7 +2,7 @@ import { prisma } from "../db";
 import { subscriptionService } from "./subscriptionService";
 import { ritualService } from "./ritualService";
 import { referralService } from "./referralService";
-import { compressImage } from "../utils/imageCompression";
+import { compressImage, generateThumbnail } from "../utils/imageCompression";
 import { getPerceptualHash, hammingDistance } from "../utils/perceptualHash";
 import { XP_PER_ANALYSIS, calculateLevel, didLevelUp } from "../utils/levelSystem";
 import { pushService } from "./pushService";
@@ -764,6 +764,16 @@ export const analysisService = {
 
     if (!user) throw new Error("User not found");
 
+    // 2026-06-30 — Re-selecting `photoBase64` here because we need the
+    // original for server-side downscale (see `withThumbs` below).
+    // The cost on Supabase egress is ~150KB × N rows — for users with
+    // 50 entries that's ~7MB flowing into the Lambda memory. Painful
+    // (DB latency + Prisma JSON deserialisation), but on Vercel Pro
+    // (60s timeout) it's bounded. The wire payload leaving the Lambda
+    // is what freezes the Mini App on first paint; that's now bounded
+    // to ~5KB × N rows = ~250KB after the resize, ~30× smaller.
+    // Long-term roadmap: store `photoThumbnail` directly in DB so we
+    // don't pay 7MB DB-egress per read.
     const [analyses, total] = await Promise.all([
       prisma.skinAnalysis.findMany({
         where: { userId: user.id },
@@ -786,7 +796,76 @@ export const analysisService = {
       }),
     ]);
 
-    return { analyses, total, limit, offset };
+    // 2026-06-30 — Parallel resize of every photo via `sharp`.
+    // `lanczos3` + `fastShrinkOnLoad`: ~30-50ms per 1080→256 JPEG.
+    // 50 in parallel ≈ 1.5-2.5s wall-clock on Vercel Pro. The output
+    // strips the heavy `photoBase64` field entirely so only ~5KB
+    // miniatures leave the Lambda for the client (≈30× smaller wire
+    // payload vs sending full-res).
+    //
+    // `Promise.allSettled` (not `Promise.all`) so a single corrupted
+    // photo row can't crash the whole list — bad rows fall back to
+    // `photoThumbnail: null` and the card renders the letter avatar
+    // instead. This matters because legacy rows from the pre-photo
+    // migration left some `photoBase64` values as truncated base64
+    // strings; sharp rejects those and we want the rest of history
+    // to keep working.
+    const settled = await Promise.allSettled(
+      analyses.map(async (a) => {
+        if (!a.photoBase64) {
+          const { photoBase64: _omit, ...rest } = a;
+          return { ...rest, photoThumbnail: null as string | null };
+        }
+        const photoThumbnail = await generateThumbnail(a.photoBase64);
+        const { photoBase64: _omit, ...rest } = a;
+        return { ...rest, photoThumbnail };
+      }),
+    );
+    const withThumbs = settled.map((s, i) => {
+      const a = analyses[i];
+      if (s.status === "fulfilled") return s.value;
+      // Resize failed for this row (corrupted JPEG, malformed base64,
+      // etc.). Drop the heavy field, return null thumbnail so the
+      // card renders the gradient+letter fallback instead of crashing
+      // the whole history page.
+      console.warn(
+        `[Analysis] getHistory thumb resize failed for ${a.id}: ${
+          (s.reason as Error)?.message ?? String(s.reason)
+        }`,
+      );
+      const { photoBase64: _omit, ...rest } = a;
+      return { ...rest, photoThumbnail: null };
+    });
+
+    return { analyses: withThumbs, total, limit, offset };
+  },
+
+  /**
+   * 2026-06-30 — Lazy photo endpoint. Paired with the photo-less `getHistory`
+   * above: detail modal calls this when the user opens an entry, so the
+   * ~150KB base64 photo only travels over the wire on actual demand rather
+   * than for every list render. Authorization piggybacks on
+   * `userId` + `id` matching so a user can't fetch someone else's photo
+   * by guessing the cuid (cuids are not publicly disclosed, but defense
+   * in depth is cheap).
+   *
+   * Returns `null` for legacy rows pre-photo-compression. Callers should
+   * render a placeholder in that case.
+   */
+  async getPhoto(telegramId: string, analysisId: string) {
+    const user = await prisma.user.findUnique({
+      where: { telegramId },
+      select: { id: true },
+    });
+    if (!user) throw new Error("User not found");
+
+    const row = await prisma.skinAnalysis.findFirst({
+      where: { id: analysisId, userId: user.id },
+      select: { photoBase64: true },
+    });
+    if (!row) throw new Error("Analysis not found");
+
+    return { photoBase64: row.photoBase64 ?? null };
   },
 
   async getComparison(telegramId: string, analysis1Id: string, analysis2Id: string) {

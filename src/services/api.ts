@@ -113,6 +113,12 @@ export const api = {
       mutation<AnalyzeResponse>("analysis.analyze", data),
     history: (data?: { limit?: number; offset?: number }) =>
       query<{ analyses: AnalysisHistoryItem[]; total: number }>("analysis.history", data),
+    // 2026-06-30 — Lazy-load photo for the history detail bottom-sheet.
+    // Paired with `AnalysisHistoryItem` no longer carrying `photoBase64`
+    // in the default list (was ~150KB per row; 50 rows ≈ 7.5MB payload).
+    // Returns `null` for legacy rows without stored photo.
+    getPhoto: (data: { analysisId: string }) =>
+      query<{ photoBase64: string | null }>("analysis.getPhoto", data),
     getComparison: (data: { analysis1Id: string; analysis2Id: string }) =>
       query<ComparisonResult>("analysis.getComparison", data),
   },
@@ -306,6 +312,13 @@ export interface AnalyzeResponse {
 export interface AnalysisHistoryItem {
   id: string;
   photoUrl: string | null;
+  /**
+   * 2026-06-30 — Server-resized thumbnail (~5KB jpeg q70, 256px max) for
+   * the card's 64×64 preview. Null for legacy rows without stored photo.
+   * Full-res photo still lives on `getPhoto()` and is fetched lazily for
+   * the detail bottom-sheet.
+   */
+  photoThumbnail: string | null;
   skinType: string | null;
   /**
    * 2026-06-25 evening — top-level "dual" when both providers ran

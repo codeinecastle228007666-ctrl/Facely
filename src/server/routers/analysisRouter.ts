@@ -58,6 +58,16 @@ export const analysisRouter = router({
       return analysisService.getHistory(ctx.telegramId, input.limit, input.offset);
     }),
 
+  // 2026-06-30 — Lazy photo endpoint. Replaces the inline `photoBase64`
+  // payload that `getHistory` used to return for every record. Called by
+  // the history detail bottom-sheet when the user opens an entry; trim
+  // the JSON.parse cost of a 7.5MB+ base64 dump on plain list rendering.
+  getPhoto: protectedProcedure
+    .input(z.object({ analysisId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return analysisService.getPhoto(ctx.telegramId, input.analysisId);
+    }),
+
   getComparison: protectedProcedure
     .input(
       z.object({

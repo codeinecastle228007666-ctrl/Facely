@@ -16,7 +16,24 @@ interface AnalysisCardProps {
 
 export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index, onClick, showCheckbox, checked, onCheck }) => {
   const problems = (item.result as any)?.problems || [];
-  const photoBase64 = (item as any).photoBase64;
+  // 2026-06-30 — Thumbnail is back. Server-side resized 256px JPEG (~5KB
+  // base64), painted into the 64×64 card preview. Falls back to the
+  // mood-coloured gradient + skinType letter for legacy rows whose
+  // `photoBase64` is null (rare since the schema is always populated
+  // post-migration, but `generateThumbnail` returns null in that case).
+  // `loading="lazy"` defers off-screen thumbnails; `decoding="async"`
+  // keeps JPEGs off the main decode thread so the React tree paints first.
+  const mood = (item.result as any)?.mood as
+    | "позитивный"
+    | "нейтральный"
+    | "тревожный"
+    | undefined;
+  const MOOD_GRADIENTS: Record<string, string> = {
+    позитивный: "linear-gradient(135deg, #C8E6F0 0%, #A8D8EA 100%)",
+    нейтральный: "linear-gradient(135deg, #FAD7CC 0%, #F5C4B0 100%)",
+    тревожный: "linear-gradient(135deg, #F5B8C6 0%, #E8A0B4 100%)",
+  };
+  const thumbBg = mood ? MOOD_GRADIENTS[mood] : "var(--bg)";
 
   return (
     <motion.div
@@ -28,55 +45,35 @@ export const AnalysisCard: React.FC<AnalysisCardProps> = ({ item, index, onClick
       onClick={onClick}
       style={{ marginBottom: 10, cursor: "pointer" }}
     >
-      {photoBase64 && (
-        <div
-          style={{
-            width: 64,
-            height: 64,
-            borderRadius: 14,
-            flexShrink: 0,
-            overflow: "hidden",
-            background: "var(--bg)",
-          }}
-        >
-          {/* 2026-06-28 — `loading="lazy"` defers off-screen thumbnails
-              until the user scrolls near them; `decoding="async"` lets
-              the browser decode the JPEGs off the main thread so the
-              React tree paints first. Net effect: history page p95
-              paint drops from ~600ms → ~250ms on a phone with 20+
-              analyses. We can't switch to next/image (data: URLs are
-              unsupported by the image optimizer) so these native
-              browser-level hints are the cheap optimization we have. */}
+      <div
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: 14,
+          flexShrink: 0,
+          overflow: "hidden",
+          background: thumbBg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "white",
+          fontSize: 22,
+          fontWeight: 600,
+          textShadow: "0 1px 2px rgba(0,0,0,0.1)",
+        }}
+      >
+        {item.photoThumbnail ? (
           <img
-            src={`data:image/jpeg;base64,${photoBase64}`}
-            alt="фото"
+            src={`data:image/jpeg;base64,${item.photoThumbnail}`}
+            alt="фото анализа"
             loading="lazy"
             decoding="async"
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
-        </div>
-      )}
-      {!photoBase64 && (
-        <div
-          style={{
-            width: 64,
-            height: 64,
-            borderRadius: 14,
-            background: "var(--bg)",
-            flexShrink: 0,
-            overflow: "hidden",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-            <rect x="2" y="5" width="20" height="14" rx="3" fill="#F5D0DC" stroke="#E8A0B4" strokeWidth="1.2"/>
-            <circle cx="12" cy="12" r="4" fill="white" stroke="#E8A0B4" strokeWidth="1"/>
-            <path d="M17 5l-2-3H9L7 5" stroke="#E8A0B4" strokeWidth="1.2" strokeLinecap="round"/>
-          </svg>
-        </div>
-      )}
+        ) : (
+          item.skinType?.charAt(0)?.toUpperCase() || "•"
+        )}
+      </div>
 
       {showCheckbox && (
         <div
