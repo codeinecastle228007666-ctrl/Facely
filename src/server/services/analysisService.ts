@@ -106,6 +106,17 @@ export const analysisService = {
     description?: string,
     providerChoice: "auto" | "faceplus" | "gemini" = "auto",
   ) {
+    // 2026-06-30 — GEMINI-ONLY deployment. Per user request: «оставь только
+    // Gemini, face++ больше не пользуемся, оставь код». The Face++ and HF
+    // service files are kept on disk (git history + future re-enable) but
+    // they MUST NOT be reachable through this entry-point. We pin the
+    // providerChoice override at the very top of `analyze()` so any legacy
+    // caller / stale client cache / external integration still sending
+    // "auto" or "faceplus" silently degrades to the new Gemini path
+    // instead of waking up Face++ (which the user is no longer paying
+    // for). The provider-picker UI in AnalysisInput.tsx is also gone, so
+    // this is defense-in-depth rather than the primary control.
+    providerChoice = "gemini";
     const user = await prisma.user.findUnique({
       where: { telegramId },
       include: { subscription: true },

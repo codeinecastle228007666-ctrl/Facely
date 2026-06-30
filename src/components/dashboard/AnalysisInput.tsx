@@ -9,9 +9,11 @@ interface AnalysisInputProps {
   open: boolean;
   onClose: () => void;
   /**
-   * 2026-06-27 — third optional arg `provider` lets the user
-   * pre-choose which AI model runs the analysis (Face++ vs Gemini vs
-   * Auto). Routing in tRPC: see `src/server/routers/analysisRouter.ts`.
+   * 2026-06-30 — `provider` arg retained for backwards compatibility
+   * with the tRPC contract but the UI is now Gemini-only. We always
+   * pass "gemini" regardless of any caller supplied value. The
+   * parent type stays `"auto" | "faceplus" | "gemini"` so existing
+   * call sites at `src/app/page.tsx` continue to compile.
    */
   onSubmit: (
     photoBase64: string,
@@ -21,24 +23,12 @@ interface AnalysisInputProps {
   loading?: boolean;
 }
 
-/**
- * 2026-06-27 — provider chip definitions for the new pre-analysis
- * selector. Russian copy matches the rest of the UI; descriptions
- * give users enough context to pick without reading docs. "Авто" is
- * pre-selected because it preserves today's parallel three-provider
- * behavior (Face++ + Gemini + HF).
- */
-const PROVIDER_OPTIONS: Array<{
-  value: "auto" | "faceplus" | "gemini";
-  emoji: string;
-  label: string;
-  desc: string;
-  recommended?: boolean;
-}> = [
-  { value: "auto", emoji: "✨", label: "Авто", desc: "Face++ + Gemini", recommended: true },
-  { value: "faceplus", emoji: "🎯", label: "Face++", desc: "16 фич, ~15 с" },
-  { value: "gemini", emoji: "🤖", label: "Gemini 2.5", desc: "Vision-LLM, ~5 с" },
-];
+// 2026-06-30 — provider-picker chips REMOVED. Per user request: «оставь
+// только кнопку анализировать которая будет отправлять запрос в gemini».
+// The underlying pipeline still accepts the 3-value union for tRPC
+// backwards compat, but the UI no longer exposes choice. Face++ / HF
+// service files are intentionally kept on disk (`src/server/services/facePlusService.ts`,
+// `huggingFaceSkinService.ts`) but unreachable from this entry-point.
 
 const TIPS = [
   { icon: "☀️", text: "Хорошее освещение — лицо равномерно освещено, без теней" },
@@ -56,12 +46,9 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
   const [step, setStep] = useState<"tutorial" | "photo">("tutorial");
   const [photo, setPhoto] = useState<string | null>(null);
   const [description, setDescription] = useState("");
-  // 2026-06-27 — pre-analysis provider choice. Default "auto" matches
-  // the existing parallel three-provider path so existing callers and
-  // older behavior keep working. Reset to "auto" on modal close so
-  // every fresh open starts fresh (per user spec: no persistence).
-  const [selectedProvider, setSelectedProvider] =
-    useState<"auto" | "faceplus" | "gemini">("auto");
+  // 2026-06-30 — provider picker UI removed; we hardcode the engine so
+  // there's nothing to remember between modal openings. The local state
+  // and its setter are deleted because they have no consumer anymore.
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [showCamera, setShowCamera] = useState(false);
@@ -136,7 +123,11 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
   const handleSubmit = () => {
     if (!photo) return;
     impact("medium");
-    onSubmit(photo, description || undefined, selectedProvider);
+    // 2026-06-30 — physical analysis engine is Gemini 2.5 Vision only.
+    // `analysisService.analyze()` also re-pins providerChoice="gemini"
+    // server-side as defense-in-depth against any stray caller still
+    // sending "auto"/"faceplus" over the wire.
+    onSubmit(photo, description || undefined, "gemini");
   };
 
   const reset = () => {
@@ -144,10 +135,6 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
     setStep("tutorial");
     setPhoto(null);
     setDescription("");
-    // 2026-06-27 — choice is per-moment, NOT persisted across opens
-    // (per user spec). Reset to "auto" every time the modal closes
-    // so each fresh open starts from the recommended default.
-    setSelectedProvider("auto");
   };
 
   return (
@@ -234,66 +221,9 @@ export const AnalysisInput: React.FC<AnalysisInputProps> = ({
                   </div>
                 </div>
 
-                {/* 2026-06-27 — pre-analysis provider picker. Three
-                    chips, aria roles for screen-reader accessibility.
-                    "Авто" is the default; selecting another chips
-                    makes only that provider run server-side. Choice
-                    is NOT persisted; reset() restores "auto" on close. */}
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "var(--text)" }}>
-                    Провайдер анализа
-                  </div>
-                  <div role="radiogroup" aria-label="Провайдер анализа" className="flex gap-2">
-                    {PROVIDER_OPTIONS.map((opt) => {
-                      const active = selectedProvider === opt.value;
-                      return (
-                        <motion.button
-                          key={opt.value}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          onClick={() => { impact("light"); setSelectedProvider(opt.value); }}
-                          whileTap={{ scale: 0.96 }}
-                          style={{
-                            flex: 1,
-                            padding: "10px 6px",
-                            borderRadius: 12,
-                            border: active
-                              ? "2px solid var(--primary)"
-                              : "1px solid var(--border)",
-                            background: active ? "var(--primary-light)" : "var(--bg)",
-                            cursor: "pointer",
-                            textAlign: "center",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: 2,
-                          }}
-                        >
-                          <span style={{ fontSize: 18, lineHeight: 1 }}>{opt.emoji}</span>
-                          <span style={{ fontSize: 12, fontWeight: active ? 700 : 600, marginTop: 4 }}>
-                            {opt.label}
-                            {opt.recommended && (
-                              <span
-                                style={{
-                                  fontSize: 9,
-                                  color: "var(--primary)",
-                                  fontWeight: 500,
-                                  marginLeft: 4,
-                                }}
-                              >
-                                ★
-                              </span>
-                            )}
-                          </span>
-                          <span style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.2 }}>
-                            {opt.desc}
-                          </span>
-                        </motion.button>
-                      );
-                    })}
-                  </div>
-                </div>
+                {/* 2026-06-30 — provider-picker chips removed. Only the
+                    analytics engine is Gemini 2.5 Vision (server enforces
+                    this; see analysisService.analyze top-of-method override). */}
 
                 <motion.button
                   whileTap={{ scale: 0.97 }}

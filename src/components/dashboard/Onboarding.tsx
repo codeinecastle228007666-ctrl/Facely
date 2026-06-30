@@ -14,15 +14,19 @@ const KEY = "reveli_onboarding_shown";
  */
 const slides: Array<{ icon: string; title: string; desc: string[] }> = [
   {
+    // 2026-06-30 — first slide rewritten into a clinical-trust strip.
+    // Was a single one-liner ("Просто сфотографируй лицо — AI проанализирует...").
+    // Now carries three load-bearing claims about the engine: clinical-grade
+    // dataset, the G.A.S protocol (dermatoscopy-aligned scoring), and the
+    // per-user profile (barrier / inflammatory load / risk zones). These
+    // three pillars are the marketing line for the new pricing card on
+    // /purchase and need to land BEFORE the user ever sees the camera CTA.
     icon: "🧬",
     title: "AI-анализ кожи",
     desc: [
-      // 2026-06-28 — third-party provider name (Face++) and the
-      // technical term «нейросеть» dropped from user-facing copy; the
-      // promise is «AI анализирует», nothing about WHO or HOW. Keeps
-      // onboarding aligned with the marketing voice (Reveli sells the
-      // outcome, not the engine).
-      "Просто сфотографируй лицо — AI проанализирует состояние кожи, выявит проблемы и даст рекомендации.",
+      "<b>Обучена на клинических данных:</b> база из 50 000+ дерматологических изображений.",
+      "<b>Протокол G.A.S</b> — методология соответствует критериям объективной дерматоскопии.",
+      "<b>Индивидуальный профиль кожи:</b> барьер, выраженность воспалений и зоны риска — для твоего случая.",
     ],
   },
   {

@@ -655,6 +655,109 @@ function CompareContent() {
               </div>
             )}
 
+            {/* 2026-06-30 — "Что заметили в сравнении". Высокоуровневое
+                резюме дельт из `comparison.differences` (improved /
+                attention) плюс смена типа кожи. Рендерится ПЕРЕД
+                существующей per-field карточкой, чтобы юзер сначала
+                прочитал итог, а потом смотрел цифры. IIFE-обёртка
+                нужна для многострочных let/const перед JSX. */}
+            {comparison && (() => {
+              const observations: Array<{
+                type: "improved" | "attention" | "skin_type";
+                text: string;
+              }> = [];
+              for (const [key, diff] of Object.entries(comparison.differences)) {
+                if (diff.diff === 0) continue;
+                const name = FIELD_NAMES[key] || key;
+                if (diff.improved) {
+                  observations.push({
+                    type: "improved",
+                    text: `${name}: улучшение на ${Math.abs(diff.diff)} ${pluralRu(
+                      Math.abs(diff.diff),
+                      ["пункт", "пункта", "пунктов"],
+                    )}`,
+                  });
+                } else {
+                  observations.push({
+                    type: "attention",
+                    text: `${name}: требует внимания (+${Math.abs(diff.diff)})`,
+                  });
+                }
+              }
+              if (
+                comparison.analysis1.skinType !== comparison.analysis2.skinType
+              ) {
+                observations.push({
+                  type: "skin_type",
+                  text: `Тип кожи изменился с «${comparison.analysis1.skinType}» на «${comparison.analysis2.skinType}»`,
+                });
+              }
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="card"
+                  style={{ marginBottom: 16 }}
+                >
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      marginBottom: 10,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    ✨ Что заметили в сравнении
+                  </div>
+                  {observations.length === 0 ? (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "var(--text-secondary)",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Кожа в стабильном состоянии между анализами — заметных сдвигов нет.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col" style={{ gap: 6 }}>
+                      {observations.map((o, i) => {
+                        const cfg =
+                          o.type === "improved"
+                            ? { icon: "✅", bg: "rgba(126, 196, 216, 0.10)" }
+                            : o.type === "attention"
+                              ? { icon: "⚠️", bg: "rgba(232, 160, 180, 0.10)" }
+                              : { icon: "🔄", bg: "rgba(196, 122, 143, 0.10)" };
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: 10,
+                              padding: "8px 10px",
+                              borderRadius: 10,
+                              background: cfg.bg,
+                              fontSize: 13,
+                              color: "var(--text)",
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            <span style={{ fontSize: 14, lineHeight: 1.4 }}>
+                              {cfg.icon}
+                            </span>
+                            <span style={{ flex: 1 }}>{o.text}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })()}
+
             {comparison && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -778,6 +881,90 @@ function CompareContent() {
                 )}
               </motion.div>
             )}
+
+            {/* 2026-06-30 — "Что сделать дальше для улучшения". Тянем
+                recommendations из ПОСЛЕДНЕГО анализа (analysis2) и
+                нарезаем 3-на-задачу тем же слайсером, что использует
+                ResultModal — так проблема и её план всегда на одной
+                строке. Карточка не рендерится, если у analysis2 нет
+                ни проблем, ни рекомендаций (например, кожа «чистая»). */}
+            {comparison?.analysis2.result && (() => {
+              const r2 = comparison.analysis2.result as {
+                problems?: string[];
+                recommendations?: string[];
+              };
+              let ri = 0;
+              const recGroups: Array<{ problem: string; recs: string[] }> = [];
+              if (r2.problems) {
+                for (const p of r2.problems) {
+                  const recs = (r2.recommendations ?? [])
+                    .slice(ri, ri + 3)
+                    .filter(Boolean);
+                  ri += 3;
+                  recGroups.push({ problem: p, recs });
+                }
+              }
+              if (recGroups.length === 0) return null;
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="card"
+                  style={{ marginTop: 16 }}
+                >
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      marginBottom: 12,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    ➡️ Что сделать дальше
+                  </div>
+                  <div className="flex flex-col" style={{ gap: 12 }}>
+                    {recGroups.map((g, i) => {
+                      const name = g.problem.replace(/\s*\(.+?\)/, "");
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            background: "rgba(168, 216, 234, 0.08)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              marginBottom: 6,
+                            }}
+                          >
+                            {name}
+                          </div>
+                          <ul
+                            style={{
+                              margin: 0,
+                              paddingLeft: 18,
+                              fontSize: 12,
+                              color: "var(--text-secondary)",
+                              lineHeight: 1.55,
+                            }}
+                          >
+                            {g.recs.map((r, ri2) => (
+                              <li key={ri2}>{r}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              );
+            })()}
           </motion.div>
         )}
       </AnimatePresence>
