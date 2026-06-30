@@ -12,7 +12,7 @@ import {
   HFConfigError,
   HFUpstreamError,
 } from "./huggingFaceSkinService";
-import { analyzeSkinWithGemini } from "./geminiSkinService";
+import { analyzeSkinWithGemini, BadPhotoError } from "./geminiSkinService";
 import { achievementService } from "./achievementService";
 
 /**
@@ -348,17 +348,40 @@ export const analysisService = {
     const hfError = hfRes?.status === "rejected" ? hfRes.reason : null;
     const geminiError = geminiRes?.status === "rejected" ? geminiRes.reason : null;
 
+    // 2026-06-30 — Distinguish "user uploaded a bad photo" from
+    // "service is down". The first is the user's mistake (wrong subject,
+    // group shot, blurry / dark, side profile) and the right response
+    // is "перезагрузи нормальное фото" with photo tips. Surfacing
+    // "сервис временно недоступен" there made users blame Reveli for
+    // their own mistakes. BadPhotoError is raised by the Gemini service
+    // layer (`geminiSkinService.ts`) when the verdict's face_detected
+    // boolean is explicitly false; we re-throw with the same payload so
+    // the tRPC round-trip preserves it and `page.tsx` shows it via
+    // `alert()`.
+    if (geminiError instanceof BadPhotoError) {
+      console.warn(
+        "[Analysis] Bad photo detected by Gemini (face_detected=false). Surfacing photo tips to user.",
+      );
+      throw new Error(geminiError.message);
+    }
+
     // 2026-06-27 — strict-mode errors for explicit user choices.
     // When the user picked a single provider lane and it failed, the
     // generic "service unavailable" message below is unhelpful — they
     // specifically asked for one provider. Two focused Russian messages
     // point them back to the choice modal so they can re-pick.
+    //
+    // 2026-06-30 — copy update: removed "Попробуй Face++" because
+    // Face++ is no longer accessible (Gemini-only deployment). The
+    // user has nothing to switch to; the right action is "повторить
+    // через несколько минут". Bad-photo branch above catches the
+    // other common error source before this guard runs.
     if (providerChoice === "gemini" && !geminiVerdict) {
       console.error(
-        "[Analysis] User pre-chose 'gemini' but Gemini failed/exhausted; surfacing focused error.",
+        "[Analysis] Galileo-only lane: Gemini returned no verdict (upstream or rate-limit). Surfacing service-down copy.",
       );
       throw new Error(
-        "Gemini временно недоступен. Попробуй Face++ или повтори анализ через час.",
+        "Сервис анализа временно недоступен. Повтори через несколько минут.",
       );
     }
     if (providerChoice === "faceplus" && !fpVerdict && !hfVerdict) {

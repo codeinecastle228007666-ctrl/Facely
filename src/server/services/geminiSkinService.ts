@@ -93,6 +93,27 @@ export class GeminiUpstreamError extends Error {
   }
 }
 
+/**
+ * 2026-06-30 — Distinct from `GeminiUpstreamError`. Thrown when the
+ * Gemini verdict explicitly reports `face_detected: false`, i.e. the
+ * uploaded photo doesn't contain an analysable human face: wrong
+ * subject (landscape / animal / object), group shot without a clear
+ * single face, side profile only, or photo too blurry / dark to
+ * interpret. The orchestrator must surface a focused "bad photo"
+ * message with tips, NOT the generic "service unavailable" copy —
+ * otherwise users blame Reveli for their own photo mistakes. The
+ * orchestrator's `instanceof` check is the single discrimination
+ * point so we keep it as a sibling error class.
+ */
+export class BadPhotoError extends Error {
+  constructor(
+    message = "На фото не удалось распознать лицо анфас. Сделай новый снимок: хорошее освещение, лицо прямо в камеру, без посторонних людей в кадре.",
+  ) {
+    super(message);
+    this.name = "BadPhotoError";
+  }
+}
+
 // User pre-choice mode (gemini-2.5-flash) — see file header. Flash is
 // the production-default model. Pro was previously the default; the
 // swap was made because flash has higher free-tier quotas (15 RPM,
@@ -144,6 +165,10 @@ const GEMINI_PROMPT_TEXT =
 - skin_type: целое число 0, 1, 2 или 3:
   0 = сухая, 1 = жирная, 2 = комбинированная, 3 = нормальная.
   Если невозможно определить — поставь 3 (нормальная).
+- face_detected: BOOLEAN. Поставь false, если на фото НЕТ человеческого
+  лица анфас (другое животное, пейзаж, предмет, группа людей без видимого
+  лица, сильный боковой профиль, либо фото слишком размытое / тёмное
+  чтобы что-то разобрать). Иначе true.
 
 Признаки кожи — для каждого { value: 0|30|60|100, confidence: 0.0–1.0 }:
 - acne: воспаления (прыщи, папулы, пустулы)
@@ -230,6 +255,7 @@ const GEMINI_RESPONSE_SCHEMA = {
   },
   required: [
     "skin_type",
+    "face_detected",
     "acne",
     "dark_circle",
     "pore",
@@ -246,6 +272,16 @@ const GEMINI_RESPONSE_SCHEMA = {
  */
 interface GeminiSkinVerdictRaw {
   skin_type: number;
+  /**
+   * 2026-06-30 — explicit boolean Gemini sets in responseSchema. False
+   * when the photo contains no analysable human face (wrong subject,
+   * group without a clear face, blur, darkness, side profile). Drives
+   * the `BadPhotoError` branch in `analyzeSkinWithGemini` so the user
+   * gets a focused "take a better photo" message instead of "service
+   * unavailable". `true` (or undefined for legacy cached responses)
+   * means the photo is OK for skin analysis.
+   */
+  face_detected: boolean;
   acne: { value: number; confidence: number };
   dark_circle: { value: number; confidence: number };
   pore: { value: number; confidence: number };
@@ -396,6 +432,16 @@ async function callGeminiUncached(cleanBase64: string): Promise<GeminiSkinVerdic
     throw new GeminiUpstreamError(
       `Gemini verdict missing required fields: ${JSON.stringify(verdict).slice(0, 200)}`,
     );
+  }
+
+  // 2026-06-30 — BadPhoto gate. We don't throw upstream error here,
+  // because the FAILURE ISN'T THE SERVICE'S — the photo is the problem.
+  // Strict equality on `false` so legacy cache entries without the
+  // field (`face_detected === undefined`) keep their previous "full"
+  // data-quality path and don't break for users who loaded the same
+  // photo before this schema field existed.
+  if (verdict.face_detected === false) {
+    throw new BadPhotoError();
   }
 
   return verdict;
