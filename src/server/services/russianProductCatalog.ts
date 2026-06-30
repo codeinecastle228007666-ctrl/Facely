@@ -1,7 +1,13 @@
 /**
  * 2026-06-30 — Matcher для статического каталога РФ-брендов.
  *
- * Bestand: `src/data/russianSkincareCatalog.ts`. Каждый каталожный
+ * Bestand: `src/data/russianSkincareCatalog.ts`. NOTE: import path is
+ * `../../data/...`, NOT `../data/...` — this file lives at
+ * `src/server/services/`, two directories below the catalog at
+ * `src/data/`. A leading ../ would resolve to `src/server/data/...`
+ * which doesn't exist (build error on Vercel: «Module not found”).
+ *
+ * Каждый каталожный
  * «line» подходит для определённых типов кожи и/или проблем; matcher
  * считает score каждой линейки на основе пересечения с входными
  * (skinType, problems[]) и возвращает top-N.
@@ -16,7 +22,7 @@ import {
   type RussianCatalogIndexEntry,
   type RussianProblem,
   type RussianSkinType,
-} from "../data/russianSkincareCatalog";
+} from "../../data/russianSkincareCatalog";
 
 /**
  * Returned to the client. Each `section` carries the brand+line header
