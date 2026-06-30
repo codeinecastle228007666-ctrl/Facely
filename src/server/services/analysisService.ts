@@ -116,7 +116,15 @@ export const analysisService = {
     // instead of waking up Face++ (which the user is no longer paying
     // for). The provider-picker UI in AnalysisInput.tsx is also gone, so
     // this is defense-in-depth rather than the primary control.
-    providerChoice = "gemini";
+    //
+    // CAST NOTE: without `as typeof providerChoice`, TS would narrow the
+    // assigned value's type to literal `"gemini"` and flag every
+    // downstream `providerChoice === "auto"` comparison as
+    // "unintentional" (since the literal set no longer overlaps).
+    // Casting back to the parameter's declared union type keeps the
+    // strict-mode guards (`if (providerChoice === "gemini" && !geminiVerdict)`
+    // etc.) syntactically valid while pinning runtime behavior.
+    providerChoice = "gemini" as typeof providerChoice;
     const user = await prisma.user.findUnique({
       where: { telegramId },
       include: { subscription: true },
