@@ -132,6 +132,18 @@ function surfaceGeminiFailure(err: unknown): Error {
         "Сервис восстанавливается после перегрузки. Подожди 30–60 секунд и попробуй снова.",
       );
     }
+    // 2026-06-30 — Schema / 400 branch. Today's root cause
+    // `required[1]: property is not defined` slipped past the rate-limit
+    // regex into the generic-upstream bucket; user got the blandest copy
+    // for a problem that's actually on our side. This branch catches
+    // schema drift / INVALID_ARGUMENT / SCHEMA so the operator message
+    // points at us, not at the user.
+    if (/\b400\b|INVALID_ARGUMENT|response_schema|SCHEMA/i.test(raw)) {
+      console.error("[Analysis] Gemini schema / bad-request error (operator-side):", raw);
+      return new Error(
+        "ИИ-анализ временно не настроен на сервере. Разработчик уже работает над этим.",
+      );
+    }
     if (/\b429\b|rate.?limit|quota|exceed|RESOURCE_EXHAUSTED/i.test(raw)) {
       console.error("[Analysis] Gemini rate-limit / quota exhausted:", raw);
       return new Error(

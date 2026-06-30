@@ -188,6 +188,17 @@ const GEMINI_RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
     skin_type: { type: "NUMBER" },
+    // 2026-06-30 — added `face_detected` to `properties`. It was already
+    // in the `required` array (and in the prompt text under "ПАРАМЕТРЫ"),
+    // but I forgot to declare the schema property in the previous bad-photo
+    // edit. Google returned 400 INVALID_ARGUMENT
+    // `GenerateContentRequest.generation_config.response_schema.required[1]:
+    // property is not defined` — index 1 is exactly `face_detected`,
+    // so Vercel logs showed every request failing before circuit-breaker
+    // tripped and the user saw "Сервис восстанавливается после перегрузки"
+    // copy instead of real analysis. Aligns with the prompt's
+    // `face_detected: BOOLEAN` rule added 2026-06-30 for BadPhotoError.
+    face_detected: { type: "BOOLEAN" },
     acne: {
       type: "OBJECT",
       properties: {
@@ -493,6 +504,21 @@ export async function analyzeSkinWithGemini(
   let raw: GeminiSkinVerdictRaw;
   try {
     raw = await callGemini(cleanBase64);
+    // 2026-06-30 — Reset the breaker on first successful call. Without this,
+    // a stale 60s window from a SCHEMA / quota / deploy-time failure would
+    // keep short-circuiting real requests even after Gemini is back. Three
+    // real-world cases benefit:
+    //   (a) schema-bug fix deploys while Vercel keeps a warm instance with
+    //       `lastGeminiFailureAt` already set;
+    //   (b) transient network blip recovers before the 60s TTL elapses;
+    //   (c) free-tier quota window rolls over (Google doesn't reset RPD
+    //       instantly on the next minute boundary the way the breaker does).
+    if (lastGeminiFailureAt !== null) {
+      console.log(
+        `[Gemini] Recovered after ${Math.round((Date.now() - lastGeminiFailureAt) / 1000)}s breaker window — resetting.`,
+      );
+      lastGeminiFailureAt = null;
+    }
   } catch (e: any) {
     if (e instanceof GeminiUpstreamError) {
       tripGeminiCircuit();
