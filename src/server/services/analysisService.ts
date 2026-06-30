@@ -221,56 +221,84 @@ export const analysisService = {
     const compressedPhoto = await compressImage(photoBase64);
     const photoHash = await getPerceptualHash(compressedPhoto);
 
-    // ── M4: O(1) duplicate check against last photo first ────────────────
-    // Caches the most recent hash on User; an identical-looking photo
-    // returns cached result in <1ms instead of scanning the whole history.
-    if (user.lastPhotoHash && hammingDistance(photoHash, user.lastPhotoHash) < HASH_SIMILARITY_THRESHOLD) {
-      const cached = await prisma.skinAnalysis.findFirst({
+    // ── M4: Two-tier duplicate check. ─────────────────────────────────
+    // 2026-06-30 — rewritten. The previous code had two bugs:
+    //
+    //   (1) The fallback O(50) full-history scan only ran when
+    //       `user.lastPhotoHash` was null. Once the user had uploaded any
+    //       photo, `lastPhotoHash` was set, and the scan was disabled.
+    //       Any subsequent upload whose hash drifted by more than 20 bits
+    //       (re-encoding noise, EXIF timestamp change, browser-side
+    //       recompression) silently bypassed dedup → fresh Gemini call
+    //       → quota burn → different result on the same photo.
+    //
+    //   (2) The O(1) lookup `findFirst({userId, photoHash: user.lastPhotoHash})`
+    //       only worked when current photo's hash happened to equal the
+    //       stored lastPhotoHash byte-for-byte. For A→B→A sequences
+    //       (upload A, then different B, then A again) we'd look up the B
+    //       analysis instead of A's, since the most-recent photoHash was B.
+    //
+    // The fix: always run tier-1 (exact O(1)) THEN tier-2 (O(50) fuzzy
+    // scan) regardless of `lastPhotoHash` state, and heal `lastPhotoHash`
+    // to the actually-matched hash so the next upload lands in tier 1.
+    // ─────────────────────────────────────────────────────────────────
+    let cached: { result: unknown; createdAt: Date } | null = null;
+    let matchedHash: string | null = null;
+
+    // Tier 1 — O(1) exact match on user.lastPhotoHash.
+    if (user.lastPhotoHash) {
+      const exact = await prisma.skinAnalysis.findFirst({
         where: { userId: user.id, photoHash: user.lastPhotoHash },
+        select: { result: true, createdAt: true, photoHash: true },
       });
-      if (cached) {
-        const ritual = await ritualService.getStreak(user.id);
-        return {
-          analysis: cached.result,
-          xpGained: 0,
-          totalXp: user.xp,
-          level: user.level,
-          streak: ritual.streak,
-          maxStreak: ritual.maxStreak,
-          cached: true,
-          cachedAt: cached.createdAt.toISOString(),
-        };
+      if (exact) {
+        cached = { result: exact.result, createdAt: exact.createdAt };
+        matchedHash = user.lastPhotoHash;
       }
     }
 
-    // ── Fallback: full history scan (rare path, handles edge cases like
-    //   user uploading same photo they took 2 weeks ago)
-    if (!user.lastPhotoHash) {
-      const allPhotos = await prisma.skinAnalysis.findMany({
+    // Tier 2 — O(50) threshold scan if tier 1 missed.
+    // Always runs (defense-in-depth). Catches A→B→A and the silent
+    // hash-drift edge case described above.
+    if (!cached) {
+      const recent = await prisma.skinAnalysis.findMany({
         where: { userId: user.id, photoHash: { not: null } },
-        select: { photoHash: true, createdAt: true, result: true, id: true },
+        select: { id: true, photoHash: true, result: true, createdAt: true },
         orderBy: { createdAt: "desc" },
         take: 50,
       });
-      for (const p of allPhotos) {
-        if (p.photoHash && hammingDistance(photoHash, p.photoHash) < HASH_SIMILARITY_THRESHOLD) {
-          const ritual = await ritualService.getStreak(user.id);
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { lastPhotoHash: p.photoHash },
-          });
-          return {
-            analysis: p.result,
-            xpGained: 0,
-            totalXp: user.xp,
-            level: user.level,
-            streak: ritual.streak,
-            maxStreak: ritual.maxStreak,
-            cached: true,
-            cachedAt: p.createdAt.toISOString(),
-          };
+      for (const r of recent) {
+        if (
+          r.photoHash &&
+          hammingDistance(photoHash, r.photoHash) < HASH_SIMILARITY_THRESHOLD
+        ) {
+          cached = { result: r.result, createdAt: r.createdAt };
+          matchedHash = r.photoHash;
+          break;
         }
       }
+    }
+
+    if (cached) {
+      // Heal stale `lastPhotoHash` when tier 2 found a different-but-similar
+      // photo. Next upload of the same photo will hit tier 1.
+      if (user.lastPhotoHash !== matchedHash) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lastPhotoHash: matchedHash },
+        });
+      }
+      const ritual = await ritualService.getStreak(user.id);
+      return {
+        analysis: cached.result as any,
+        xpGained: 0,
+        totalXp: user.xp,
+        level: user.level,
+        streak: ritual.streak,
+        maxStreak: ritual.maxStreak,
+        cached: true,
+        cachedAt: cached.createdAt.toISOString(),
+      };
     }
 
     const access = await subscriptionService.canAccessAnalysis(user.id);
