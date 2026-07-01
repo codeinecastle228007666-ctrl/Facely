@@ -44,6 +44,7 @@ import {
   PROBLEM_MAP,
   RECOMMENDATIONS_MAP,
   SKIN_TYPE_MAP,
+  ColorType,
   buildRoutine,
   generateProductLinks,
   isBogusResult,
@@ -134,6 +135,21 @@ export type AnalysisVerdict = {
     reason: string;
     effect: string;
   }>;
+  /**
+   * 2026-07-01 — Russian color typology (лето / зима / осень / весна).
+   * Decided by Gemini's responseSchema (Gemini-only deployment era);
+   * Face++ doesn't populate it. Optional so:
+   *   • Face++ verdicts (legacy path / dual-mode tab when Gemini lane
+   *     fails) always leave it undefined — UI hides the chip.
+   *   • Legacy records pre-2026-07-01 (rows persisted before the field
+   *     existed) serialise cleanly through tRPC; superjson strips
+   *     `undefined` cleanly so clients see color_type: undefined and
+   *     ResultModal/history pages hide the chip.
+   *   • The string-union `ColorType` exported from skinScoring.ts is
+   *     the source of truth; duplicates in api.ts per the existing
+   *     Дrift-prevention convention.
+   */
+  color_type?: ColorType;
   /**
    * Internal: full Face++ response passed back to the service layer so
    * it can persist into SkinAnalysis.rawFacePlus. Stripped before
