@@ -5,6 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CloseIcon } from "@/components/ui/Icons";
 import type { AnalysisResult, RussianProductSection } from "@/services/api";
 import { useTelegram } from "@/hooks/useTelegram";
+// 2026-07-01 — Clickable recommendations / clickable color-type badge.
+import { findArticleSlug } from "@/data/ingredientArticles";
+import { IngredientArticleModal } from "@/components/ui/IngredientArticleModal";
 
 /**
  * Helper: a variant object keyed by `provider`. Drives the tab switcher
@@ -76,6 +79,22 @@ const SKIN_TYPE_HINT: Record<string, string> = {
   нормальная: "сбалансированное состояние",
 };
 
+/**
+ * 2026-07-01 — color_type short copy shown in the chip-row tap-reveal.
+ * Inlined here rather than imported from `src/server/utils/skinScoring.ts`
+ * to keep client components free of server-util imports (matches the
+ * existing pattern of SKIN_TYPE_DESC / SKIN_TYPE_HINT being duplicated
+ * across ResultModal + history/page.tsx — see their JSDoc). Drift
+ * between this and skinScoring.COLOR_TYPE_DESC would surface as UI
+ * silently dropping the цветотип badge for affected users.
+ */
+const COLOR_TYPE_DESC: Record<string, string> = {
+  лето: "Холодный тон кожи — от светло-розовой до серовато-оливковой. Легко загорает, приобретая золотистый оттенок.",
+  зима: "Холодный тон — очень светлая, почти фарфоровая кожа. Загорает медленно, редко приобретает видимый загар.",
+  осень: "Тёплый тон — кожа золотистого оттенка, часто с веснушками. Не любит прямое солнце, склонна к пигментации.",
+  весна: "Тёплый тон — тонкая, прозрачная, очень светлая кожа. Легко краснеет, быстро реагирует на раздражители.",
+};
+
 const SEVERITY_COLORS: Record<string, string> = {
   лёгкое: "#A8D8EA",
   умеренное: "#FFB4A2",
@@ -102,6 +121,11 @@ export const ResultModal: React.FC<ResultModalProps> = ({
   onShare,
 }) => {
   const [activeTab, setActiveTab] = React.useState<VariantKey | null>(null);
+  // 2026-07-01 — UI state for the two new click affordances: an
+  // open-article slug (recommendation / product-link tap) and a
+  // boolean toggle for the inline color-type description expansion.
+  const [articleSlug, setArticleSlug] = React.useState<string | null>(null);
+  const [colorTypeOpen, setColorTypeOpen] = React.useState(false);
 
   if (!result) return null;
 
@@ -260,7 +284,7 @@ export const ResultModal: React.FC<ResultModalProps> = ({
               </div>
             )}
 
-            <div className="flex items-center gap-3" style={{ marginBottom: 16 }}>
+            <div className="flex items-center gap-3" style={{ marginBottom: colorTypeOpen ? 8 : 16 }}>
               <div
                 style={{
                   padding: "8px 16px",
@@ -278,6 +302,39 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                   {SKIN_TYPE_HINT[display.skin_type] || ""}
                 </span>
               </div>
+              {/* 2026-07-01 — Color-type chip. Compact teal pill that
+                  toggles a tap-reveal description panel below. Hidden
+                  entirely when the active variant has no color_type
+                  (legacy rows pre-feature, or Gemini variant where
+                  clampColorType returned null). */}
+              {display.color_type && COLOR_TYPE_DESC[display.color_type] && (
+                <button
+                  type="button"
+                  onClick={() => setColorTypeOpen((v) => !v)}
+                  aria-expanded={colorTypeOpen}
+                  aria-label={`Цветотип: ${display.color_type}`}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 20,
+                    background: colorTypeOpen
+                      ? "rgba(126, 196, 216, 0.30)"
+                      : "rgba(126, 196, 216, 0.18)",
+                    border: "none",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    transition: "background 0.2s",
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#5BA0B0" }}>
+                    ✦ {display.color_type}
+                  </span>
+                  <span style={{ fontSize: 9, color: "#5BA0B0", opacity: 0.6, marginTop: 1 }}>
+                    цветотип
+                  </span>
+                </button>
+              )}
               <div
                 style={{
                   padding: "8px 16px",
@@ -291,6 +348,28 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                 {display.mood}
               </div>
             </div>
+            {/* 2026-07-01 — Inline tap-reveal description for the
+                color_type chip. Conditional on colorTypeOpen AND a
+                known color_type — preserves the chip-row's existing
+                marginBottom when closed. */}
+            {colorTypeOpen && display.color_type && COLOR_TYPE_DESC[display.color_type] && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  background: "rgba(126, 196, 216, 0.10)",
+                  marginBottom: 16,
+                  overflow: "hidden",
+                }}
+              >
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                  {COLOR_TYPE_DESC[display.color_type]}
+                </div>
+              </motion.div>
+            )}
 
             <div
               style={{
@@ -351,12 +430,54 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                         )}
                         {group.recs.length > 0 && (
                           <div className="flex flex-col gap-1">
-                            {group.recs.map((r, ri) => (
-                              <div key={ri} className="flex items-start gap-2">
-                                <span style={{ color: "var(--primary)", fontSize: 12, marginTop: 1 }}>•</span>
-                                <span style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4 }}>{r}</span>
-                              </div>
-                            ))}
+                            {group.recs.map((r, ri) => {
+                              // 2026-07-01 — substring-match the recipe
+                              // against `ingredientArticles.ts` registry.
+                              // Strings with a known article open the
+                              // bottom-sheet modal on tap; others render
+                              // as plain text.
+                              const slug = findArticleSlug(r);
+                              if (slug) {
+                                return (
+                                  <button
+                                    key={ri}
+                                    type="button"
+                                    onClick={() => setArticleSlug(slug)}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "flex-start",
+                                      gap: 8,
+                                      background: "none",
+                                      border: "none",
+                                      padding: 0,
+                                      cursor: "pointer",
+                                      textAlign: "left",
+                                      fontSize: 12,
+                                      lineHeight: 1.4,
+                                    }}
+                                  >
+                                    <span style={{ color: "var(--primary)", fontSize: 12, marginTop: 1 }}>•</span>
+                                    <span
+                                      style={{
+                                        color: "var(--primary-dark)",
+                                        textDecoration: "underline",
+                                        textDecorationStyle: "dotted",
+                                        textDecorationColor: "rgba(196, 122, 143, 0.4)",
+                                        fontWeight: 500,
+                                      }}
+                                    >
+                                      {r}
+                                    </span>
+                                  </button>
+                                );
+                              }
+                              return (
+                                <div key={ri} className="flex items-start gap-2">
+                                  <span style={{ color: "var(--primary)", fontSize: 12, marginTop: 1 }}>•</span>
+                                  <span style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.4 }}>{r}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -461,7 +582,37 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                         >
                           ✦
                         </div>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
+                        {(() => {
+                          // 2026-07-01 — Same slug-match treatment as
+                          // recommendations above. Product-link names
+                          // like "Сыворотка с витамином C" or
+                          // "Крем с ретинолом" become clickable.
+                          const slug = findArticleSlug(p.name);
+                          if (slug) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setArticleSlug(slug)}
+                                style={{
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                  color: "var(--primary-dark)",
+                                  background: "none",
+                                  border: "none",
+                                  padding: 0,
+                                  cursor: "pointer",
+                                  textDecoration: "underline",
+                                  textDecorationStyle: "dotted",
+                                  textDecorationColor: "rgba(196, 122, 143, 0.4)",
+                                  textAlign: "left",
+                                }}
+                              >
+                                {p.name}
+                              </button>
+                            );
+                          }
+                          return <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>;
+                        })()}
                       </div>
                       <div style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 36 }}>
                         <div style={{ marginBottom: 2 }}>{p.reason}</div>
@@ -598,10 +749,18 @@ export const ResultModal: React.FC<ResultModalProps> = ({
                 ad-hoc compare shortcut which competed for attention
                 with the new «Средства, которые можно купить в России»
                 recommendations block rendered just above. */}
-
           </motion.div>
         </motion.div>
       )}
+      {/* 2026-07-01 — Clickable-recommendations article bottom-sheet.
+          Independent of the result modal's open state — when the user
+          taps a recommendation string, this AnimatePresence opens
+          while the result modal stays mounted underneath for
+          back-navigation continuity. `slug` is null when closed. */}
+      <IngredientArticleModal
+        slug={articleSlug}
+        onClose={() => setArticleSlug(null)}
+      />
     </AnimatePresence>
   );
 };

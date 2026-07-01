@@ -109,7 +109,12 @@ export const api = {
      * parallel three-provider path for older callers / unset state.
      * Routing in tRPC: `src/server/routers/analysisRouter.ts`.
      */
-    analyze: (data: { photoBase64: string; description?: string; provider?: "auto" | "faceplus" | "gemini" }) =>
+    // 2026-07-01 — `forceReanalyze` boolean added so page.tsx
+    // "Это другое фото?" button can dispatch a fresh pipeline with
+    // both dedup tiers skipped. Mirrors the server input schema in
+    // src/server/routers/analysisRouter.ts; optional for backward compat
+    // (omitting matches pre-feature dedup behaviour).
+    analyze: (data: { photoBase64: string; description?: string; provider?: "auto" | "faceplus" | "gemini"; forceReanalyze?: boolean }) =>
       mutation<AnalyzeResponse>("analysis.analyze", data),
     history: (data?: { limit?: number; offset?: number }) =>
       query<{ analyses: AnalysisHistoryItem[]; total: number }>("analysis.history", data),
@@ -240,6 +245,18 @@ export interface ProductLink {
 }
 
 /**
+ * 2026-07-01 — Russian color typology string-union.
+ *
+ * IMPORTANT: keep this union in sync with `ColorType` exported from
+ * `src/server/utils/skinScoring.ts`. They MUST be identical character
+ * sequences so tRPC's superjson transport round-trips intact and
+ * TypeScript-level type assertions match at runtime. Drift would
+ * surface as UI silently dropping the цветотип badge for affected
+ * users (no runtime error, just a missing chip).
+ */
+export type ColorType = "лето" | "зима" | "осень" | "весна";
+
+/**
  * 2026-06-25 — `ProblemPosition` interface and the `problem_positions`
  * field on `AnalysisResult` were rolled back (Groq vision misclassified
  * nostrils / lips as inflammation). Removed to keep the type surface
@@ -254,6 +271,16 @@ export interface AnalysisResult {
   daily_routine: string;
   mood: "позитивный" | "нейтральный" | "тревожный";
   product_links: ProductLink[];
+  /**
+   * 2026-07-01 — Russian color typology (лето/зима/осень/весна).
+   * Determined by Gemini vision from the photo alongside skin_type /
+   * problems / mood. Distinct from `skin_type` (oiliness axis) —
+   * these describe the warmth/coolness/lightness axis of complexion.
+   * Optional: legacy rows pre-feature (rows persisted before
+   * color_type deployment) lack the field; the UI hides the badge
+   * entirely when undefined rather than rendering a placeholder.
+   */
+  color_type?: ColorType;
   /**
    * 2026-06-25 — surfaced so the UI can render an honest degraded-mode
    * banner. "full" means Face++ was used (16 features, confidence

@@ -22,11 +22,34 @@ import { achievementService } from "./achievementService";
 import { russianProductCatalog } from "./russianProductCatalog";
 
 /**
- * Threshold for considering two photos as duplicates (0-64).
- * Lower = stricter (more sensitive to small changes).
- * 20 was tuned empirically for SkinAnalysis use cases.
+ * 2026-07-01 — Perceptual-hash dedup threshold (Hamming-distance units).
+ *
+ * The hash uses a 16×16 difference-grid → 256 bits per photo.
+ * Threshold is the MAX hamming distance at which two photos are still
+ * considered "the same photo" (re-encoding noise, EXIF rotation,
+ * laptop-camera auto-brightness drift). Beyond the threshold they're
+ * "different photos" and a fresh analysis runs.
+ *
+ * 2026-07-01 — Bumped 20 → 30. Drive-by from testers who reported
+ * getting "уже анализировалось" on freshly-shot photos. Empirically:
+ *
+ *   identical photo, JPEG re-encode only       → 0–2 bits apart
+ *   identical photo, EXIF timestamp bump      → 0–3 bits apart
+ *   same face, ~same lighting (next morning)   → 8–20 bits apart
+ *   same face, different lighting/angle        → 25–50 bits apart
+ *   same face, different moment / haircut      → 35–70 bits apart
+ *   different person                          → 90+ bits apart
+ *
+ * Threshold 20 was prone to false-positive matches in the "same face,
+ * ~same lighting" case — testers re-shot themselves within minutes
+ * and tripped the cache. Threshold 30 is empirically the sweet spot:
+ * matches only the "obvious re-upload" cluster (≤8 bits apart) and
+ * never legitimate re-shots. The UI force-reanalyze button handles
+ * the small remaining edge of "we got the photo to ~20 bits apart
+ * AND it's actually a new photo we'd want to re-analyse" without
+ * trading the cache value for the average user.
  */
-const HASH_SIMILARITY_THRESHOLD = 20;
+const HASH_SIMILARITY_THRESHOLD = 30;
 
 /**
  * 2026-06-25 evening — Vercel Free tier caps serverless functions at
@@ -192,6 +215,18 @@ export const analysisService = {
     photoBase64: string,
     description?: string,
     providerChoice: "auto" | "faceplus" | "gemini" = "auto",
+    // 2026-07-01 — added for the "Это другое фото" UI affordance.
+    // When the user uploads a photo that the dedup cache identified
+    // as a duplicate (within HASH_SIMILARITY_THRESHOLD), but the user
+    // insists it's actually a different photo, they tap a button in
+    // the cache-hit toast to retry. forceReanalyze=true skips both
+    // tier-1 (exact) and tier-2 (fuzzy) lookups and runs the full
+    // provider pipeline. The new analysis is persisted with a fresh
+    // `lastPhotoHash` write, so subsequent identical re-submissions
+    // hit tier 1 again. We do NOT short-circuit on `user.analyses`
+    // count balance — the user's "Это другое фото" intent overrides
+    // the dedup heuristic.
+    forceReanalyze: boolean = false,
   ) {
     // 2026-06-30 — GEMINI-ONLY deployment. Per user request: «оставь только
     // Gemini, face++ больше не пользуемся, оставь код». The Face++ and HF
@@ -246,8 +281,21 @@ export const analysisService = {
     let cached: { result: unknown; createdAt: Date } | null = null;
     let matchedHash: string | null = null;
 
+    // 2026-07-01 — When forceReanalyze=true, the user has explicitly
+    // tapped "Это другое фото" in the cache-hit toast. Skip both
+    // dedup tiers entirely and run the full pipeline. We still
+    // compute photoHash above (cheap, ~5ms) so the new analysis
+    // persists correctly. The `lastPhotoHash` write at the end of
+    // the transaction updates to the new hash, so any subsequent
+    // identical re-submit will (correctly) hit tier 1.
+    if (forceReanalyze) {
+      console.log(
+        "[Analysis] forceReanalyze=true — skipping both dedup tiers (tier-1 exact + tier-2 fuzzy).",
+      );
+    }
+
     // Tier 1 — O(1) exact match on user.lastPhotoHash.
-    if (user.lastPhotoHash) {
+    if (!forceReanalyze && user.lastPhotoHash) {
       const exact = await prisma.skinAnalysis.findFirst({
         where: { userId: user.id, photoHash: user.lastPhotoHash },
         select: { result: true, createdAt: true, photoHash: true },
@@ -261,7 +309,7 @@ export const analysisService = {
     // Tier 2 — O(50) threshold scan if tier 1 missed.
     // Always runs (defense-in-depth). Catches A→B→A and the silent
     // hash-drift edge case described above.
-    if (!cached) {
+    if (!cached && !forceReanalyze) {
       const recent = await prisma.skinAnalysis.findMany({
         where: { userId: user.id, photoHash: { not: null } },
         select: { id: true, photoHash: true, result: true, createdAt: true },

@@ -62,6 +62,7 @@ import {
   RECOMMENDATIONS_MAP,
   SKIN_TYPE_MAP,
   buildRoutine,
+  clampColorType,
   generateProductLinks,
   isBogusResult,
   severityFromValue,
@@ -165,6 +166,14 @@ const GEMINI_PROMPT_TEXT =
 - skin_type: целое число 0, 1, 2 или 3:
   0 = сухая, 1 = жирная, 2 = комбинированная, 3 = нормальная.
   Если невозможно определить — поставь 3 (нормальная).
+- color_type: одна СТРОКА из четырёх значений: "лето", "зима",
+  "осень", "весна" (определяется по тону кожи):
+    "лето"  — холодный тон, от светло-розовой до серовато-оливковой;
+              легко загорает, приобретая золотистый оттенок;
+    "зима"  — холодный тон, очень светлая / почти белая кожа;
+    "осень" — тёплый тон, кожа золотистая, часто с веснушками;
+    "весна" — тёплый тон, тонкая прозрачная очень светлая кожа.
+  Если невозможно определить — поставь "весна".
 - face_detected: BOOLEAN. Поставь false, если на фото НЕТ человеческого
   лица анфас (другое животное, пейзаж, предмет, группа людей без видимого
   лица, сильный боковой профиль, либо фото слишком размытое / тёмное
@@ -188,6 +197,17 @@ const GEMINI_RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
     skin_type: { type: "NUMBER" },
+    // 2026-07-01 — color_type added as STRING enum (lето/зима/осень/весна).
+    // Locked enum keeps Gemini from drifting to free-text responses like
+    // "summer-like" or "холодный" which would fail clamping on the server
+    // side. Mirrors the prompt's `color_type: ...` instruction; without
+    // both prompt + schema property Gemini returns 400 INVALID_ARGUMENT
+    // "required[N]: property is not defined" (same trap we hit with
+    // face_detected in 2026-06-30 — see comment block above).
+    color_type: {
+      type: "STRING",
+      enum: ["лето", "зима", "осень", "весна"],
+    },
     // 2026-06-30 — added `face_detected` to `properties`. It was already
     // in the `required` array (and in the prompt text under "ПАРАМЕТРЫ"),
     // but I forgot to declare the schema property in the previous bad-photo
@@ -266,6 +286,7 @@ const GEMINI_RESPONSE_SCHEMA = {
   },
   required: [
     "skin_type",
+    "color_type",
     "face_detected",
     "acne",
     "dark_circle",
@@ -283,6 +304,14 @@ const GEMINI_RESPONSE_SCHEMA = {
  */
 interface GeminiSkinVerdictRaw {
   skin_type: number;
+  /**
+   * 2026-07-01 — Russian color typology (лето/зима/осень/весна)
+   * decided by Gemini from the photo's warmth / coolness / lightness
+   * signal. Distinct from `skin_type` which describes oiliness.
+   * Stored as a free string in the raw shape — `clampColorType()` at
+   * the verdict-building step enforces the legal union.
+   */
+  color_type?: string;
   /**
    * 2026-06-30 — explicit boolean Gemini sets in responseSchema. False
    * when the photo contains no analysable human face (wrong subject,
@@ -571,6 +600,12 @@ export async function analyzeSkinWithGemini(
   const dailyRoutine = buildRoutine(skinTypeName, problems, hasAcne);
   const productLinks = generateProductLinks(problems);
 
+  // 2026-07-01 — color_type is sanitised via clampColorType before
+  // exposing to the UI. Clamp accepts null/unknown values and returns
+  // null, so the verdict carries an optional ColorType — older rows
+  // without the value still serialise cleanly into clientResult.
+  const colorType = clampColorType(raw.color_type);
+
   // 2026-06-26 — Gemini returns ALL 8 features with confidence gating,
   // same as Face++. Re-classify verdict as "full" so the modal's
   // "Сервис анализа в ограниченном режиме" banner stays suppressed
@@ -584,6 +619,7 @@ export async function analyzeSkinWithGemini(
     daily_routine: dailyRoutine,
     mood,
     product_links: productLinks,
+    color_type: colorType ?? undefined,
     // _rawResponse is the raw Gemini verdict (flat JSON shape from
     // responseSchema, NOT a FacePlusResult). Orchestrator persists it
     // to SkinAnalysis.rawGemini JSONB column.

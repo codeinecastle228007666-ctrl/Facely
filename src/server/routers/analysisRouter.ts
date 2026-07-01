@@ -28,6 +28,13 @@ export const analysisRouter = router({
           .max(10_000_000, "Photo too large (max 10 MB)"),
         description: z.string().max(500).optional(),
         provider: ProviderChoice.optional().default("auto"),
+        // 2026-07-01 — Force-reanalyze affordance. UI sets true when
+        // the user taps "Это другое фото" in the cache-hit toast.
+        // Server interprets by skipping both dedup tiers (HASH_SIMILARITY
+        //_THRESHOLD in analysisService.ts) and running the full provider
+        // pipeline. Defaults to false via Zod so older clients keep
+        // their dedup behaviour untouched.
+        forceReanalyze: z.boolean().optional().default(false),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -37,6 +44,7 @@ export const analysisRouter = router({
           input.photoBase64,
           input.description,
           input.provider,
+          input.forceReanalyze,
         );
       } catch (e) {
         const message = e instanceof Error ? e.message : "unknown";

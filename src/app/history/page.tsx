@@ -8,6 +8,9 @@ import { SkinHealthIndex } from "@/components/history/SkinHealthIndex";
 import { api, type AnalysisHistoryItem, type AnalysisResult } from "@/services/api";
 import type { RussianProductSection } from "@/services/api";
 import { HistoryIcon, CloseIcon } from "@/components/ui/Icons";
+// 2026-07-01 — Clickable recommendations / clickable color-type badge.
+import { findArticleSlug } from "@/data/ingredientArticles";
+import { IngredientArticleModal } from "@/components/ui/IngredientArticleModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { CardSkeleton } from "@/components/ui/Skeleton";
 
@@ -35,6 +38,21 @@ const SKIN_TYPE_HINT: Record<string, string> = {
   жирная: "склонна к блеску",
   комбинированная: "разные зоны — разный уход",
   нормальная: "сбалансированное состояние",
+};
+
+/**
+ * 2026-07-01 — Color-type copy duplicates `skinScoring.COLOR_TYPE_DESC`
+ * (which lives in the server util) so client components stay free of
+ * the server import (matches the SKIN_TYPE_DESC / SKIN_TYPE_HINT
+ * duplication pattern above). Drift surfaces as a UI bug rather than
+ * a build error, so reviewer comments should re-check this when
+ * touching color-type content.
+ */
+const COLOR_TYPE_DESC: Record<string, string> = {
+  лето: "Холодный тон кожи — от светло-розовой до серовато-оливковой. Легко загорает, приобретая золотистый оттенок.",
+  зима: "Холодный тон — очень светлая, почти фарфоровая кожа. Загорает медленно, редко приобретает видимый загар.",
+  осень: "Тёплый тон — кожа золотистого оттенка, часто с веснушками. Не любит прямое солнце, склонна к пигментации.",
+  весна: "Тёплый тон — тонкая, прозрачная, очень светлая кожа. Легко краснеет, быстро реагирует на раздражители.",
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -86,6 +104,12 @@ export default function HistoryPage() {
   const [compareMode, setCompareMode] = useState(false);
   const [compareStep, setCompareStep] = useState<1 | 2>(1);
   const [compareIds, setCompareIds] = useState<{ before: string | null; after: string | null }>({ before: null, after: null });
+  // 2026-07-01 — UI state for the two new click affordances
+  // (open-article slug, color-type expansion toggle). Lives next to
+  // the bottom-sheet state to keep "open something on top of
+  // something" affordances grouped.
+  const [articleSlug, setArticleSlug] = useState<string | null>(null);
+  const [colorTypeOpen, setColorTypeOpen] = useState(false);
 
   useEffect(() => {
     api.analysis
@@ -425,7 +449,7 @@ export default function HistoryPage() {
                 )}
               </div>
 
-              <div className="flex items-center gap-3" style={{ marginBottom: 16 }}>
+              <div className="flex items-center gap-3" style={{ flexWrap: "wrap", rowGap: 8, marginBottom: colorTypeOpen ? 8 : 16 }}>
                 <div
                   style={{
                     padding: "8px 16px",
@@ -443,6 +467,39 @@ export default function HistoryPage() {
                     {SKIN_TYPE_HINT[result.skin_type] || ""}
                   </span>
                 </div>
+                {/* 2026-07-01 — Color-type chip. Tap toggles an inline
+                    description panel rendered as a sibling block BELOW
+                    this flex row (NOT inline — see below). Hidden for
+                    legacy rows pre-color_type because
+                    `result.color_type` is undefined. */}
+                {result.color_type && COLOR_TYPE_DESC[result.color_type] && (
+                  <button
+                    type="button"
+                    onClick={() => setColorTypeOpen((v) => !v)}
+                    aria-expanded={colorTypeOpen}
+                    aria-label={`Цветотип: ${result.color_type}`}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 20,
+                      background: colorTypeOpen
+                        ? "rgba(126, 196, 216, 0.30)"
+                        : "rgba(126, 196, 216, 0.18)",
+                      border: "none",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      cursor: "pointer",
+                      transition: "background 0.2s",
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#5BA0B0" }}>
+                      ✦ {result.color_type}
+                    </span>
+                    <span style={{ fontSize: 9, color: "#5BA0B0", opacity: 0.6, marginTop: 1 }}>
+                      цветотип
+                    </span>
+                  </button>
+                )}
                 {result.skin_score !== undefined && (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "0 12px" }}>
                     <div style={{ position: "relative", width: 52, height: 52 }}>
@@ -459,6 +516,33 @@ export default function HistoryPage() {
                   {result.mood}
                 </div>
               </div>
+              {/* 2026-07-01 — Color-type tap-reveal description panel.
+                  Sibling of the chip-row (rendered BETWEEN chips and
+                  the skin-type description block below). Conditional
+                  on colorTypeOpen AND a known color_type — legacy
+                  rows pre-color_type feature stay silent. The
+                  chip-row itself uses display:flex (not grid), so a
+                  previous draft that used `gridColumn:"1/-1"` to
+                  span inside the row was inert; this placement
+                  mirrors ResultModal's working pattern. */}
+              {colorTypeOpen && result.color_type && COLOR_TYPE_DESC[result.color_type] && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    background: "rgba(126, 196, 216, 0.10)",
+                    marginBottom: 16,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                    {COLOR_TYPE_DESC[result.color_type]}
+                  </div>
+                </motion.div>
+              )}
 
               <div
                 style={{
@@ -546,12 +630,53 @@ export default function HistoryPage() {
                     Рекомендации
                   </div>
                   <div className="flex flex-col gap-1">
-                    {result.recommendations.map((r, i) => (
-                      <div key={i} className="flex items-start gap-2">
-                        <span style={{ color: "var(--primary)", fontSize: 12, marginTop: 1 }}>•</span>
-                        <span style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.4 }}>{r}</span>
-                      </div>
-                    ))}
+                    {result.recommendations.map((r, i) => {
+                      // 2026-07-01 — substring slug-match against
+                      // the ingredient-article registry. Strings with
+                      // a known entry open the bottom-sheet modal on
+                      // tap; others stay as plain rounded bullets.
+                      const slug = findArticleSlug(r);
+                      if (slug) {
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setArticleSlug(slug)}
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: 8,
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              cursor: "pointer",
+                              textAlign: "left",
+                              fontSize: 13,
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            <span style={{ color: "var(--primary)", fontSize: 12, marginTop: 1 }}>•</span>
+                            <span
+                              style={{
+                                color: "var(--primary-dark)",
+                                textDecoration: "underline",
+                                textDecorationStyle: "dotted",
+                                textDecorationColor: "rgba(196, 122, 143, 0.4)",
+                                fontWeight: 500,
+                              }}
+                            >
+                              {r}
+                            </span>
+                          </button>
+                        );
+                      }
+                      return (
+                        <div key={i} className="flex items-start gap-2">
+                          <span style={{ color: "var(--primary)", fontSize: 12, marginTop: 1 }}>•</span>
+                          <span style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.4 }}>{r}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -589,7 +714,36 @@ export default function HistoryPage() {
                       >
                         <div className="flex items-center gap-2">
                           <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--primary-light)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>✦</div>
-                          <span style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</span>
+                          {(() => {
+                            // 2026-07-01 — click-to-explore on
+                            // product-link names. Same slug-match
+                            // treatment as recommendations above.
+                            const slug = findArticleSlug(p.name);
+                            if (slug) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => setArticleSlug(slug)}
+                                  style={{
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    color: "var(--primary-dark)",
+                                    background: "none",
+                                    border: "none",
+                                    padding: 0,
+                                    cursor: "pointer",
+                                    textDecoration: "underline",
+                                    textDecorationStyle: "dotted",
+                                    textDecorationColor: "rgba(196, 122, 143, 0.4)",
+                                    textAlign: "left",
+                                  }}
+                                >
+                                  {p.name}
+                                </button>
+                              );
+                            }
+                            return <span style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</span>;
+                          })()}
                         </div>
                         <div style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 36 }}>
                           <div style={{ marginBottom: 2 }}>{p.reason}</div>
@@ -684,6 +838,15 @@ export default function HistoryPage() {
             </motion.div>
           </motion.div>
         )}
+        {/* 2026-07-01 — Clickable-recommendations article bottom-sheet.
+            Independent of the history detail modal's open state —
+            when the user taps a recommendation string, this
+            AnimatePresence opens while the detail modal stays
+            mounted underneath for back-navigation continuity. */}
+        <IngredientArticleModal
+          slug={articleSlug}
+          onClose={() => setArticleSlug(null)}
+        />
       </AnimatePresence>
 
       <TabBar />

@@ -979,29 +979,40 @@ function CompareContent() {
               </motion.div>
             )}
 
-            {/* 2026-06-30 — "Что сделать дальше для улучшения". Тянем
+            {/* 2026-07-01 — "Что сделать дальше для улучшения". Тянем
                 recommendations из ПОСЛЕДНЕГО анализа (analysis2) и
                 нарезаем 3-на-задачу тем же слайсером, что использует
                 ResultModal — так проблема и её план всегда на одной
-                строке. Карточка не рендерится, если у analysis2 нет
-                ни проблем, ни рекомендаций (например, кожа «чистая»). */}
+                строке.
+
+                2026-07-01 — фикс «рекомендации в сравнении вызываются
+                и показываются через раз» (тестеры). Прежний IIFE
+                возвращал null, когда у analysis2 не было распознанных
+                проблем — из-за чего вся карточка пропадала. Юзер
+                воспринимал это как «блок иногда работает, иногда нет».
+                Теперь ВСЕГДА рендерим блок:
+                  • есть проблемы + есть recs → per-problem listы
+                  • проблемы есть, но для конкретной recs пусты →
+                    пер-группа с фразой-фолбеком
+                  • проблем нет вообще (чистая кожа) → позитивный
+                    empty-state в бирюзовом тоне вместо пропадания */}
             {comparison?.analysis2.result && (() => {
               const r2 = comparison.analysis2.result as {
                 problems?: string[];
                 recommendations?: string[];
               };
+              const problems = r2.problems ?? [];
+              const recommendations = r2.recommendations ?? [];
+
               let ri = 0;
-              const recGroups: Array<{ problem: string; recs: string[] }> = [];
-              if (r2.problems) {
-                for (const p of r2.problems) {
-                  const recs = (r2.recommendations ?? [])
-                    .slice(ri, ri + 3)
-                    .filter(Boolean);
-                  ri += 3;
-                  recGroups.push({ problem: p, recs });
-                }
+              const recGroups: Array<{ name: string; recs: string[] }> = [];
+              for (const p of problems) {
+                const name = p.replace(/\s*\(.+?\)/, "");
+                const recs = recommendations.slice(ri, ri + 3).filter(Boolean);
+                ri += 3;
+                recGroups.push({ name, recs });
               }
-              if (recGroups.length === 0) return null;
+
               return (
                 <motion.div
                   initial={{ opacity: 0, y: 12 }}
@@ -1021,10 +1032,25 @@ function CompareContent() {
                   >
                     ➡️ Что сделать дальше
                   </div>
-                  <div className="flex flex-col" style={{ gap: 12 }}>
-                    {recGroups.map((g, i) => {
-                      const name = g.problem.replace(/\s*\(.+?\)/, "");
-                      return (
+                  {recGroups.length === 0 ? (
+                    // Позитивный empty-state вместо пропадания блока.
+                    // Раньше IIFE возвращал null и карточка полностью
+                    // исчезала — отсюда «через раз» в отчётах тестеров.
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 12,
+                        background: "rgba(126, 196, 216, 0.10)",
+                        fontSize: 13,
+                        color: "var(--text-secondary)",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      Значимых проблем не выявлено — продолжай поддерживающий уход и не забывай про SPF.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col" style={{ gap: 12 }}>
+                      {recGroups.map((g, i) => (
                         <div
                           key={i}
                           style={{
@@ -1040,25 +1066,39 @@ function CompareContent() {
                               marginBottom: 6,
                             }}
                           >
-                            {name}
+                            {g.name}
                           </div>
-                          <ul
-                            style={{
-                              margin: 0,
-                              paddingLeft: 18,
-                              fontSize: 12,
-                              color: "var(--text-secondary)",
-                              lineHeight: 1.55,
-                            }}
-                          >
-                            {g.recs.map((r, ri2) => (
-                              <li key={ri2}>{r}</li>
-                            ))}
-                          </ul>
+                          {g.recs.length > 0 ? (
+                            <ul
+                              style={{
+                                margin: 0,
+                                paddingLeft: 18,
+                                fontSize: 12,
+                                color: "var(--text-secondary)",
+                                lineHeight: 1.55,
+                              }}
+                            >
+                              {g.recs.map((r, ri2) => (
+                                <li key={ri2}>{r}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            // Fallback для конкретной проблемы без
+                            // recs — не оставляем пустой <ul>.
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "var(--text-muted)",
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              Поддерживай текущий уход.
+                            </div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </motion.div>
               );
             })()}

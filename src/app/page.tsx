@@ -80,10 +80,19 @@ export default function Dashboard() {
       photoBase64: string,
       description?: string,
       provider: "auto" | "faceplus" | "gemini" = "auto",
+      // 2026-07-01 — `forceReanalyze` boolean passed through to
+      // bypass HASH dedup on both tiers. The cached-result toast's
+      // "Это другое фото?" button retries with this flag set true.
+      // Default false preserves pre-feature dedup behaviour.
+      forceReanalyze: boolean = false,
     ) => {
+      // If the user retries via the force-reanalyze button, dismiss
+      // the "already analyzed" toast first so it doesn't sit on top
+      // of the new analysis progress UI.
+      if (forceReanalyze) setToast(null);
       setAnalyzing(true);
       try {
-        const res = await api.analysis.analyze({ photoBase64, description, provider });
+        const res = await api.analysis.analyze({ photoBase64, description, provider, forceReanalyze });
         setPhotoData(photoBase64);
         setResult(res.analysis);
         setXpGained(res.xpGained);
@@ -185,16 +194,37 @@ export default function Dashboard() {
             <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 16 }}>
               {toast}
             </div>
-            <button
-              onClick={() => setToast(null)}
-              style={{
-                padding: "10px 32px", borderRadius: 14,
-                background: "var(--primary)", color: "white",
-                fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer",
-              }}
-            >
-              Понятно
-            </button>
+            {/* 2026-07-01 — Two-button flow on cached-hit toast.
+                "Это другое фото?" retries with `forceReanalyze=true`
+                so the user can override a false-positive HASH dedup
+                match without leaving the modal. "Понятно" is the
+                dismiss path. We dispatch handleSubmit from the
+                captured `photoData` state so the original photo
+                roundtrips through the full pipeline. */}
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              {photoData && (
+                <button
+                  onClick={() => handleSubmit(photoData, undefined, "auto", true)}
+                  style={{
+                    padding: "10px 18px", borderRadius: 14,
+                    background: "var(--secondary)", color: "white",
+                    fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer",
+                  }}
+                >
+                  Это другое фото?
+                </button>
+              )}
+              <button
+                onClick={() => setToast(null)}
+                style={{
+                  padding: "10px 24px", borderRadius: 14,
+                  background: "var(--primary)", color: "white",
+                  fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer",
+                }}
+              >
+                Понятно
+              </button>
+            </div>
           </motion.div>
         </motion.div>
       )}

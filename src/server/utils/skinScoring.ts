@@ -225,6 +225,55 @@ export const SKIN_TYPE_MAP: Record<number, string> = {
 };
 
 /**
+ * 2026-07-01 — Color-type vocabulary (лето / зима / осень / весна).
+ * Russian color-type theory for skin tone — distinct from
+ * гиппократовский skin_type (жирная / сухая / etc.). Both coexist
+ * on the user's analysis: skin_type describes oiliness/hydration,
+ * color_type describes the warmth / depth of complexion undertones.
+ *
+ * Values are stored as Russian lowercase strings; orchestrator
+ * passes them through verbatim from Gemini's responseSchema enum.
+ * The `ColorType` string-union is exported so client and server
+ * agree on the same set of legal values (single source of truth).
+ * Sanitisation goes through `clampColorType()` below — no identity
+ * passthrough map is needed because the union type itself enforces
+ * the legal set at compile time.
+ */
+export type ColorType = "лето" | "зима" | "осень" | "весна";
+
+/**
+ * UI-facing descriptions for the color type copy. Shown in the
+ * ResultModal inline popover when user taps the «цветотип» badge
+ * and on the /history detail bottom-sheet. Verbatim from user spec
+ * 2026-07-01. `fallback` for null / unmapped values returns null
+ * so the calling UI can hide the badge entirely.
+ */
+export const COLOR_TYPE_DESC: Record<ColorType, string> = {
+  "лето":
+    "Холодный тон кожи — от светло-розовой до серовато-оливковой. Легко загорает, приобретая золотистый оттенок.",
+  "зима":
+    "Холодный тон — очень светлая, почти фарфоровая кожа. Загорает медленно, редко приобретает видимый загар.",
+  "осень":
+    "Тёплый тон — кожа золотистого оттенка, часто с веснушками. Не любит прямое солнце, склонна к пигментации.",
+  "весна":
+    "Тёплый тон — тонкая, прозрачная, очень светлая кожа. Легко краснеет, быстро реагирует на раздражители.",
+};
+
+/**
+ * Sanity-check helper used by both the Gemini service
+ * (coercing responseSchema-returned string to legal ColorType) and
+ * by analysisService.ts when reading legacy `result` JSON from DB
+ * rows pre-color_type feature. Returns a valid ColorType or null.
+ */
+export function clampColorType(raw: unknown): ColorType | null {
+  const lowered = String(raw ?? "").toLowerCase().trim();
+  if (lowered === "лето" || lowered === "зима" || lowered === "осень" || lowered === "весна") {
+    return lowered;
+  }
+  return null;
+}
+
+/**
  * Build the "Утром X, вечером Y" routine template. Both providers
  * pass the same `problems` shape (`["акне (умеренное)", "морщины (лёгкое)"]`).
  *
